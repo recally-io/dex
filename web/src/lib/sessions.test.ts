@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import type { Chat } from "../api/generated/types.gen";
+import type { Session } from "../api/generated/types.gen";
 import {
   activeSessionCount,
   formatDuration,
@@ -14,11 +14,11 @@ test("user sees one count for every busy session", () => {
   expect(activeSessionCount([])).toBe(0);
 });
 
-test("user can filter each session kind, and a child session is a Chat", () => {
-  const kind = (channel: Chat["channel"], main = false) => sessionKind({ channel, main });
+test("user can filter each session kind, and a child session is a Session", () => {
+  const kind = (channel: Session["channel"], main = false) => sessionKind({ channel, main });
 
   expect(kind("web", true)).toBe("Main");
-  expect(kind("web")).toBe("Chat");
+  expect(kind("web")).toBe("Session");
   expect(kind("automation")).toBe("Automation");
 
   for (const channel of ["telegram", "wechat", "feishu"] as const) expect(kind(channel)).toBe("Channel");
@@ -54,7 +54,7 @@ test("a child row names its parent by ID: Main only for the ID of Main, and an a
   expect(parentName({ parentId: 2 }, 1, all)).toBe("Review");
   expect(parentName({ parentId: 4 }, 1, all)).toBe("New session");
   // A parent that the list does not hold is not Main.
-  expect(parentName({ parentId: 9 }, 1, all)).toBe("a chat");
+  expect(parentName({ parentId: 9 }, 1, all)).toBe("a session");
   expect(parentName({ parentId: 2, agentName: "Coder" }, 1, all)).toBe("Review · Coder");
   expect(parentName({ parentId: 9, parentAgentName: "Dex" }, 1, all)).toBe("Dex");
 });

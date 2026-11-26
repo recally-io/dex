@@ -28,17 +28,18 @@ type Notification struct {
 }
 
 // ToolPatch preserves omitted fields, including enabled=false and cwd="".
+// Durable calls and their saved results keep the tool JSON keys across HTTP API changes.
 type ToolPatch struct {
-	Notification         *Notification `json:"notification,omitempty"`
-	ID                   string        `json:"id,omitempty"`
-	Name                 *string       `json:"name,omitempty"`
-	Prompt               *string       `json:"prompt,omitempty"`
-	Schedule             *ToolSchedule `json:"schedule,omitempty"`
-	TimeZone             *string       `json:"timeZone,omitempty"`
-	Session              *string       `json:"session,omitempty"`
-	TargetConversationID *int64        `json:"targetConversationId,omitempty"`
-	Enabled              *bool         `json:"enabled,omitempty"`
-	Cwd                  *string       `json:"cwd,omitempty"`
+	Notification    *Notification `json:"notification,omitempty"`
+	ID              string        `json:"id,omitempty"`
+	Name            *string       `json:"name,omitempty"`
+	Prompt          *string       `json:"prompt,omitempty"`
+	Schedule        *ToolSchedule `json:"schedule,omitempty"`
+	TimeZone        *string       `json:"timeZone,omitempty"`
+	Session         *string       `json:"session,omitempty"`
+	TargetSessionID *int64        `json:"targetConversationId,omitempty"`
+	Enabled         *bool         `json:"enabled,omitempty"`
+	Cwd             *string       `json:"cwd,omitempty"`
 	// RunnerID is local or an SSH Machine ID; empty follows the bot's Runner.
 	RunnerID *string `json:"runnerId,omitempty"`
 }
@@ -53,26 +54,26 @@ type ToolRun struct {
 	CreatedAt int64  `json:"createdAt"`
 	Status    string `json:"status"`
 	Reason    string `json:"reason,omitempty"`
-	ChatID    int64  `json:"chatId,omitzero"`
+	SessionID int64  `json:"chatId,omitzero"`
 }
 
 type ToolInfo struct {
-	Notification         *Notification `json:"notification,omitempty"`
-	ID                   string        `json:"id"`
-	Name                 string        `json:"name"`
-	Prompt               string        `json:"prompt,omitempty"`
-	Schedule             ToolSchedule  `json:"schedule"`
-	TimeZone             string        `json:"timeZone"`
-	Session              string        `json:"session"`
-	TargetConversationID int64         `json:"targetConversationId,omitzero"`
-	Enabled              bool          `json:"enabled"`
-	Cwd                  string        `json:"cwd"`
-	RunnerID             string        `json:"runnerId"`
-	NextRuns             []int64       `json:"nextRuns"`
-	LastRun              *ToolRun      `json:"lastRun,omitempty"`
-	CreatedAt            int64         `json:"createdAt"`
-	UpdatedAt            int64         `json:"updatedAt"`
-	Runs                 []ToolRun     `json:"runs,omitempty"`
+	Notification    *Notification `json:"notification,omitempty"`
+	ID              string        `json:"id"`
+	Name            string        `json:"name"`
+	Prompt          string        `json:"prompt,omitempty"`
+	Schedule        ToolSchedule  `json:"schedule"`
+	TimeZone        string        `json:"timeZone"`
+	Session         string        `json:"session"`
+	TargetSessionID int64         `json:"targetConversationId,omitzero"`
+	Enabled         bool          `json:"enabled"`
+	Cwd             string        `json:"cwd"`
+	RunnerID        string        `json:"runnerId"`
+	NextRuns        []int64       `json:"nextRuns"`
+	LastRun         *ToolRun      `json:"lastRun,omitempty"`
+	CreatedAt       int64         `json:"createdAt"`
+	UpdatedAt       int64         `json:"updatedAt"`
+	Runs            []ToolRun     `json:"runs,omitempty"`
 }
 
 // ToolHandlers binds tool calls to business services without a transport.

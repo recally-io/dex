@@ -84,16 +84,16 @@ func (q *Queries) GetRelatedTaskByNumber(ctx context.Context, number int64) (Tas
 }
 
 const hasBoundTaskSession = `-- name: HasBoundTaskSession :one
-SELECT EXISTS (SELECT 1 FROM task_sessions WHERE conversation_id = ? AND bot_id = ?)
+SELECT EXISTS (SELECT 1 FROM task_sessions WHERE session_id = ? AND bot_id = ?)
 `
 
 type HasBoundTaskSessionParams struct {
-	ConversationID int64  `json:"conversation_id"`
-	BotID          string `json:"bot_id"`
+	SessionID int64  `json:"session_id"`
+	BotID     string `json:"bot_id"`
 }
 
 func (q *Queries) HasBoundTaskSession(ctx context.Context, arg HasBoundTaskSessionParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, hasBoundTaskSession, arg.ConversationID, arg.BotID)
+	row := q.db.QueryRowContext(ctx, hasBoundTaskSession, arg.SessionID, arg.BotID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

@@ -19,49 +19,49 @@ type questionView struct {
 	Answer  string   `json:"answer"`
 }
 
-func (d *dex) question(t *testing.T, chatID int64) *questionView {
+func (d *dex) question(t *testing.T, sessionID int64) *questionView {
 	t.Helper()
 	var c struct {
 		Question *questionView `json:"question"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", chatID), nil, &c)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &c)
 	return c.Question
 }
 
-// awaitQuestion polls the chat until it shows a question with the status.
-func (d *dex) awaitQuestion(t *testing.T, chatID int64, status string) *questionView {
+// awaitQuestion polls the session until it shows a question with the status.
+func (d *dex) awaitQuestion(t *testing.T, sessionID int64, status string) *questionView {
 	t.Helper()
 	var q *questionView
 	eventually(t, "question "+status, func() (bool, any) {
-		q = d.question(t, chatID)
+		q = d.question(t, sessionID)
 		return q != nil && q.Status == status, q
 	})
 	return q
 }
 
-func (d *dex) awaitNoQuestion(t *testing.T, chatID int64) {
+func (d *dex) awaitNoQuestion(t *testing.T, sessionID int64) {
 	t.Helper()
 	eventually(t, "no question", func() (bool, any) {
-		q := d.question(t, chatID)
+		q := d.question(t, sessionID)
 		return q == nil, q
 	})
 }
 
-func (d *dex) awaitIdle(t *testing.T, chatID int64) {
+func (d *dex) awaitIdle(t *testing.T, sessionID int64) {
 	t.Helper()
-	eventually(t, "chat idle", func() (bool, any) {
-		var c chatInfo
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", chatID), nil, &c)
+	eventually(t, "session idle", func() (bool, any) {
+		var c sessionListItem
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &c)
 		return !c.Busy, c
 	})
 }
 
 const askJSON = `ask_user {"question":"How should I handle the banner flicker?","options":["Add it to the running SSE session","Start a separate session","Investigate only"]}`
 
-func (d *dex) answer(t *testing.T, chatID int64, questionID, text string, want int) string {
+func (d *dex) answer(t *testing.T, sessionID int64, questionID, text string, want int) string {
 	t.Helper()
 	id := uuid.NewV7().String()
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID),
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID),
 		map[string]string{"id": id, "text": text, "answersQuestionId": questionID}, nil, want)
 	return id
 }
@@ -77,41 +77,41 @@ func questionStatus(t *testing.T, conn *sql.DB, id string) string {
 
 func TestUserAnswersQuestionFromCard(t *testing.T) {
 	t.Parallel()
-	// Given a chat whose model asks one question and ends its turn.
+	// Given a session whose model asks one question and ends its turn.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "tool")
 	conn := taskResultDB(t, dir)
-	chatID := d.newChat(t, askJSON)
-	q := d.awaitQuestion(t, chatID, "open")
-	d.awaitIdle(t, chatID)
+	sessionID := d.newSessionWithMessage(t, askJSON)
+	q := d.awaitQuestion(t, sessionID, "open")
+	d.awaitIdle(t, sessionID)
 	if q.Text != "How should I handle the banner flicker?" || len(q.Options) != 3 {
 		t.Fatalf("question: %+v", q)
 	}
 
 	// When the user writes a plain message, then the question stays open.
 	d.setModel(t, "echo")
-	plainID := d.send(t, chatID, "unrelated")
-	d.watch(t, chatID).until(t, "plain message answered", answered("echo: unrelated"))
-	d.must(t, http.MethodPost, chatPath(chatID, "messages"),
+	plainID := d.send(t, sessionID, "unrelated")
+	d.watch(t, sessionID).until(t, "plain message answered", answered("echo: unrelated"))
+	d.must(t, http.MethodPost, sessionPath(sessionID, "messages"),
 		map[string]string{"id": plainID, "text": "unrelated", "answersQuestionId": q.ID}, nil, http.StatusConflict)
-	if again := d.question(t, chatID); again == nil || again.ID != q.ID || again.Status != "open" {
+	if again := d.question(t, sessionID); again == nil || again.ID != q.ID || again.Status != "open" {
 		t.Fatalf("plain message changed the question: %+v", again)
 	}
 
 	// When the user answers with the question ID, the answer reaches the model and the question closes.
-	answerID := d.answer(t, chatID, q.ID, "Start a separate session", http.StatusAccepted)
-	d.watch(t, chatID).until(t, "answer processed", answeredWith("echo: Answer to: How should I handle the banner flicker?\nStart a separate session"))
-	d.awaitNoQuestion(t, chatID)
+	answerID := d.answer(t, sessionID, q.ID, "Start a separate session", http.StatusAccepted)
+	d.watch(t, sessionID).until(t, "answer processed", answeredWith("echo: Answer to: How should I handle the banner flicker?\nStart a separate session"))
+	d.awaitNoQuestion(t, sessionID)
 	if status := questionStatus(t, conn, q.ID); status != "consumed" {
 		t.Fatalf("status: %s", status)
 	}
 
 	// Then a second answer to the closed question is refused, and a retry of the first answer is accepted.
-	d.answer(t, chatID, q.ID, "Investigate only", http.StatusConflict)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID),
+	d.answer(t, sessionID, q.ID, "Investigate only", http.StatusConflict)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID),
 		map[string]string{"id": answerID, "text": "Start a separate session", "answersQuestionId": q.ID}, nil, http.StatusAccepted)
-	d.must(t, http.MethodPost, chatPath(chatID, "messages"),
+	d.must(t, http.MethodPost, sessionPath(sessionID, "messages"),
 		map[string]string{"id": answerID, "text": "Start a separate session"}, nil, http.StatusConflict)
 }
 
@@ -120,51 +120,51 @@ func TestMixedToolBatchCreatesNoQuestion(t *testing.T) {
 	// Given a model that calls ask_user and bash in one message.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "mixed")
-	chatID := d.newChat(t, askJSON)
+	sessionID := d.newSessionWithMessage(t, askJSON)
 
 	// Then ask_user fails, the other tool runs, and no question exists.
-	d.watch(t, chatID).until(t, "tool error for ask_user", answeredWith("ask_user must be the only tool call"))
-	if q := d.question(t, chatID); q != nil {
+	d.watch(t, sessionID).until(t, "tool error for ask_user", answeredWith("ask_user must be the only tool call"))
+	if q := d.question(t, sessionID); q != nil {
 		t.Fatalf("question: %+v", q)
 	}
 }
 
 func TestUserStopDismissesQuestion(t *testing.T) {
 	t.Parallel()
-	// Given a chat with an open question.
+	// Given a session with an open question.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "tool")
 	conn := taskResultDB(t, dir)
-	chatID := d.newChat(t, askJSON)
-	q := d.awaitQuestion(t, chatID, "open")
-	d.awaitIdle(t, chatID)
+	sessionID := d.newSessionWithMessage(t, askJSON)
+	q := d.awaitQuestion(t, sessionID, "open")
+	d.awaitIdle(t, sessionID)
 
 	// When the user presses Stop, then the question is dismissed and cannot be answered.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", chatID), nil, nil)
-	d.awaitNoQuestion(t, chatID)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", sessionID), nil, nil)
+	d.awaitNoQuestion(t, sessionID)
 	if status := questionStatus(t, conn, q.ID); status != "dismissed" {
 		t.Fatalf("status: %s", status)
 	}
-	d.answer(t, chatID, q.ID, "late", http.StatusConflict)
+	d.answer(t, sessionID, q.ID, "late", http.StatusConflict)
 }
 
 func TestUserClearAndArchiveDismissQuestion(t *testing.T) {
 	t.Parallel()
-	// Given two chats with open questions.
+	// Given two sessions with open questions.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "tool")
 	conn := taskResultDB(t, dir)
-	cleared := d.newChat(t, askJSON)
-	archived := d.newChat(t, askJSON)
+	cleared := d.newSessionWithMessage(t, askJSON)
+	archived := d.newSessionWithMessage(t, askJSON)
 	clearedQ := d.awaitQuestion(t, cleared, "open")
 	archivedQ := d.awaitQuestion(t, archived, "open")
 	d.awaitIdle(t, cleared)
 	d.awaitIdle(t, archived)
 
 	// When the user clears one and archives the other, then both questions are dismissed.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", cleared), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/clear", cleared), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
 	d.archive(t, http.MethodPut, archived, http.StatusOK)
 	d.awaitNoQuestion(t, cleared)
 	d.awaitNoQuestion(t, archived)
@@ -175,44 +175,44 @@ func TestUserClearAndArchiveDismissQuestion(t *testing.T) {
 
 func TestUserWithdrawsAnswerBeforeItRunsAndQuestionReopens(t *testing.T) {
 	t.Parallel()
-	// Given an open question and a chat that is busy with a gated command.
+	// Given an open question and a session that is busy with a gated command.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
-	chatID := d.newChat(t, askJSON)
-	q := d.awaitQuestion(t, chatID, "open")
-	d.awaitIdle(t, chatID)
+	sessionID := d.newSessionWithMessage(t, askJSON)
+	q := d.awaitQuestion(t, sessionID, "open")
+	d.awaitIdle(t, sessionID)
 	d.setModel(t, "bash")
 	run := newGatedRun(t, "busy")
-	d.send(t, chatID, run.command)
+	d.send(t, sessionID, run.command)
 	run.waitStarted(t)
 
 	// When the user answers, the answer waits in the queue and the question shows it.
-	answerID := d.answer(t, chatID, q.ID, "Investigate only", http.StatusAccepted)
-	w := d.watch(t, chatID)
+	answerID := d.answer(t, sessionID, q.ID, "Investigate only", http.StatusAccepted)
+	w := d.watch(t, sessionID)
 	w.until(t, "answer queued", queuedItem(answerID))
-	if got := d.awaitQuestion(t, chatID, "answered"); got.Answer != "Investigate only" {
+	if got := d.awaitQuestion(t, sessionID, "answered"); got.Answer != "Investigate only" {
 		t.Fatalf("answered question: %+v", got)
 	}
 
 	// When the user withdraws the answer before it runs, then the question opens again.
 	var back withdrawn
-	d.must(t, http.MethodPost, withdrawPath(chatID, answerID), nil, &back)
+	d.must(t, http.MethodPost, withdrawPath(sessionID, answerID), nil, &back)
 	if back.Text != "Investigate only" {
 		t.Fatalf("withdrawn answer text: %q", back.Text)
 	}
-	if got := d.question(t, chatID); got == nil || got.ID != q.ID || got.Status != "open" {
+	if got := d.question(t, sessionID); got == nil || got.ID != q.ID || got.Status != "open" {
 		t.Fatalf("reopened question: %+v", got)
 	}
 	// When the user answers again, then the new answer binds to the same question.
-	d.answer(t, chatID, q.ID, "Start a separate session", http.StatusAccepted)
-	if got := d.awaitQuestion(t, chatID, "answered"); got.ID != q.ID || got.Answer != "Start a separate session" {
+	d.answer(t, sessionID, q.ID, "Start a separate session", http.StatusAccepted)
+	if got := d.awaitQuestion(t, sessionID, "answered"); got.ID != q.ID || got.Answer != "Start a separate session" {
 		t.Fatalf("second answer: %+v", got)
 	}
 	// And when the gated run ends, then the answer runs and the question is consumed.
 	// The queued answer keeps the model of its admission, so bash runs it as a command and fails; the question closes anyway.
 	run.open()
 	w.until(t, "answer runs", answeredWith("Answer: command not found"))
-	d.awaitNoQuestion(t, chatID)
+	d.awaitNoQuestion(t, sessionID)
 }
 
 func TestUserAnswersQuestionByQuotingItInTelegram(t *testing.T) {
@@ -225,7 +225,7 @@ func TestUserAnswersQuestionByQuotingItInTelegram(t *testing.T) {
 	conn := taskResultDB(t, dir)
 	f.message(1, 42, 7, askJSON)
 	asked := f.next(t)
-	mainID := d.mainChat(t)
+	mainID := d.mainSession(t)
 	q := d.awaitQuestion(t, mainID, "open")
 
 	// When the peer sends a plain message, then the question stays open.
@@ -238,7 +238,7 @@ func TestUserAnswersQuestionByQuotingItInTelegram(t *testing.T) {
 		t.Fatalf("a plain message changed the question: %+v", got)
 	}
 
-	// When the peer quotes a message of an unrelated chat position, then it is a plain message too.
+	// When the peer quotes a message of an unrelated session position, then it is a plain message too.
 	f.reply(3, 42, 7, "stray", asked.ID+1000)
 	if got := f.next(t).Text; got != "echo: stray" {
 		t.Fatalf("stray quote reply: %q", got)
@@ -341,7 +341,7 @@ func TestUserAnswersQuestionsFromTwoBotsWithTheSameRemoteMessageID(t *testing.T)
 		var main struct {
 			Question *questionView `json:"question"`
 		}
-		d.must(t, http.MethodGet, "/api/agents/"+entry.agent+"/chats/main", nil, &main)
+		d.must(t, http.MethodGet, "/api/agents/"+entry.agent+"/sessions/main", nil, &main)
 		if main.Question != nil {
 			t.Errorf("agent %s still waits for an answer: %+v", entry.agent, main.Question)
 		}

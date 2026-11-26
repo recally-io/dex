@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/feedback"
+	"github.com/recally-io/dex/internal/session"
 )
 
 // CommandReceived reports whether the globally keyed command receipt exists.
@@ -25,9 +25,9 @@ func (m *Manager) CommandReceived(ctx context.Context, source string) (bool, err
 }
 
 // Receive stores one update or executes a shared command. A repeated source has no effect.
-func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Message) error {
-	if chat.NonPrivateTelegramPeer(peer) {
-		return chat.ErrTelegramUnauthorized
+func (m *Manager) Receive(ctx context.Context, peer, source string, msg session.Message) error {
+	if session.NonPrivateTelegramPeer(peer) {
+		return session.ErrTelegramUnauthorized
 	}
 	if !strings.Contains(peer, ":") || strings.Contains(peer, "/") || source == "" || msg.ChannelContext.AccountID == "" {
 		return errors.New("invalid channel peer, account, or source")
@@ -53,9 +53,9 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	telegramCommand := strings.HasPrefix(peer, "telegram:") && channel.IsCommand(cmd)
 	isCommand := isFeedback || basicCommand || telegramCommand
 	if !isCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
-		return m.chats.AcceptMessage(ctx, m.agentID, peer, source, msg)
+		return m.sessions.AcceptMessage(ctx, m.agentID, peer, source, msg)
 	}
-	if err := chat.RequirePairedChannel(ctx, m.q, m.agentID, peer, msg.ChannelContext); err != nil {
+	if err := session.RequirePairedChannel(ctx, m.q, m.agentID, peer, msg.ChannelContext); err != nil {
 		return err
 	}
 	identity, err := json.Marshal(msg.ChannelContext)
@@ -70,7 +70,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 		m.Notify(peer)
 		return nil
 	}
-	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd, ChannelContext: string(identity)}); err != nil {
+	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: session.MainKey, Command: cmd, ChannelContext: string(identity)}); err != nil {
 		return err
 	}
 	return m.complete(ctx, source)
@@ -80,7 +80,7 @@ const feedbackTooLong = "This draft is too long for one channel reply. Shorten i
 
 const feedbackInstructions = "Send /feedback followed by your title on the first line and your description on the lines below. " + feedback.PublicWarning
 
-// feedbackReply builds a reply from explicitly supplied text, never from a chat session.
+// feedbackReply builds a reply from explicitly supplied text, never from a session.
 func feedbackReply(text string) string {
 	_, rest := channel.SplitCommand(text)
 	if rest == "" {
@@ -135,7 +135,7 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	if c.AgentID != m.agentID || c.Completed != 0 || c.DeliveredAt.Valid {
 		return nil
 	}
-	var target chat.Chat
+	var target session.Session
 	if strings.HasPrefix(c.Peer, "telegram:") {
 		var done bool
 		var err error
@@ -149,16 +149,16 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	// Rows saved before /clear existed hold /new.
 	case "/clear", "/new":
 		if target.ID == 0 {
-			target, err = m.chats.Main(ctx, m.agentID)
+			target, err = m.sessions.Main(ctx, m.agentID)
 			if err != nil {
 				return err
 			}
 		}
-		err := m.chats.Clear(ctx, m.agentID, target.ID, "channel:"+c.SourceKey, c.Peer, "")
+		err := m.sessions.Clear(ctx, m.agentID, target.ID, "channel:"+c.SourceKey, c.Peer, "")
 		switch {
-		case errors.Is(err, chat.ErrTelegramUnauthorized):
+		case errors.Is(err, session.ErrTelegramUnauthorized):
 			answer = ""
-		case errors.Is(err, chat.ErrConversationBusy):
+		case errors.Is(err, session.ErrSessionBusy):
 			answer = "Context not cleared. The main timeline is busy. Wait for the reply or stop it, then send /clear again."
 		case err != nil:
 			return err
@@ -170,14 +170,14 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 		if answer == "" {
 			if target.ID == 0 {
 				var err error
-				target, err = m.chats.Main(ctx, m.agentID)
+				target, err = m.sessions.Main(ctx, m.agentID)
 				if err != nil {
 					return err
 				}
 			}
 			answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
-			if err := m.chats.StopChannelCommand(ctx, m.agentID, target.ID, c.SourceKey, answer); err != nil {
-				if errors.Is(err, chat.ErrTelegramUnauthorized) {
+			if err := m.sessions.StopChannelCommand(ctx, m.agentID, target.ID, c.SourceKey, answer); err != nil {
+				if errors.Is(err, session.ErrTelegramUnauthorized) {
 					return m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
 				}
 				return err
@@ -192,8 +192,8 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 }
 
 // QueueChannelNotice records a platform acknowledgement without a model input.
-func (m *Manager) QueueChannelNotice(ctx context.Context, peer, source string, identity chat.ChannelContext, body string) error {
-	target, err := m.chats.Main(ctx, m.agentID)
+func (m *Manager) QueueChannelNotice(ctx context.Context, peer, source string, identity session.ChannelContext, body string) error {
+	target, err := m.sessions.Main(ctx, m.agentID)
 	if err != nil {
 		return err
 	}
@@ -203,7 +203,7 @@ func (m *Manager) QueueChannelNotice(ctx context.Context, peer, source string, i
 	}
 	id := "notice:" + source
 	if _, err := m.q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-		ID: id, EventID: id, AgentID: m.agentID, ConversationID: target.ID,
+		ID: id, EventID: id, AgentID: m.agentID, SessionID: target.ID,
 		Kind: "control", Peer: peer, ChannelContext: string(encoded), Body: body,
 		Status: "pending", CreatedAt: time.Now().UnixMilli(),
 	}); err != nil {
@@ -218,7 +218,7 @@ func (m *Manager) queueCommandReply(ctx context.Context, bot channel.Bot, r sqlc
 	if r.Answer == "" {
 		return m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}})
 	}
-	target, err := m.chats.Main(ctx, m.agentID)
+	target, err := m.sessions.Main(ctx, m.agentID)
 	if err != nil {
 		return err
 	}
@@ -241,7 +241,7 @@ func (m *Manager) queueCommandReply(ctx context.Context, bot channel.Bot, r sqlc
 		return err
 	}
 	if strings.HasPrefix(r.Peer, "telegram:") && kind == "control" {
-		var identity chat.ChannelContext
+		var identity session.ChannelContext
 		if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
 			return err
 		}
@@ -258,7 +258,7 @@ func (m *Manager) queueCommandReply(ctx context.Context, bot channel.Bot, r sqlc
 		return err
 	}
 	_, err = m.q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-		ID: r.SourceKey, EventID: "control:" + r.SourceKey, AgentID: m.agentID, ConversationID: target.ID,
+		ID: r.SourceKey, EventID: "control:" + r.SourceKey, AgentID: m.agentID, SessionID: target.ID,
 		Kind: kind, Peer: r.Peer, ChannelContext: r.ChannelContext, RenderedMessage: string(encoded),
 		Status: "pending", CreatedAt: now,
 	})

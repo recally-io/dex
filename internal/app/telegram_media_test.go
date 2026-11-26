@@ -24,7 +24,7 @@ func TestUserSendsTelegramVoiceAudioVideoAnimationAndSticker(t *testing.T) {
 	}
 	data := t.TempDir()
 	d := startTelegram(t, f, data, 42)
-	watch := d.watch(t, d.mainChat(t))
+	watch := d.watch(t, d.mainSession(t))
 	for i, kind := range kinds {
 		id := int64(i + 1)
 		f.mu.Lock()

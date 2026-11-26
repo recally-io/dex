@@ -25,9 +25,9 @@ func startWithHeldDiscovery(t *testing.T, fail bool) (*dex, func(), <-chan struc
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/models" {
 			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = fmt.Fprint(w, `data: {"id":"test","object":"chat.completion.chunk","created":0,"model":"remote","choices":[{"index":0,"delta":{"role":"assistant","content":"remote answer"},"finish_reason":null}]}
+			_, _ = fmt.Fprint(w, `data: {"id":"test","object":"session.completion.chunk","created":0,"model":"remote","choices":[{"index":0,"delta":{"role":"assistant","content":"remote answer"},"finish_reason":null}]}
 
-data: {"id":"test","object":"chat.completion.chunk","created":0,"model":"remote","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+data: {"id":"test","object":"session.completion.chunk","created":0,"model":"remote","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
 
 data: [DONE]
 
@@ -58,8 +58,8 @@ data: [DONE]
 	first.must(t, http.MethodPut, "/api/settings/providers/fixed", map[string]any{"api": "openai-completions", "baseUrl": endpoint.URL, "models": []string{"static"}}, nil)
 	first.must(t, http.MethodPut, "/api/settings/providers/openai", map[string]any{"apiKey": "SECRET"}, nil)
 	first.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "lan", "modelId": "remote", "thinkingLevel": "off"}, nil)
-	savedChat := first.newChat(t, "before restart")
-	first.watch(t, savedChat).until(t, "saved native dynamic conversation", answered("remote answer"))
+	savedSession := first.newSessionWithMessage(t, "before restart")
+	first.watch(t, savedSession).until(t, "saved native dynamic conversation", answered("remote answer"))
 	first.stop()
 	hold.Store(true)
 	cfg := app.Config{DataDir: data, Home: home, ToolEnv: map[string]string{"PATH": os.Getenv("PATH"), "HOME": home}, FakeModel: true}
@@ -97,7 +97,7 @@ data: [DONE]
 		d.srv.Client().Timeout = time.Second
 		t.Cleanup(d.stop)
 		t.Log("artifact: Start returned while saved discovery remained held")
-		return d, unblock, stopped, savedChat
+		return d, unblock, stopped, savedSession
 	case <-time.After(time.Second):
 		t.Fatal("Start blocked on saved model discovery before HTTP handler existed")
 	}
@@ -107,7 +107,7 @@ data: [DONE]
 func TestUserStartupServesHTTPAndRetainsPendingAdmissionDuringDiscovery(t *testing.T) {
 	t.Parallel()
 	// Given saved dynamic, static, and builtin providers, with discovery held on restart.
-	d, release, _, savedChat := startWithHeldDiscovery(t, false)
+	d, release, _, savedSession := startWithHeldDiscovery(t, false)
 	// Then health and Settings respond before discovery finishes.
 	var health struct {
 		RuntimeReady bool `json:"runtimeReady"`
@@ -122,7 +122,7 @@ func TestUserStartupServesHTTPAndRetainsPendingAdmissionDuringDiscovery(t *testi
 		t.Fatalf("saved static models or builtin credentials were not registered: %v", models)
 	}
 	// Cold runtime operations return retryable 503 without changing saved settings.
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991&limit=100", savedChat), nil, nil, http.StatusServiceUnavailable)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/history?before=9007199254740991&limit=100", savedSession), nil, nil, http.StatusServiceUnavailable)
 	d.must(t, http.MethodPost, "/api/agents/default/integrations/reload", nil, nil, http.StatusServiceUnavailable)
 	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Must not save", "provider": "lan", "modelId": "remote", "thinkingLevel": "off"}, nil, http.StatusServiceUnavailable)
 	var saved struct {
@@ -135,7 +135,7 @@ func TestUserStartupServesHTTPAndRetainsPendingAdmissionDuringDiscovery(t *testi
 		t.Fatalf("pending validation changed saved agent: %+v", saved)
 	}
 	// When input arrives before the cold harness can safely resume, its receipt stays pending.
-	id := d.send(t, savedChat, "after discovery")
+	id := d.send(t, savedSession, "after discovery")
 	var status string
 	var admitted any
 	if err := sessionDB(t, d).QueryRowContext(t.Context(), "SELECT status, admitted_at FROM submissions WHERE id=?", id).Scan(&status, &admitted); err != nil {
@@ -150,7 +150,7 @@ func TestUserStartupServesHTTPAndRetainsPendingAdmissionDuringDiscovery(t *testi
 	eventually(t, "discovered model published", func() (bool, any) { got := d.models(t); return slices.Contains(got, "lan/remote"), got })
 	// The one-second deadline above checks finite HTTP reads, not the lifetime of an SSE connection.
 	d.srv.Client().Timeout = 0
-	d.watch(t, savedChat).until(t, "pending dynamic input recovered", func(tr *transcript) bool {
+	d.watch(t, savedSession).until(t, "pending dynamic input recovered", func(tr *transcript) bool {
 		count := 0
 		for _, item := range tr.items {
 			if item.Kind == "assistant" && item.Text == "remote answer" {

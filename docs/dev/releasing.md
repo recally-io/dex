@@ -8,11 +8,11 @@ drift, web, Go lint and tests, and native checks and cross-builds.
 
 Three app jobs partition the `internal/app` tests and run them without the
 race detector, because it made them several times slower for little gain.
-Four chat jobs partition the `internal/chat` tests and run them with the race
+Four session jobs partition the `internal/session` tests and run them with the race
 detector. The Go job uses `check:go without-integration` for all other
 packages; local `check:go` still runs every package. Run
-`mise run check:go-shard ./internal/chat 0 4` to repeat the first chat
-partition locally, or `mise run check:app` for all app tests. The app and chat
+`mise run check:go-shard ./internal/session 0 4` to repeat the first session
+partition locally, or `mise run check:app` for all app tests. The app and session
 jobs save their JSON timings as a seven-day artifact. The jobs share the main
 Go cache without saving duplicate archives. Before the save on `main`, the Go
 and native jobs delete the cache entries that they did not use, so the cache

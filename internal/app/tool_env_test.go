@@ -34,17 +34,17 @@ func TestUserInjectsVaultValueOnlyForOneCall(t *testing.T) {
 	// Given a value saved by the user.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
-	w := d.watch(t, d.newChat(t, "hello"))
+	w := d.watch(t, d.newSessionWithMessage(t, "hello"))
 	w.until(t, "agent open", answered("echo: hello"))
 	saveVault(t, d, "default", "agent", "GITHUB_TOKEN", "github-test-vault-value")
 	d.applied(t)
 	// When the model calls bash, then only the call with a reference gets the value.
 	d.setModel(t, "tool")
-	w = d.watch(t, d.newChat(t, `bash {"command":"printf %s \"${GITHUB_TOKEN-unset}/${GH_TOKEN-unset}\""}`))
+	w = d.watch(t, d.newSessionWithMessage(t, `bash {"command":"printf %s \"${GITHUB_TOKEN-unset}/${GH_TOKEN-unset}\""}`))
 	w.until(t, "no injection", answered("tool: unset/unset"))
-	chat := d.newSession(t).ID
-	assertVaultCommand(t, d, chat)
-	w = d.watch(t, chat)
+	session := d.newSession(t).ID
+	assertVaultCommand(t, d, session)
+	w = d.watch(t, session)
 	w.until(t, "settled transcript", answered("tool: [vault:GITHUB_TOKEN]"))
 	snapshot := taskJSON(t, w.tr.items)
 	found := false
@@ -57,14 +57,14 @@ func TestUserInjectsVaultValueOnlyForOneCall(t *testing.T) {
 	if !found || strings.Contains(snapshot, "github-test-vault-value") {
 		t.Fatalf("transcript: %s", snapshot)
 	}
-	got := taskTool(t, d, chat, "bash", map[string]any{"command": "touch should-not-run", "env": map[string]string{"T": "vault:MISSING_SECRET"}})
+	got := taskTool(t, d, session, "bash", map[string]any{"command": "touch should-not-run", "env": map[string]string{"T": "vault:MISSING_SECRET"}})
 	if !strings.Contains(got, "MISSING_SECRET") {
 		t.Fatalf("missing vault error: %s", got)
 	}
-	if got := taskTool(t, d, chat, "bash", map[string]string{"command": "test ! -e should-not-run && printf absent"}); got != "tool: absent" {
+	if got := taskTool(t, d, session, "bash", map[string]string{"command": "test ! -e should-not-run && printf absent"}); got != "tool: absent" {
 		t.Fatalf("missing secret must prevent execution: %s", got)
 	}
-	got = taskTool(t, d, chat, "secret_list", map[string]any{})
+	got = taskTool(t, d, session, "secret_list", map[string]any{})
 	_, raw, ok := strings.Cut(got, "tool: ")
 	var list []apiVaultEntry
 	if !ok || json.Unmarshal([]byte(raw), &list) != nil || len(list) != 1 || list[0].Name != "GITHUB_TOKEN" || list[0].Scope != "agent" || list[0].UpdatedAt == "" || strings.Contains(got, "github-test-vault-value") {
@@ -72,15 +72,15 @@ func TestUserInjectsVaultValueOnlyForOneCall(t *testing.T) {
 	}
 }
 
-func assertVaultCommand(t *testing.T, d *dex, chat int64) {
+func assertVaultCommand(t *testing.T, d *dex, session int64) {
 	t.Helper()
 	// Check the actual process arguments before printing the injected value.
-	got := taskTool(t, d, chat, "bash", map[string]any{
+	got := taskTool(t, d, session, "bash", map[string]any{
 		"command": `line=$(ps -o args= -p "$$") && test -n "$line" && test -n "$GH_TOKEN" || exit 22; case "$line" in *"$GH_TOKEN"*) exit 23;; esac; printf %s "$GH_TOKEN"`,
 		"env":     map[string]string{"GH_TOKEN": "vault:GITHUB_TOKEN"},
 	})
 	if got != "tool: [vault:GITHUB_TOKEN]" {
-		t.Fatalf("vault command %d: %q", chat, got)
+		t.Fatalf("vault command %d: %q", session, got)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestUserShellEditWaitsForRestart(t *testing.T) {
 	d := startDexHome(t, cfg, home)
 	d.setModel(t, "bash")
 	const command = `printf %s "$DEX_TEST_RC"`
-	d.watch(t, d.newChat(t, command)).until(t, "initial shell value", answered("bash: first"))
+	d.watch(t, d.newSessionWithMessage(t, command)).until(t, "initial shell value", answered("bash: first"))
 
 	writeFile(t, rc, "export DEX_TEST_RC=after-restart\n")
 	// The old scheduler could reload on its next 3-second tick.
@@ -120,14 +120,14 @@ wait:
 	}
 	d.stop()
 	d = startDexHome(t, cfg, home)
-	d.watch(t, d.newChat(t, command)).until(t, "new shell value after restart", answered("bash: after-restart"))
+	d.watch(t, d.newSessionWithMessage(t, command)).until(t, "new shell value after restart", answered("bash: after-restart"))
 }
 
 func TestUserSetsUpOnePasswordForTools(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "bash")
-	w := d.watch(t, d.newChat(t, "true"))
+	w := d.watch(t, d.newSessionWithMessage(t, "true"))
 	w.until(t, "agent open", answered("bash: "))
 	// When the user sends incomplete settings, then dex refuses them.
 	for _, input := range []map[string]string{
@@ -151,7 +151,7 @@ func TestUserSetsUpOnePasswordForTools(t *testing.T) {
 	// Then the open agent reloads, and tools get the token.
 	d.applied(t)
 	check := fmt.Sprintf(`test "$(printf %%s "$OP_SERVICE_ACCOUNT_TOKEN" | shasum -a 256 | cut -d " " -f 1)" = %x && printf ready`, sha256.Sum256([]byte(token)))
-	w = d.watch(t, d.newChat(t, check))
+	w = d.watch(t, d.newSessionWithMessage(t, check))
 	w.until(t, "token in tools", answered("bash: ready"))
 	// When the user turns 1Password off, then the saved token stays for later.
 	d.must(t, http.MethodPut, "/api/settings/onepassword", map[string]string{"mode": "off"}, &saved)

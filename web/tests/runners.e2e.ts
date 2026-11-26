@@ -75,7 +75,11 @@ for (const [action, desc] of [
   });
 }
 
-test("a new chat can select a sandbox and shows a disconnected runner", async ({ app, browser, screen }) => {
+test("a new session can select a sandbox and shows a disconnected runner", async ({
+  app,
+  browser,
+  screen,
+}) => {
   await app.open("/a/default");
   const baseUrl = new URL(await browser.url()).origin;
 
@@ -95,13 +99,14 @@ test("a new chat can select a sandbox and shows a disconnected runner", async ({
     body: JSON.stringify({ name: "Disconnected runner", kind: "runner" }),
   });
 
-  const chat = await fetch(`${baseUrl}/api/agents/default/chats`, { method: "POST" });
+  const session = await fetch(`${baseUrl}/api/agents/default/sessions`, { method: "POST" });
 
-  if (!sandbox.ok || !runner.ok || !chat.ok) throw new Error("Could not create chat environment fixtures");
+  if (!sandbox.ok || !runner.ok || !session.ok)
+    throw new Error("Could not create session environment fixtures");
 
-  const { id: chatId }: { id: number } = await chat.json();
+  const { id: sessionId }: { id: number } = await session.json();
   const { id: sandboxId }: { id: string } = await sandbox.json();
-  await app.open(`/a/default/c/${chatId}`);
+  await app.open(`/a/default/s/${sessionId}`);
   const picker = screen.getByLabel("Runner", { exact: true });
   await picker.selectOption({ value: sandboxId });
 

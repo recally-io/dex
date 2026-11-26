@@ -16,14 +16,14 @@ import (
 
 func TestUserInspectsMonitorsAndOutboxViaAPI(t *testing.T) {
 	t.Parallel()
-	// Given a chat where the agent schedules a follow-up monitor via tool call.
+	// Given a session where the agent schedules a follow-up monitor via tool call.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
-	chatID := d.newSession(t).ID
-	d.send(t, chatID, `monitor_set {"delaySeconds":300,"prompt":"check build status"}`)
-	d.waitSettled(t, chatID)
+	sessionID := d.newSession(t).ID
+	d.send(t, sessionID, `monitor_set {"delaySeconds":300,"prompt":"check build status"}`)
+	d.waitSettled(t, sessionID)
 
-	// When the user queries monitors and outbox for the chat.
+	// When the user queries monitors and outbox for the session.
 	var monitorsResp struct {
 		Monitors []struct {
 			ID         string `json:"id"`
@@ -32,7 +32,7 @@ func TestUserInspectsMonitorsAndOutboxViaAPI(t *testing.T) {
 			ChainDepth int    `json:"chainDepth"`
 		} `json:"monitors"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/monitors", chatID), nil, &monitorsResp)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/monitors", sessionID), nil, &monitorsResp)
 	if len(monitorsResp.Monitors) != 1 || monitorsResp.Monitors[0].State != "scheduled" || monitorsResp.Monitors[0].Prompt != "check build status" {
 		t.Fatalf("unexpected monitors: %+v", monitorsResp.Monitors)
 	}
@@ -44,7 +44,7 @@ func TestUserInspectsMonitorsAndOutboxViaAPI(t *testing.T) {
 			Status string `json:"status"`
 		} `json:"messages"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/outbox", chatID), nil, &outboxResp)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/outbox", sessionID), nil, &outboxResp)
 	if len(outboxResp.Messages) != 0 {
 		t.Fatalf("unexpected outbox: %+v", outboxResp.Messages)
 	}
@@ -54,12 +54,12 @@ func TestUserInspectsMonitorsAndOutboxViaAPI(t *testing.T) {
 		ID    string `json:"id"`
 		State string `json:"state"`
 	}
-	d.must(t, http.MethodDelete, fmt.Sprintf("/api/agents/default/chats/%d/monitors/%s", chatID, monitorsResp.Monitors[0].ID), nil, &cancelled)
+	d.must(t, http.MethodDelete, fmt.Sprintf("/api/agents/default/sessions/%d/monitors/%s", sessionID, monitorsResp.Monitors[0].ID), nil, &cancelled)
 	if cancelled.State != "cancelled" {
 		t.Fatalf("expected cancelled monitor, got %+v", cancelled)
 	}
 
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/monitors", chatID), nil, &monitorsResp)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/monitors", sessionID), nil, &monitorsResp)
 	if len(monitorsResp.Monitors) != 1 || monitorsResp.Monitors[0].State != "cancelled" {
 		t.Fatalf("expected cancelled state in list, got %+v", monitorsResp.Monitors)
 	}
@@ -71,9 +71,9 @@ func TestUserKeepsLegacyTimerHistoryAndFiresDueWorkOnceAfterUpgrade(t *testing.T
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "echo")
-	chatID := d.newSession(t).ID
-	d.send(t, chatID, "schedule fixture")
-	d.waitSettled(t, chatID)
+	sessionID := d.newSession(t).ID
+	d.send(t, sessionID, "schedule fixture")
+	d.waitSettled(t, sessionID)
 	d.stop()
 	path := filepath.Join(dir, "control.sqlite")
 	snapshot := filepath.Join(dir, "control-fixture.sqlite")
@@ -100,14 +100,14 @@ func TestUserKeepsLegacyTimerHistoryAndFiresDueWorkOnceAfterUpgrade(t *testing.T
 INSERT INTO agents (id, name, model_provider, model_id, created_at)
 SELECT id, name, model_provider, model_id, created_at FROM fixture.agents;
 INSERT INTO conversations (id, agent_id, channel_key, execution_id, created_at, title)
-SELECT id, agent_id, channel_key, execution_id, created_at, title FROM fixture.conversations;
+SELECT id, agent_id, channel_key, execution_id, created_at, title FROM fixture.sessions;
 INSERT INTO submissions (id, conversation_id, content, origin, kind, status, created_at, admitted_at, settled_at, answer)
-SELECT id, conversation_id, content, origin, kind, status, created_at, admitted_at, settled_at, answer FROM fixture.submissions;
+SELECT id, session_id, content, origin, kind, status, created_at, admitted_at, settled_at, answer FROM fixture.submissions;
 DETACH DATABASE fixture;`); err != nil {
 		t.Fatal(err)
 	}
 	var root string
-	if err := conn.QueryRowContext(t.Context(), `SELECT id FROM submissions WHERE conversation_id = ? AND kind = 'message'`, chatID).Scan(&root); err != nil {
+	if err := conn.QueryRowContext(t.Context(), `SELECT id FROM submissions WHERE conversation_id = ? AND kind = 'message'`, sessionID).Scan(&root); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().Add(-time.Second).UnixMilli()
@@ -119,7 +119,7 @@ DETACH DATABASE fixture;`); err != nil {
 		{id: "legacy-armed", state: "scheduled", prompt: "migrated follow-up"},
 		{id: "legacy-cancelled", state: "cancelled", prompt: "old cancelled prompt"},
 	} {
-		_, err = conn.ExecContext(t.Context(), `INSERT INTO followup_timers (id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at) VALUES (?, ?, 'default', ?, ?, ?, 2, ?, 'UTC', ?, ?, ?, ?, ?)`, f.id, "operation:"+f.id, chatID, root, root, now, f.prompt, f.state, f.fire, now, now)
+		_, err = conn.ExecContext(t.Context(), `INSERT INTO followup_timers (id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at) VALUES (?, ?, 'default', ?, ?, ?, 2, ?, 'UTC', ?, ?, ?, ?, ?)`, f.id, "operation:"+f.id, sessionID, root, root, now, f.prompt, f.state, f.fire, now, now)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,7 +135,7 @@ DETACH DATABASE fixture;`); err != nil {
 	// Then a second startup still exposes all three records and does not replay either prompt.
 	d = startDex(t, dir, "")
 	var list api.MonitorList
-	d.must(t, http.MethodGet, chatPath(chatID, "monitors"), nil, &list)
+	d.must(t, http.MethodGet, sessionPath(sessionID, "monitors"), nil, &list)
 	if len(list.Monitors) != 3 {
 		t.Fatalf("expected the three legacy records: %+v", list.Monitors)
 	}
@@ -153,13 +153,13 @@ DETACH DATABASE fixture;`); err != nil {
 		t.Fatalf("legacy identity was lost: %q %q %q %v", completed, operation, source, err)
 	}
 	var total int
-	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE conversation_id = ? AND kind = 'wake'`, chatID).Scan(&total); err != nil || total != 1 {
+	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE session_id = ? AND kind = 'wake'`, sessionID).Scan(&total); err != nil || total != 1 {
 		t.Fatalf("expected one follow-up across both boots, got %d (%v)", total, err)
 	}
-	d.watch(t, chatID).until(t, "Monitor wake in the transcript after restart", func(tr *transcript) bool {
+	d.watch(t, sessionID).until(t, "Monitor wake in the transcript after restart", func(tr *transcript) bool {
 		return slices.ContainsFunc(tr.items, func(mark item) bool {
 			return mark.ID == "monitor:legacy-armed:1" && mark.Kind == "wake" && mark.Title == "Monitor" && mark.Status == "due" && mark.Text == ""
 		})
 	})
-	d.must(t, http.MethodGet, chatPath(chatID, "timers"), nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodGet, sessionPath(sessionID, "timers"), nil, nil, http.StatusNotFound)
 }

@@ -23,7 +23,7 @@ const routinesPath = "/api/agents/default/automations"
 
 func boundRoutine(target int64, prompt string) map[string]any {
 	return map[string]any{
-		"name": "Bound routine", "prompt": prompt, "session": "session", "targetConversationId": target,
+		"name": "Bound routine", "prompt": prompt, "session": "session", "targetSessionId": target,
 		"timeZone": "UTC", "enabled": true, "schedule": map[string]any{"kind": "every", "minutes": 5},
 	}
 }
@@ -34,7 +34,7 @@ func TestUserRunsAutomationInExistingSessionAfterRestart(t *testing.T) {
 	data := t.TempDir()
 	d := startDex(t, data, "")
 	d.setModel(t, "echo")
-	id := d.newChat(t, "earlier context")
+	id := d.newSessionWithMessage(t, "earlier context")
 	d.watch(t, id).until(t, "earlier answer", answered("echo: earlier context"))
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(id, "bound run"), &routine, http.StatusCreated)
@@ -45,8 +45,8 @@ func TestUserRunsAutomationInExistingSessionAfterRestart(t *testing.T) {
 		return status == http.StatusOK, raw
 	})
 	run := d.runNow(t, routine.ID)
-	if run.ChatID != id || run.Status != "running" {
-		t.Fatalf("run = %+v, want running in chat %d", run, id)
+	if run.SessionID != id || run.Status != "running" {
+		t.Fatalf("run = %+v, want running in session %d", run, id)
 	}
 	var admitted bool
 	conn := sessionDB(t, d)
@@ -58,8 +58,8 @@ func TestUserRunsAutomationInExistingSessionAfterRestart(t *testing.T) {
 	// Then the committed run resumes in its original session after restart.
 	d = startDex(t, data, "")
 	d.watch(t, id).until(t, "bound routine answer", answeredWith("echo: bound run"))
-	if got := settledRoutine(t, d, routine.ID, run.ID); got.ChatID != id {
-		t.Fatalf("recovered run = %+v, want chat %d", got, id)
+	if got := settledRoutine(t, d, routine.ID, run.ID); got.SessionID != id {
+		t.Fatalf("recovered run = %+v, want session %d", got, id)
 	}
 }
 
@@ -83,8 +83,8 @@ func TestUserScheduledBoundAutomationKeepsItsTargetAfterRestart(t *testing.T) {
 	// Then the scheduled input goes to the saved session.
 	d.watch(t, id).until(t, "scheduled bound routine answer", answeredWith("echo: scheduled bound run"))
 	runs := d.runs(t, routine.ID)
-	if len(runs) != 1 || runs[0].ChatID != id || runs[0].DueAt != at {
-		t.Fatalf("runs = %+v, want one run in chat %d at %d", runs, id, at)
+	if len(runs) != 1 || runs[0].SessionID != id || runs[0].DueAt != at {
+		t.Fatalf("runs = %+v, want one run in session %d at %d", runs, id, at)
 	}
 	settledRoutine(t, d, routine.ID, runs[0].ID)
 	// Replay the due cursor left by a crash before cursor advancement.
@@ -119,7 +119,7 @@ func TestUserBoundAutomationCanReportItsOwnResult(t *testing.T) {
 	got := settledRoutine(t, d, routine.ID, run.ID)
 
 	// Then only its own run can store a report.
-	if got.Outcome != "unchanged" || got.Summary != "bound check completed" || got.ChatID != id {
+	if got.Outcome != "unchanged" || got.Summary != "bound check completed" || got.SessionID != id {
 		t.Fatalf("run did not store its report: %+v", got)
 	}
 	d.send(t, id, `automation_report {"outcome":"changed","summary":"not a routine"}`)
@@ -139,7 +139,7 @@ func TestUserBoundAutomationWaitsBehindAnOrdinaryTurn(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "bash")
 	work := t.TempDir()
-	id := d.newChat(t, taskGate(t, work, "ordinary"))
+	id := d.newSessionWithMessage(t, taskGate(t, work, "ordinary"))
 	waitTaskFile(t, filepath.Join(work, "ordinary.pid"))
 	marker := filepath.Join(work, "bound-order")
 	var routine automationInfo
@@ -151,7 +151,7 @@ func TestUserBoundAutomationWaitsBehindAnOrdinaryTurn(t *testing.T) {
 	overlap := d.runNow(t, routine.ID)
 
 	// Then the first input is queued, and only its duplicate overlap skips.
-	if run.Status != "running" || run.ChatID != id || overlap.Status != "skipped" || !strings.Contains(overlap.Reason, "busy") {
+	if run.Status != "running" || run.SessionID != id || overlap.Status != "skipped" || !strings.Contains(overlap.Reason, "busy") {
 		t.Fatalf("runnable input and overlap = %+v, %+v", run, overlap)
 	}
 	w := d.watch(t, id)
@@ -171,9 +171,9 @@ func TestUserBoundAutomationWaitsBehindAnOrdinaryTurn(t *testing.T) {
 
 func TestUserCannotBindAAutomationToAnotherBotOrRestrictedSession(t *testing.T) {
 	t.Parallel()
-	// Given same-bot Main, an empty Chat, and cross-bot, read-only, and archived sessions.
+	// Given same-bot Main, an empty Session, and cross-bot, read-only, and archived sessions.
 	d := startDex(t, t.TempDir(), "")
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	archived := d.newSession(t).ID
 	d.archive(t, http.MethodPut, archived, http.StatusOK)
 	eligible := d.newSession(t).ID
@@ -181,7 +181,7 @@ func TestUserCannotBindAAutomationToAnotherBotOrRestrictedSession(t *testing.T) 
 	var other apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other fixture bot"}, &other, http.StatusCreated)
 	var foreign sessionInfo
-	d.must(t, http.MethodPost, "/api/agents/"+other.ID+"/chats", nil, &foreign, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/agents/"+other.ID+"/sessions", nil, &foreign, http.StatusCreated)
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(eligible, "check"), &routine, http.StatusCreated)
 
@@ -198,7 +198,7 @@ func TestUserCannotBindAAutomationToAnotherBotOrRestrictedSession(t *testing.T) 
 	}
 	slices.Sort(ids)
 	if !slices.Equal(ids, []int64{main, eligible}) {
-		t.Fatalf("eligible sessions = %v, want Main %d and Chat %d", ids, main, eligible)
+		t.Fatalf("eligible sessions = %v, want Main %d and Session %d", ids, main, eligible)
 	}
 	for _, id := range []int64{foreign.ID, archived, readOnly} {
 		d.must(t, http.MethodPost, routinesPath, boundRoutine(id, "check"), nil, http.StatusBadRequest)
@@ -215,7 +215,7 @@ func TestUserSeesAAutomationSkipWhenItsSessionIsGone(t *testing.T) {
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(id, "check"), &routine, http.StatusCreated)
 	conn := sessionDB(t, d)
-	if _, err := conn.ExecContext(t.Context(), "DELETE FROM conversations WHERE id = ?", id); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "DELETE FROM sessions WHERE id = ?", id); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,14 +223,14 @@ func TestUserSeesAAutomationSkipWhenItsSessionIsGone(t *testing.T) {
 	run := d.runNow(t, routine.ID)
 
 	// Then it skips and leaves no input or fallback conversation.
-	if run.Status != "skipped" || run.ChatID != 0 || !strings.Contains(run.Reason, "target session") {
+	if run.Status != "skipped" || run.SessionID != 0 || !strings.Contains(run.Reason, "target session") {
 		t.Fatalf("run = %+v", run)
 	}
 	var binding struct {
-		TargetConversationID *int64 `json:"targetConversationId"`
+		TargetSessionID *int64 `json:"targetSessionId"`
 	}
 	d.must(t, http.MethodGet, routinesPath+"/"+routine.ID, nil, &binding)
-	if binding.TargetConversationID != nil {
+	if binding.TargetSessionID != nil {
 		t.Fatalf("deleted target survived in binding: %+v", binding)
 	}
 	var count int
@@ -255,13 +255,13 @@ func TestUserBoundAutomationUsesTheSessionRunnerAndProject(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
 	ssh.Refuse(t, "fixture.internal")
 	id := d.newSession(t).ID
-	chatPath := fmt.Sprintf("/api/agents/default/chats/%d", id)
-	d.must(t, http.MethodPut, chatPath+"/runner", map[string]string{"runnerId": "local"}, nil)
+	sessionPath := fmt.Sprintf("/api/agents/default/sessions/%d", id)
+	d.must(t, http.MethodPut, sessionPath+"/runner", map[string]string{"runnerId": "local"}, nil)
 	project, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.must(t, http.MethodPut, chatPath+"/project", map[string]string{"cwd": project}, nil)
+	d.must(t, http.MethodPut, sessionPath+"/project", map[string]string{"cwd": project}, nil)
 	body := boundRoutine(id, "pwd")
 	body["runnerId"], body["cwd"] = remote.ID, "/wrong-project"
 	var routine automationInfo
@@ -269,7 +269,7 @@ func TestUserBoundAutomationUsesTheSessionRunnerAndProject(t *testing.T) {
 
 	// When the Automation runs, its own stale settings and the bot default cannot override the target.
 	run := d.runNow(t, routine.ID)
-	if run.Status != "running" || run.ChatID != id {
+	if run.Status != "running" || run.SessionID != id {
 		t.Fatalf("run = %+v", run)
 	}
 	d.watch(t, id).until(t, "target project cwd", answered("bash: "+project))
@@ -278,7 +278,7 @@ func TestUserBoundAutomationUsesTheSessionRunnerAndProject(t *testing.T) {
 		RunnerID string `json:"runnerId"`
 		Cwd      string `json:"cwd"`
 	}
-	d.must(t, http.MethodGet, chatPath, nil, &settings)
+	d.must(t, http.MethodGet, sessionPath, nil, &settings)
 	if settings.RunnerID != "local" || settings.Cwd != project {
 		t.Fatalf("target changed: %+v", settings)
 	}
@@ -287,7 +287,7 @@ func TestUserBoundAutomationUsesTheSessionRunnerAndProject(t *testing.T) {
 	offline := d.newSession(t).ID
 	var unavailable automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(offline, "pwd"), &unavailable, http.StatusCreated)
-	if skipped := d.runNow(t, unavailable.ID); skipped.Status != "skipped" || skipped.ChatID != 0 || !strings.Contains(skipped.Reason, "unavailable") {
+	if skipped := d.runNow(t, unavailable.ID); skipped.Status != "skipped" || skipped.SessionID != 0 || !strings.Contains(skipped.Reason, "unavailable") {
 		t.Fatalf("unavailable run = %+v", skipped)
 	}
 }
@@ -297,7 +297,7 @@ func TestUserFailedBoundAutomationDoesNotWakeTheChildsParent(t *testing.T) {
 	// Given a child in an ordinary parent session, and a local provider that rejects requests.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
-	parent := d.mainChat(t)
+	parent := d.mainSession(t)
 	child := spawnChild(t, d, parent, "Routine target child", "initial child turn", "echo").conversation(t)
 	conn := sessionDB(t, d)
 	waitChildTurnsEnded(t, conn, child, 1)
@@ -306,7 +306,7 @@ func TestUserFailedBoundAutomationDoesNotWakeTheChildsParent(t *testing.T) {
 	}))
 	defer boundary.Close()
 	d.must(t, http.MethodPut, "/api/settings/providers/routine", map[string]any{"api": "openai-completions", "baseUrl": boundary.URL + "/v1", "models": []string{"routine"}}, nil)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", child), map[string]string{"provider": "routine", "modelId": "routine", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/settings", child), map[string]string{"provider": "routine", "modelId": "routine", "thinkingLevel": "off"}, nil)
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(child, "check"), &routine, http.StatusCreated)
 
@@ -315,7 +315,7 @@ func TestUserFailedBoundAutomationDoesNotWakeTheChildsParent(t *testing.T) {
 	got := settledRoutine(t, d, routine.ID, run.ID)
 
 	// Then the run owns that failure; no automatic child error result wakes the parent.
-	if got.Outcome != "failed" || got.Status != "failed" || got.ChatID != child || got.Reason == "run ended without automation_report" {
+	if got.Outcome != "failed" || got.Status != "failed" || got.SessionID != child || got.Reason == "run ended without automation_report" {
 		t.Fatalf("run = %+v", got)
 	}
 	if rows := resultRows(t, conn, parent); slices.ContainsFunc(rows, func(row resultRow) bool { return row.id == "err:"+run.ID }) {
@@ -329,12 +329,12 @@ func TestUserCanStopAndClearABoundAutomationSession(t *testing.T) {
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), AutomationCheck: 50 * time.Millisecond})
 	d.setModel(t, "bash")
 	work := t.TempDir()
-	id := d.newChat(t, taskGate(t, work, "active"))
+	id := d.newSessionWithMessage(t, taskGate(t, work, "active"))
 	waitTaskFile(t, filepath.Join(work, "active.pid"))
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(id, "next scheduled check"), &routine, http.StatusCreated)
 	run := d.runNow(t, routine.ID)
-	if run.Status != "running" || run.ChatID != id {
+	if run.Status != "running" || run.SessionID != id {
 		t.Fatalf("first run = %+v", run)
 	}
 	w := d.watch(t, id)
@@ -343,7 +343,7 @@ func TestUserCanStopAndClearABoundAutomationSession(t *testing.T) {
 	})
 
 	// When Stop withdraws the queued run, and the owner later clears the target's context.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", id), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", id), nil, nil)
 	if stopped := settledRoutine(t, d, routine.ID, run.ID); stopped.Status != "failed" || stopped.Reason == "" {
 		t.Fatalf("stopped run = %+v", stopped)
 	}
@@ -362,7 +362,7 @@ func TestUserCanStopAndClearABoundAutomationSession(t *testing.T) {
 	}
 	w.until(t, "scheduled check after clear", answeredWith(`context: ["next scheduled check\n\nAutomation reporting instructions`))
 	runs := d.runs(t, routine.ID)
-	if len(runs) != 2 || runs[0].ChatID != id || runs[0].DueAt != dueAt {
+	if len(runs) != 2 || runs[0].SessionID != id || runs[0].DueAt != dueAt {
 		t.Fatalf("runs after Stop and Clear = %+v", runs)
 	}
 }
@@ -409,11 +409,11 @@ func TestUserBoundAutomationKeepsReportingWhenAnOrdinaryTurnQueues(t *testing.T)
 			case <-r.Context().Done():
 				return
 			}
-			_, _ = fmt.Fprintln(w, `data: {"id":"fixture-tool","object":"chat.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"check_1","type":"function","function":{"name":"automation_report","arguments":"{\"outcome\":\"unchanged\",\"summary\":\"fixture checked\"}"}}]},"finish_reason":null}]}`)
-			_, _ = fmt.Fprint(w, "\n"+`data: {"id":"fixture-tool","object":"chat.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`+"\n\ndata: [DONE]\n\n")
+			_, _ = fmt.Fprintln(w, `data: {"id":"fixture-tool","object":"session.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"check_1","type":"function","function":{"name":"automation_report","arguments":"{\"outcome\":\"unchanged\",\"summary\":\"fixture checked\"}"}}]},"finish_reason":null}]}`)
+			_, _ = fmt.Fprint(w, "\n"+`data: {"id":"fixture-tool","object":"session.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`+"\n\ndata: [DONE]\n\n")
 			return
 		}
-		_, _ = fmt.Fprint(w, "data: {\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"routine\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"checked\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+		_, _ = fmt.Fprint(w, "data: {\"id\":\"fixture\",\"object\":\"session.completion.chunk\",\"created\":1,\"model\":\"routine\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"checked\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
 	}))
 	defer func() {
 		select {

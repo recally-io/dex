@@ -2,37 +2,41 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { CalendarClock, ChevronDown, List, Plus, Settings } from "lucide-react";
-import type { Agent, Chat } from "../api/generated/types.gen";
-import { createChat, setChatProject } from "../api/generated/sdk.gen";
+import type { Agent, Session } from "../api/generated/types.gen";
+import { createAgentSession, setSessionProject } from "../api/generated/sdk.gen";
 import { listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { useAgentId } from "../lib/agent-scope";
 import { useApp } from "../lib/app-state";
 import { instructionsDirty } from "../lib/instructions";
-import { errorText, refreshChats } from "../lib/queries";
+import { errorText, refreshSessions } from "../lib/queries";
 import { cn } from "../lib/utils";
-import { ChatProject } from "./chat-project";
+import { SessionProject } from "./session-project";
 import { Button, buttonVariants } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
 const settingsSegments = ["agent", "skills", "integrations", "secrets", "channels"];
 
 /** Opens a session with the current project. The server reuses the newest empty session. */
-function useNewChat(cwd: string, created: (chat: Chat) => void) {
+function useNewSession(cwd: string, created: (session: Session) => void) {
   const agentId = useAgentId();
   const navigate = useNavigate();
   const { notify } = useApp();
 
   return useMutation({
     mutationFn: async () => {
-      const { data: chat } = await createChat({ path: { agentId }, throwOnError: true });
-      await setChatProject({ path: { agentId, chatId: chat.id }, body: { cwd }, throwOnError: true });
+      const { data: session } = await createAgentSession({ path: { agentId }, throwOnError: true });
+      await setSessionProject({
+        path: { agentId, sessionId: session.id },
+        body: { cwd },
+        throwOnError: true,
+      });
 
-      return { ...chat, cwd };
+      return { ...session, cwd };
     },
-    onSuccess: async (chat) => {
-      await refreshChats(agentId);
-      await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chat.id) } });
-      created(chat);
+    onSuccess: async (session) => {
+      await refreshSessions(agentId);
+      await navigate({ to: "/a/$agentId/s/$sessionId", params: { agentId, sessionId: String(session.id) } });
+      created(session);
     },
     onError: (cause) => notify(`Could not open a new session. ${errorText(cause)}`),
   });
@@ -42,8 +46,8 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
   const agentId = agent.id!;
   const { draft } = useApp();
   const dirty = instructionsDirty(draft, agent.instructions);
-  const [created, setCreated] = useState<Chat>();
-  const newSession = useNewChat(cwd, setCreated);
+  const [created, setCreated] = useState<Session>();
+  const newSession = useNewSession(cwd, setCreated);
   const agents = useQuery(listAgentsOptions());
   const activity = agents.data?.agents.find((item) => item.id === agentId)?.activity;
   const automations = activity?.enabledAutomations ?? 0;
@@ -183,9 +187,9 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
         </DropdownMenuContent>
       </DropdownMenu>
       {created ? (
-        <ChatProject
+        <SessionProject
           key={created.id}
-          chatId={created.id}
+          sessionId={created.id}
           cwd={created.cwd}
           runnerId={created.runnerId}
           initialOpen

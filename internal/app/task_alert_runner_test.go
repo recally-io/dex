@@ -85,8 +85,8 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 
 	// Then Main settles the saved alert. Open the transcript after settlement so
 	// this test does not depend on live events during the cold start.
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 	conn := sessionDB(t, d)
 	var alertID string
 	if err := conn.QueryRowContext(t.Context(), `SELECT s.id FROM submissions s JOIN task_inputs i ON i.submission_id = s.id WHERE s.kind = 'task_wake'`).Scan(&alertID); err != nil {

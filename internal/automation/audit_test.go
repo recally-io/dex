@@ -10,17 +10,17 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/automation"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/session"
 )
 
 type routineFixture struct {
 	q        *sqlc.Queries
 	conn     *sql.DB
-	chats    *chat.Service
+	sessions *session.Service
 	routines *automation.Service
 	now      time.Time
 }
@@ -47,8 +47,8 @@ func newRoutineFixture(t *testing.T) *routineFixture {
 	})
 	f := &routineFixture{conn: conn, q: sqlc.New(conn), now: time.Date(2016, 1, 1, 0, 0, 0, 123000000, time.UTC)}
 	clock := func() time.Time { return f.now }
-	f.chats = chat.New(conn, native, clock, nil, nil)
-	f.routines = automation.New(f.q, f.chats, clock)
+	f.sessions = session.New(conn, native, clock, nil, nil)
+	f.routines = automation.New(f.q, f.sessions, clock)
 	return f
 }
 
@@ -85,7 +85,7 @@ func TestUserScheduledRoutineDoesNotRunStaleInput(t *testing.T) {
 			}
 			// Submit the previously captured snapshot after the user change has committed.
 			id := uuid.NewV7().String()
-			result, enqueueErr := f.chats.EnqueueAutomation(ctx, chat.AutomationInput{
+			result, enqueueErr := f.sessions.EnqueueAutomation(ctx, session.AutomationInput{
 				Expected: &snapshot, AgentID: "a", ChannelKey: "automation:" + a.ID + ":" + id, Title: snapshot.Name, Content: snapshot.Prompt, Cwd: snapshot.Cwd,
 				Run: sqlc.CreateAutomationRunParams{ID: id, AutomationID: a.ID, DueAt: snapshot.NextDueAt, Status: "started", CreatedAt: f.now.UnixMilli()},
 			})
@@ -96,7 +96,7 @@ func TestUserScheduledRoutineDoesNotRunStaleInput(t *testing.T) {
 			if count != 0 || result.Created {
 				t.Fatalf("stale input committed after %s: count=%d created=%v", change, count, result.Created)
 			}
-			if !errors.Is(enqueueErr, chat.ErrAutomationChanged) {
+			if !errors.Is(enqueueErr, session.ErrAutomationChanged) {
 				t.Fatalf("enqueue after %s: %v", change, enqueueErr)
 			}
 			if change == "delete" {
@@ -240,14 +240,14 @@ func TestUserRoutineEditDuringRunNowCheckStartsNoRun(t *testing.T) {
 
 func TestUserRoutineSkipsATargetInvalidatedDuringPreflight(t *testing.T) {
 	for _, change := range []struct{ name, query string }{
-		{"archive", "UPDATE conversations SET archived_at = 1 WHERE id = ?"},
-		{"delete", "DELETE FROM conversations WHERE id = ?"},
+		{"archive", "UPDATE sessions SET archived_at = 1 WHERE id = ?"},
+		{"delete", "DELETE FROM sessions WHERE id = ?"},
 	} {
 		t.Run(change.name, func(t *testing.T) {
 			// Given a valid target on an SSH fixture, with the Routine preflight in progress.
 			f := newRoutineFixture(t)
 			ctx := t.Context()
-			if _, err := f.chats.Main(ctx, "a"); err != nil {
+			if _, err := f.sessions.Main(ctx, "a"); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := f.conn.ExecContext(ctx, `INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('a', '123:fixture', '42');
@@ -257,15 +257,15 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 			if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','ssh','{"host":"box.internal"}','',0,0)`); err != nil {
 				t.Fatal(err)
 			}
-			conv, err := f.q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: "a", ChannelKey: "chat:bound-target"})
+			conv, err := f.q.EnsureSession(ctx, sqlc.EnsureSessionParams{AgentID: "a", ChannelKey: "chat:bound-target"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.q.SetChatRunner(ctx, sqlc.SetChatRunnerParams{ID: conv.ID, AgentID: "a", RunnerID: "box"}); err != nil {
+			if _, err := f.q.SetSessionRunner(ctx, sqlc.SetSessionRunnerParams{ID: conv.ID, AgentID: "a", RunnerID: "box"}); err != nil {
 				t.Fatal(err)
 			}
 			in := routineInput()
-			in.Session, in.TargetConversationID = "session", conv.ID
+			in.Session, in.TargetSessionID = "session", conv.ID
 			in.Notification = &automation.Notification{Mode: "default"}
 			a, err := f.routines.Create(ctx, "a", in)
 			if err != nil {
@@ -278,11 +278,11 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 			})
 			run, err := f.routines.RunNow(ctx, "a", a.ID)
 			// Then the run records a skip, not an input or a retryable snapshot error.
-			if err != nil || run.Status != "skipped" || run.ChatID != 0 || run.Reason != chat.ErrAutomationTarget.Error() {
+			if err != nil || run.Status != "skipped" || run.SessionID != 0 || run.Reason != session.ErrAutomationTarget.Error() {
 				t.Fatalf("run = %+v, err = %v", run, err)
 			}
 			runs, err := f.routines.Runs(ctx, "a", a.ID, 10)
-			if err != nil || len(runs) != 1 || runs[0].Status != "skipped" || runs[0].ChatID != 0 {
+			if err != nil || len(runs) != 1 || runs[0].Status != "skipped" || runs[0].SessionID != 0 {
 				t.Fatalf("saved runs = %+v, err = %v", runs, err)
 			}
 			// The existing failure routing enqueues one alert, without a model input.

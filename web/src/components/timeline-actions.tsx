@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useMutation } from "@tanstack/react-query";
 import { clearContext } from "../api/generated/sdk.gen";
-import { getChatHistoryOptions } from "../api/generated/@tanstack/react-query.gen";
+import { getSessionHistoryOptions } from "../api/generated/@tanstack/react-query.gen";
 import type { HistoryPage, Item } from "../api/generated/types.gen";
 import { queryClient } from "../lib/queries";
 import { newId } from "../lib/utils";
@@ -17,7 +17,7 @@ export function hasContext(items: Item[]) {
   return last !== undefined && !(last.kind === "boundary" && last.boundary === "reset" && !last.text);
 }
 
-export function useClearContext(chatId: number, running: boolean, onCleared: () => void) {
+export function useClearContext(sessionId: number, running: boolean, onCleared: () => void) {
   const agentId = useAgentId();
   const request = useRef(newId());
   const [refused, setRefused] = useState(false);
@@ -39,7 +39,7 @@ export function useClearContext(chatId: number, running: boolean, onCleared: () 
       }
 
       const result = await clearContext({
-        path: { agentId, chatId },
+        path: { agentId, sessionId },
         body: { id: request.current, handoff: text || undefined },
       });
 
@@ -73,12 +73,12 @@ export function useClearContext(chatId: number, running: boolean, onCleared: () 
 // The button loads a history page when it scrolls into view, and keeps the visible items in place.
 // A user who cannot scroll, or a failed load, uses the button.
 export function LoadEarlierButton({
-  chatId,
+  sessionId,
   before,
   beforeNotification,
   onPage,
 }: {
-  chatId: number;
+  sessionId: number;
   before?: number;
   beforeNotification?: string;
   onPage: (page: HistoryPage, beforeNotification?: string) => void;
@@ -88,7 +88,7 @@ export function LoadEarlierButton({
 
   const history = useMutation({
     mutationFn: (query: { before?: number; beforeNotification?: string }) =>
-      queryClient.fetchQuery(getChatHistoryOptions({ path: { agentId, chatId }, query })),
+      queryClient.fetchQuery(getSessionHistoryOptions({ path: { agentId, sessionId }, query })),
     onSuccess: (page, query) => {
       // The page goes above the first item. Without this, a scroller at the top stays at the top,
       // keeps the button in view, and loads every page.

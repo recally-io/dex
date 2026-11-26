@@ -305,11 +305,11 @@ func (q *Queries) InsertTaskEntry(ctx context.Context, arg InsertTaskEntryParams
 const listTaskQuestionBlockers = `-- name: ListTaskQuestionBlockers :many
 SELECT q.id, q.text, CAST(CASE WHEN c.channel_key = 'main' THEN 1 + (
   SELECT count(*) FROM questions prior JOIN submissions ps ON ps.id = prior.source_submission_id
-  WHERE prior.status = 'open' AND ps.status = 'done' AND prior.conversation_id = q.conversation_id
+  WHERE prior.status = 'open' AND ps.status = 'done' AND prior.session_id = q.session_id
     AND (prior.queued, prior.rowid) < (q.queued, q.rowid)
 ) ELSE 0 END AS INTEGER) AS queue_position
 FROM questions q JOIN task_inputs i ON i.submission_id = q.source_submission_id
-JOIN submissions s ON s.id = q.source_submission_id JOIN conversations c ON c.id = q.conversation_id
+JOIN submissions s ON s.id = q.source_submission_id JOIN sessions c ON c.id = q.session_id
 WHERE i.task_id = ?1 AND q.status = 'open' AND s.status = 'done'
 ORDER BY q.queued, q.rowid
 `
@@ -344,7 +344,7 @@ func (q *Queries) ListTaskQuestionBlockers(ctx context.Context, taskID string) (
 }
 
 const listTaskQuestions = `-- name: ListTaskQuestions :many
-SELECT q.id, q.agent_id, q.conversation_id, q.source_submission_id, q.tool_operation_key, q.text, q.options_json, q.status, q.answer_submission_id, q.created_at, q.settled_at, q."action", q.action_agent_id, q.approve_text, q.outcome, q.queued FROM questions q
+SELECT q.id, q.agent_id, q.session_id, q.source_submission_id, q.tool_operation_key, q.text, q.options_json, q.status, q.answer_submission_id, q.created_at, q.settled_at, q."action", q.action_agent_id, q.approve_text, q.outcome, q.queued FROM questions q
 JOIN task_inputs i ON i.submission_id = q.source_submission_id
 JOIN submissions s ON s.id = q.source_submission_id
 WHERE i.task_id = ?1 AND q.status = 'open' AND s.status = 'done'
@@ -363,7 +363,7 @@ func (q *Queries) ListTaskQuestions(ctx context.Context, taskID string) ([]Quest
 		if err := rows.Scan(
 			&i.ID,
 			&i.AgentID,
-			&i.ConversationID,
+			&i.SessionID,
 			&i.SourceSubmissionID,
 			&i.ToolOperationKey,
 			&i.Text,
@@ -414,16 +414,16 @@ func (q *Queries) TaskForInput(ctx context.Context, submissionID string) (string
 
 const taskForQuestion = `-- name: TaskForQuestion :one
 SELECT i.task_id FROM task_inputs i JOIN questions q ON q.source_submission_id = i.submission_id
-WHERE q.id = ?1 AND q.conversation_id = ?2
+WHERE q.id = ?1 AND q.session_id = ?2
 `
 
 type TaskForQuestionParams struct {
-	QuestionID     string `json:"question_id"`
-	ConversationID int64  `json:"conversation_id"`
+	QuestionID string `json:"question_id"`
+	SessionID  int64  `json:"session_id"`
 }
 
 func (q *Queries) TaskForQuestion(ctx context.Context, arg TaskForQuestionParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, taskForQuestion, arg.QuestionID, arg.ConversationID)
+	row := q.db.QueryRowContext(ctx, taskForQuestion, arg.QuestionID, arg.SessionID)
 	var task_id string
 	err := row.Scan(&task_id)
 	return task_id, err

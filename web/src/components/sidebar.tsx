@@ -48,9 +48,9 @@ export function Sidebar({
         <Button
           variant="ghost"
           size="sm"
-          aria-label="Search bots and conversations"
+          aria-label="Search bots and sessions"
           aria-haspopup="dialog"
-          title="Search bots and conversations (⌘K / Ctrl+K)"
+          title="Search bots and sessions (⌘K / Ctrl+K)"
           onClick={onSearch}
           className="min-w-0 flex-1 justify-start gap-2 bg-muted/60 text-muted-foreground"
         >

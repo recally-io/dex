@@ -180,7 +180,7 @@ func digest(agentID string, rows []sqlc.ListDreamInputRow) (string, sqlc.ListDre
 	for i, r := range rows {
 		rec := record{
 			MessageID: r.ID,
-			Chat:      chatSource(agentID, r.ChatID),
+			Chat:      sessionSource(agentID, r.SessionID),
 			Title:     r.Title,
 			At:        time.UnixMilli(r.CreatedAt).Format(time.RFC3339),
 			Status:    r.Status,
@@ -203,7 +203,7 @@ func digest(agentID string, rows []sqlc.ListDreamInputRow) (string, sqlc.ListDre
 	return b.String(), last, nil
 }
 
-func chatSource(agentID string, id int64) string {
+func sessionSource(agentID string, id int64) string {
 	return "dex:" + agentID + "/chat/" + strconv.FormatInt(id, 10)
 }
 

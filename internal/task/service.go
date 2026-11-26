@@ -34,12 +34,12 @@ func Content(content string) (string, error) {
 type Service struct {
 	db      *sql.DB
 	q       *sqlc.Queries
-	wake    func(conversationID int64)
+	wake    func(sessionID int64)
 	onEntry func(entryID int64)
 }
 
 // New opens a Task service on the existing control database. wake can be nil.
-func New(conn *sql.DB, wake func(conversationID int64)) *Service {
+func New(conn *sql.DB, wake func(sessionID int64)) *Service {
 	return &Service{db: conn, q: sqlc.New(conn), wake: wake}
 }
 
@@ -58,7 +58,7 @@ func (s *Service) Notify(l *Ledger) {
 		}
 	}
 	if s.wake != nil {
-		for _, id := range l.wakeConversations {
+		for _, id := range l.wakeSessions {
 			s.wake(id)
 		}
 	}

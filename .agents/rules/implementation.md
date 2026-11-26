@@ -7,16 +7,16 @@ Read this before you change code, dependencies, native execution, or stored data
 | Path                        | Owns                                                                                |
 | --------------------------- | ----------------------------------------------------------------------------------- |
 | `cmd/dex`                   | Process entry: data directory, address, HTTP server                                 |
-| `internal/app`              | Wiring: business storage, engine, chat service, HTTP, channels                      |
-| `internal/chat`             | Input intents, business receipts, child session turns and results, source state     |
+| `internal/app`              | Wiring: business storage, engine, session service, HTTP, channels                   |
+| `internal/session`          | Input intents, business receipts, child session turns and results, source state     |
 | `internal/engine`           | PiG Harnesses, execution storage, model access, tool runtime, transcript projection |
 | `internal/db`               | `control.sqlite`, goose migrations, sqlc queries                                    |
 | `internal/server`           | HTTP API handlers of `api/openapi.yaml`, the web UI at `/`                          |
 | `internal/api`              | Generated from `api/openapi.yaml` (`mise run generate:api`)                         |
 | `internal/live`             | SSE transport over typed engine watches and history                                 |
-| `internal/dream`            | Hidden chats that consolidate the memory repo                                       |
+| `internal/dream`            | Hidden sessions that consolidate the memory repo                                    |
 | `internal/scheduler`        | Job schedules; jobs check durable state                                             |
-| `internal/automation`       | Automation prompts, schedules, runs, and chats                                      |
+| `internal/automation`       | Automation prompts, schedules, runs, and sessions                                   |
 | `internal/runner`           | Runner leases, workspaces, backend selection, and Outbound Machine enrollment       |
 | `internal/runner/outbound`  | Outbound Machine protocol and sessions                                              |
 | `internal/background`       | Session Processes, output, wake-ups, and process supervision                        |
@@ -57,7 +57,7 @@ Read this before you change code, dependencies, native execution, or stored data
 - Native admission is the execution authority. A business receipt alone does
   not prove that input was admitted. Reconcile both failed admission and failed
   receipt writes with the same request ID. Channel delivery facts stay in
-  business storage. `internal/chat` owns global source deduplication through
+  business storage. `internal/session` owns global source deduplication through
   `ReceivedSource`. It scopes preview references to each agent through
   `LookupSource` and `SourceReceipt`. Platform adapters must not define
   duplicate input or pending replies from `admitted_at` and submission status
@@ -71,7 +71,7 @@ Read this before you change code, dependencies, native execution, or stored data
 - A new dependency needs the user's approval. Prefer the standard library,
   then a dependency the repository already has.
 - Settings live only in `control.sqlite`. `internal/settings` owns global
-  settings. `internal/agent` owns agent and channel settings. `internal/chat`
+  settings. `internal/agent` owns agent and channel settings. `internal/session`
   owns session overrides. Do not add an environment variable or a file for a
   setting. Skills and the encrypted secret vault use files. MCP declarations
   stay in `control.sqlite`. The settings service passes provider credentials

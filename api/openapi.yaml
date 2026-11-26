@@ -1411,7 +1411,7 @@ paths:
       - $ref: "#/components/parameters/AgentId"
     delete:
       operationId: deleteWechat
-      description: Stops WeChat and forgets its credentials. Past chats stay read-only.
+      description: Stops WeChat and forgets its credentials. Past sessions stay read-only.
       responses:
         "200":
           description: WeChat is off.
@@ -1690,109 +1690,109 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/main:
+  /api/agents/{agentId}/sessions/main:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
     get:
-      operationId: getMainChat
+      operationId: getMainSession
       description: Find or create the requested agent's main timeline.
       responses:
         "200":
           description: The main timeline.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Chat" }
+              schema: { $ref: "#/components/schemas/Session" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats:
+  /api/agents/{agentId}/sessions:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
     get:
-      operationId: listChats
+      operationId: listSessions
       description: >
         Session summaries of the requested agent, newest activity first, then
-        highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no
+        highest ID first. Excludes main, channel sessions, dreams and web sessions with no
         message. Transcripts are not included.
       responses:
         "200":
           description: The sessions.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ChatList" }
+              schema: { $ref: "#/components/schemas/SessionList" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
     post:
-      operationId: createChat
+      operationId: createAgentSession
       description: >
-        Opens a separate writable Chat session. Reuses the newest Chat session
+        Opens a separate writable session. Reuses the newest session
         with no message that is not archived, or creates one. No request body or model is needed.
         The first message sets its title. The session uses the bot's settings.
       responses:
         "201":
-          description: The new or reused Chat session.
+          description: The new or reused session.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Chat" }
+              schema: { $ref: "#/components/schemas/Session" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}:
+  /api/agents/{agentId}/sessions/{sessionId}:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     get:
-      operationId: getChat
+      operationId: getSession
       responses:
         "200":
-          description: The chat.
+          description: The session.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Chat" }
+              schema: { $ref: "#/components/schemas/Session" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/archive:
+  /api/agents/{agentId}/sessions/{sessionId}/archive:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     put:
-      operationId: archiveChat
+      operationId: archiveSession
       description: >
-        Archives a Chat session. The session keeps its messages, records and
+        Archives a session. The session keeps its messages, records and
         files, and stays in the session list with archivedAt. Archiving an
         archived session keeps the first time. Main and the read-only kinds
         cannot be archived.
       responses:
         "200":
-          description: The archived chat.
+          description: The archived session.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Chat" }
+              schema: { $ref: "#/components/schemas/Session" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
     delete:
-      operationId: unarchiveChat
-      description: Restores an archived Chat session. A session that is not archived stays as it is.
+      operationId: unarchiveSession
+      description: Restores an archived session. A session that is not archived stays as it is.
       responses:
         "200":
-          description: The restored chat.
+          description: The restored session.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Chat" }
+              schema: { $ref: "#/components/schemas/Session" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
@@ -1822,9 +1822,9 @@ paths:
             application/json:
               schema:
                 type: object
-                x-go-type: chat.DirectoryListing
+                x-go-type: session.DirectoryListing
                 x-go-type-import:
-                  path: github.com/recally-io/dex/internal/chat
+                  path: github.com/recally-io/dex/internal/session
                 required: [path, parent, home, entries, truncated]
                 properties:
                   path: { type: string }
@@ -1874,20 +1874,20 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/runner:
+  /api/agents/{agentId}/sessions/{sessionId}/runner:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     put:
-      operationId: setChatRunner
+      operationId: setSessionRunner
       description: >
-        Selects the Runner of a Chat session before its first message. Its command and file tools
+        Selects the Runner of a session before its first message. Its command and file tools
         use that Runner. An empty runnerId follows the agent's default. The selection clears
         the project directory. Specify Local or a registered Machine or Sandbox. An invalid
-        selection returns 400. A started Chat returns 409. A read-only Chat returns 403.
+        selection returns 400. A started Session returns 409. A read-only Session returns 403.
       requestBody:
         required: true
         content:
@@ -1899,29 +1899,29 @@ paths:
                 runnerId: { type: string }
       responses:
         "200":
-          description: The Chat session with its Runner selection.
+          description: The session with its Runner selection.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Chat" }
+              schema: { $ref: "#/components/schemas/Session" }
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/project:
+  /api/agents/{agentId}/sessions/{sessionId}/project:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     put:
-      operationId: setChatProject
+      operationId: setSessionProject
       description: >
-        Sets the project directory of a conversation from the next message. It applies to
-        every conversation that accepts messages: Main, Chat sessions, and child sessions
-        (child sessions too). Read-only conversations return 403. Empty cwd restores the agent workspace.
+        Sets the project directory of a session from the next message. Main, separate Web sessions,
+        and child sessions accept the change. Read-only sessions return 403.
+        Empty cwd restores the agent workspace.
         The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
       requestBody:
         required: true
@@ -1934,61 +1934,60 @@ paths:
                 cwd: { type: string }
       responses:
         "200":
-          description: The Chat session with its saved project directory.
+          description: The session with its saved project directory.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Chat" }
+              schema: { $ref: "#/components/schemas/Session" }
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/settings:
+  /api/agents/{agentId}/sessions/{sessionId}/settings:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     put:
-      operationId: setChatSettings
+      operationId: setSessionSettings
       description: >
-        Sets the model and the thinking level of one chat. An absent field
+        Sets the model and the thinking level of one session. An absent field
         follows the agent's setting. They apply from the next message, including
-        channel input on Main. Conversations that accept messages (Main, Chat
-        sessions, child sessions) and automation chats accept
-        overrides. Other read-only conversations return 403.
+        channel input on Main. Main, separate Web sessions, child sessions, and
+        Automation sessions accept overrides. Other read-only sessions return 403.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ChatSettings" }
+            schema: { $ref: "#/components/schemas/SessionSettings" }
       responses:
         "200":
           description: Saved.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Chat" }
+              schema: { $ref: "#/components/schemas/Session" }
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/messages:
+  /api/agents/{agentId}/sessions/{sessionId}/messages:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     post:
       operationId: sendMessage
       description: >
-        Stores a message in a web chat and returns. An identical retry of an
+        Stores a message in a web session and returns. An identical retry of an
         accepted message returns 202 with the same submissionId. A retry with the same ID and different
-        text, attachments, mode, or chat returns 409. The answer comes through
+        text, attachments, mode, or session returns 409. The answer comes through
         the event stream. 409 when the agent has no model, or when the mode is
-        reject and the agent is working in the chat. Main and Chat sessions
+        reject and the agent is working in the session. Main and writable sessions
         take web messages. Automation and channel sessions return 403.
       requestBody:
         required: true
@@ -2007,13 +2006,13 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw:
+  /api/agents/{agentId}/sessions/{sessionId}/messages/{messageId}/withdraw:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
       - in: path
         name: messageId
         required: true
@@ -2026,7 +2025,7 @@ paths:
         queued. The receipt and the source key stay, so a channel redelivery
         does not run the message. A repeated request returns the same result.
         409 when the message has started or finished. A withdrawn answer to a
-        question opens the question again. Main and Chat sessions take this
+        question opens the question again. Main and writable sessions take this
         request. Automation and channel sessions return 403.
       responses:
         "200":
@@ -2039,19 +2038,19 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/clear:
+  /api/agents/{agentId}/sessions/{sessionId}/clear:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     post:
       operationId: clearContext
       description: >
         Stores a context reset in this writable session's delivery queue.
         A repeated UUID does not reset again; the same UUID with another
-        handoff or chat returns 409. Refuses a busy session without a change.
+        handoff or session returns 409. Refuses a busy session without a change.
         Automation and channel sessions return 403.
       requestBody:
         required: true
@@ -2083,15 +2082,15 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/continue:
+  /api/agents/{agentId}/sessions/{sessionId}/continue:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     post:
-      operationId: continueChat
+      operationId: continueSession
       description: >
         Runs this writable session again on its current context, for example
         after a failed or stopped run. It sends no new message. A repeated
@@ -2123,31 +2122,31 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/fork:
+  /api/agents/{agentId}/sessions/{sessionId}/fork:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     post:
-      operationId: forkChat
+      operationId: forkSession
       description: >
-        Starts a new Chat from the history of this writable session. Without
+        Starts a new Session from the history of this writable session. Without
         before, the history ends at entryId, which must be an answer that
         waits for no tool result. With before, it ends just before entryId;
-        when nothing comes before it, the new Chat is empty. The new Chat
+        when nothing comes before it, the new Session is empty. The new Session
         takes the model, thinking level and project of this session and does
         not run. A running session contributes only its committed entries.
         Files on disk are not rolled back. With runnerId (local or a
-        registered Runner ID), the new Chat runs on that Runner. When that
-        moves the Chat to another Runner, it has no project, and its
+        registered Runner ID), the new Session runs on that Runner. When that
+        moves the Session to another Runner, it has no project, and its
         history ends with a notice that the user and the bot see. Files,
-        background tasks, and queued input stay where they are. A new Chat
-        with no history gets no notice. Without runnerId, the new Chat
+        background tasks, and queued input stay where they are. A new Session
+        with no history gets no notice. Without runnerId, the new Session
         keeps the Runner selection of this session. Without an id, each
-        call creates another Chat. A retry with the same id and parameters
-        returns the same Chat. A different source or parameters return 409.
+        call creates another Session. A retry with the same id and parameters
+        returns the same Session. A different source or parameters return 409.
         400 when the entry is not in this session or cannot start a fork, or
         when the Runner does not exist or is not Local or an SSH Machine. A scoped
         session with runnerId, and automation and channel sessions,
@@ -2170,31 +2169,31 @@ paths:
                   description: End the history just before the entry.
                 runnerId:
                   type: string
-                  description: The Runner of the new Chat.
+                  description: The Runner of the new Session.
       responses:
         "201":
-          description: The new Chat.
+          description: The new Session.
           content:
             application/json:
               schema:
                 type: object
-                required: [chatId]
+                required: [sessionId]
                 properties:
-                  chatId: { type: integer, format: int64 }
+                  sessionId: { type: integer, format: int64 }
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/compact:
+  /api/agents/{agentId}/sessions/{sessionId}/compact:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     post:
-      operationId: compactChat
+      operationId: compactSession
       description: >
         Summarizes the older context of this writable session. It also works
         while the session runs; the summary joins the context at the next
@@ -2202,7 +2201,7 @@ paths:
         shows a pending, then a queued compaction boundary, then the summary,
         "nothing to compact", or the failure. Without an id each call starts
         a new compaction. A retry with the same id starts at most one
-        compaction. Different instructions or chat return 409. 409 when the
+        compaction. Different instructions or session return 409. 409 when the
         session never ran. Automation and
         channel sessions return 403.
       requestBody:
@@ -2228,15 +2227,15 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/history:
+  /api/agents/{agentId}/sessions/{sessionId}/history:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     get:
-      operationId: getChatHistory
+      operationId: getSessionHistory
       description: >
         Reads committed items before an entry ID, oldest first. Pages can
         overlap the live snapshot. Merge by item ID. The entry limit extends
@@ -2263,19 +2262,19 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/items/{itemId}:
+  /api/agents/{agentId}/sessions/{sessionId}/items/{itemId}:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
       - in: path
         name: itemId
         required: true
         schema: { type: string }
     get:
-      operationId: getChatItem
+      operationId: getSessionItem
       description: >
         Reads one committed item with all of its tool output or thought. Use
         it for an item with truncated set.
@@ -2295,15 +2294,15 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/abort:
+  /api/agents/{agentId}/sessions/{sessionId}/abort:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     post:
-      operationId: abortChat
+      operationId: abortSession
       description: >
         On Main, Stop cancels only the native foreground task identified by runTarget.
         An ended or foreign target returns 409. Stop cannot cancel a successor task.
@@ -2329,15 +2328,15 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/monitors:
+  /api/agents/{agentId}/sessions/{sessionId}/monitors:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     get:
-      operationId: listChatMonitors
+      operationId: listSessionMonitors
       description: Returns scheduled and recent follow-up monitors for this session.
       responses:
         "200":
@@ -2348,19 +2347,19 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/monitors/{monitorId}:
+  /api/agents/{agentId}/sessions/{sessionId}/monitors/{monitorId}:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
       - in: path
         name: monitorId
         required: true
         schema: { type: string }
     delete:
-      operationId: cancelChatMonitor
+      operationId: cancelSessionMonitor
       description: Cancels a scheduled follow-up monitor of this session.
       responses:
         "200":
@@ -2372,15 +2371,15 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/outbox:
+  /api/agents/{agentId}/sessions/{sessionId}/outbox:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     get:
-      operationId: listChatOutbox
+      operationId: listSessionOutbox
       description: Returns recent outbound messages and delivery states for this session.
       responses:
         "200":
@@ -2391,19 +2390,19 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/events:
+  /api/agents/{agentId}/sessions/{sessionId}/events:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - $ref: "#/components/parameters/ChatId"
+      - $ref: "#/components/parameters/SessionId"
     get:
-      operationId: watchChat
+      operationId: watchSession
       description: >
         Server-sent events. Each event has `event: <type>` and one `data:` line
-        with a ChatEvent as JSON. The first event is a native snapshot. An
-        eligible Web conversation also gets an initial notifications page and
+        with a SessionEvent as JSON. The first event is a native snapshot. An
+        eligible Web session also gets an initial notifications page and
         later notification updates. Merge notifications by Outbox ID; a native
         snapshot does not replace them. A comment line comes every 15 s. The
         server closes the stream when the agent reloads, the engine closes, or
@@ -2413,7 +2412,7 @@ paths:
           description: The event stream.
           content:
             text/event-stream:
-              schema: { $ref: "#/components/schemas/ChatEvent" }
+              schema: { $ref: "#/components/schemas/SessionEvent" }
         "404": { $ref: "#/components/responses/Error" }
 
   /api/agents/{agentId}/uploads:
@@ -2797,7 +2796,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteAutomation
-      description: Removes the automation and its run history. Its chats stay.
+      description: Removes the automation and its run history. Its sessions stay.
       responses:
         "200":
           description: Removed.
@@ -2870,8 +2869,8 @@ components:
       in: path
       required: true
       schema: { type: string }
-    ChatId:
-      name: chatId
+    SessionId:
+      name: sessionId
       in: path
       required: true
       schema: { type: integer, format: int64 }
@@ -2974,7 +2973,7 @@ components:
     TaskSession:
       type: object
       required: [
-        conversationId,
+        sessionId,
         agentId,
         agentName,
         title,
@@ -2983,7 +2982,7 @@ components:
         state,
       ]
       properties:
-        conversationId: { type: integer, format: int64 }
+        sessionId: { type: integer, format: int64 }
         agentId: { type: string }
         agentName: { type: string }
         title: { type: string }
@@ -3238,14 +3237,14 @@ components:
         queuePosition: { type: integer, format: int64 }
     TaskQuestion:
       type: object
-      required: [id, text, options, queued, agentId, conversationId]
+      required: [id, text, options, queued, agentId, sessionId]
       properties:
         id: { type: string }
         text: { type: string }
         options: { type: array, items: { type: string } }
         queued: { type: boolean }
         agentId: { type: string }
-        conversationId: { type: integer, format: int64 }
+        sessionId: { type: integer, format: int64 }
     TaskEvent:
       type: object
       required: [taskId]
@@ -3454,7 +3453,7 @@ components:
               status:
                 type: string
                 description: "available, offline, or unavailable: <reason>."
-    Chat:
+    Session:
       type: object
       required: [
         id,
@@ -3473,22 +3472,22 @@ components:
         channel:
           type: string
           enum: [web, telegram, wechat, feishu, automation]
-          description: External channel chats are read-only in the web UI.
+          description: External channel sessions are read-only in the web UI.
         main: { type: boolean, description: This is the agent's main timeline. }
         readOnly: {
           type: boolean,
-          description: The web cannot send messages to this chat now. A child session is writable at any time.,
+          description: The web cannot send messages to this session now. A child session is writable at any time.,
         }
         automationId:
           type: string
-          description: The automation that created the chat.
+          description: The automation that created the session.
         cwd:
           type: string
           description: The saved project directory. Empty means the workspace of the Runner.
         runnerId:
           type: string
           description: >-
-            The Runner that the Chat selects: "local" or a registered Runner ID. An empty value
+            The Runner that the Session selects: "local" or a registered Runner ID. An empty value
             follows the default Runner of the agent.
         title: { type: string }
         createdAt: { type: integer, format: int64 }
@@ -3496,20 +3495,20 @@ components:
           type: integer
           format: int64
           description: >-
-            Latest activity time, in Unix milliseconds. Includes conversation
+            Latest activity time, in Unix milliseconds. Includes session
             creation, and input creation and settlement.
         busy:
           type: boolean
-          description: True while a message of the chat has no answer yet.
+          description: True while a message of the session has no answer yet.
         archivedAt:
           type: integer
           format: int64
           description: >-
-            When the user archived this Chat session, in Unix milliseconds.
+            When the user archived this session, in Unix milliseconds.
             Absent when the session is not archived.
-        settings: { $ref: "#/components/schemas/ChatSettings" }
-        question: { $ref: "#/components/schemas/ChatQuestion" }
-        forkedFrom: { $ref: "#/components/schemas/ChatOrigin" }
+        settings: { $ref: "#/components/schemas/SessionSettings" }
+        question: { $ref: "#/components/schemas/SessionQuestion" }
+        forkedFrom: { $ref: "#/components/schemas/SessionOrigin" }
         parentId:
           type: integer
           format: int64
@@ -3542,35 +3541,35 @@ components:
           type: boolean
           description: True when a cascading Stop on the parent would act on this child. Web Stop on Main does not cascade. Only the session list sets it.
 
-    ChatOrigin:
+    SessionOrigin:
       type: object
-      description: The session that a Chat was forked from. Only on a single chat.
+      description: The session that a Session was forked from. Only on a single session.
       required: [id, title, main]
       properties:
         id: { type: integer, format: int64 }
         title: { type: string }
         main: { type: boolean }
 
-    ChatSettings:
-      x-go-type: chat.Settings
+    SessionSettings:
+      x-go-type: session.Settings
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/chat
+        path: github.com/recally-io/dex/internal/session
       type: object
       description: >
-        The settings that a chat overrides. An absent field follows the
+        The settings that a session overrides. An absent field follows the
         agent's setting. provider and modelId are both present or both absent.
       properties:
         provider: { type: string }
         modelId: { type: string }
         thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
 
-    ChatList:
+    SessionList:
       type: object
-      required: [chats]
+      required: [sessions]
       properties:
-        chats:
+        sessions:
           type: array
-          items: { $ref: "#/components/schemas/Chat" }
+          items: { $ref: "#/components/schemas/Session" }
 
     MessageInput:
       type: object
@@ -3604,15 +3603,15 @@ components:
           enum: [followUp, steer, reject]
           default: followUp
           description: >
-            What happens when the agent is already working in this chat.
+            What happens when the agent is already working in this session.
             followUp waits until the current run ends. steer joins the current
             run after its current tool step. reject answers 409 and the message
             does not run. A retry must use the same mode. An omitted mode
             is equal to followUp.
             When dex cannot admit a reject message at once, it answers 202 and
-            admits it later; the message then runs only if the chat is idle.
+            admits it later; the message then runs only if the session is idle.
 
-    ChatQuestion:
+    SessionQuestion:
       type: object
       required: [id, text, options, status]
       description: >
@@ -3767,9 +3766,9 @@ components:
           type: string
           enum: [new, reuse, session]
           description: >-
-            New starts a new chat each run. Reuse uses one dedicated chat.
-            Session sends a follow-up to an existing chat and uses its Runner and directory.
-        targetConversationId:
+            New starts a new session each run. Reuse uses one dedicated session.
+            Session sends a follow-up to an existing session and uses its Runner and directory.
+        targetSessionId:
           type: integer
           format: int64
           minimum: 1
@@ -3781,8 +3780,8 @@ components:
             Local or an SSH Machine ID for the runs. An empty value follows the
             bot's Runner. A run never uses another Runner: when
             this one was removed, the run is skipped with a reason. A reused
-            chat that ran on another Runner stays readable, and the
-            run starts a new chat. An update can keep a removed Runner.
+            session that ran on another Runner stays readable, and the
+            run starts a new session. An update can keep a removed Runner.
         notification:
           type: object
           description: Omit on update to retain the current route. New automations default to none.
@@ -3855,7 +3854,7 @@ components:
         agentId: { type: string }
         name: { type: string }
         setup: { type: boolean }
-        targetConversationId: { type: integer, format: int64 }
+        targetSessionId: { type: integer, format: int64 }
     AutomationResultSummary:
       type: object
       required: [
@@ -3863,7 +3862,7 @@ components:
         agentId,
         automationId,
         automationName,
-        chatId,
+        sessionId,
         outcome,
         summary,
         createdAt,
@@ -3876,7 +3875,7 @@ components:
         agentId: { type: string }
         automationId: { type: string }
         automationName: { type: string }
-        chatId: { type: integer, format: int64 }
+        sessionId: { type: integer, format: int64 }
         outcome: { type: string, enum: [changed, failed] }
         summary: { type: string }
         createdAt: { type: integer, format: int64 }
@@ -3953,7 +3952,7 @@ components:
         notificationNote:
           type: string
           description: Why Dex could not queue a notification for this run, if applicable.
-        chatId: { type: integer, format: int64 }
+        sessionId: { type: integer, format: int64 }
         runnerId:
           type: string
           description: The Runner on which the run started. Empty for a run with no message, and for a run from before Dex stored it.
@@ -4151,7 +4150,7 @@ components:
           type: boolean
           description: >
             True when text holds only the first line of a long thought.
-            getChatItem returns all of it.
+            getSessionItem returns all of it.
 
     ToolItem:
       type: object
@@ -4168,7 +4167,7 @@ components:
         truncated:
           type: boolean
           description: >
-            True when output is empty because it is long. getChatItem
+            True when output is empty because it is long. getSessionItem
             returns it.
         status:
           type: string
@@ -4226,7 +4225,7 @@ components:
 
     # Events
 
-    ChatEvent:
+    SessionEvent:
       oneOf:
         - $ref: "#/components/schemas/SnapshotEvent"
         - $ref: "#/components/schemas/ItemEvent"
@@ -4262,12 +4261,12 @@ components:
     ChildEvent:
       type: object
       description: >-
-        Current state of this chat or an observed child. Idle is not a turn outcome.
+        Current state of this session or an observed child. Idle is not a turn outcome.
         A disconnected client must show unavailable until the new stream supplies this state.
-      required: [type, chatId, agentId, state]
+      required: [type, sessionId, agentId, state]
       properties:
         type: { type: string, enum: [child] }
-        chatId: { type: integer, format: int64 }
+        sessionId: { type: integer, format: int64 }
         agentId: { type: string }
         state: { type: string, enum: [waiting, running, idle, unavailable] }
 
@@ -4790,7 +4789,7 @@ components:
           type: string
           description: >
             A file level, or project for .agents/skills under the agent workspace. The
-            prompt reads the project level under the conversation's cwd.
+            prompt reads the project level under the session's cwd.
           enum: [dex, agent, project]
         path: { type: string, description: The SKILL.md file. }
         overrides:

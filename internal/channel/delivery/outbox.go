@@ -14,9 +14,9 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/upload"
 )
 
@@ -145,15 +145,15 @@ func (m *Manager) renderMessage(ctx context.Context, bot channel.Bot, r sqlc.Out
 			return channel.Part{}, err
 		}
 		if err == nil {
-			var identity chat.ChannelContext
+			var identity session.ChannelContext
 			if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
 				return channel.Part{}, err
 			}
-			conv, err := m.q.GetConversation(ctx, r.ConversationID)
+			conv, err := m.q.GetSession(ctx, r.SessionID)
 			if err != nil {
 				return channel.Part{}, err
 			}
-			target := chat.Chat{ID: conv.ID, ExecutionID: conv.ExecutionID.Int64}
+			target := session.Session{ID: conv.ID, ExecutionID: conv.ExecutionID.Int64}
 			actions, err := questionActions(question)
 			if err != nil {
 				return channel.Part{}, err
@@ -255,7 +255,7 @@ func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name
 	if caller.AgentID != m.agentID || caller.Key == "" {
 		return false, errors.New("invalid file delivery caller")
 	}
-	conv, err := m.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
+	conv, err := m.q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil {
 		return false, err
 	}
@@ -263,7 +263,7 @@ func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name
 	if err != nil {
 		return false, err
 	}
-	if source.ConversationID != conv.ID {
+	if source.SessionID != conv.ID {
 		return false, errors.New("file source belongs to another conversation")
 	}
 	if conv.ParentID.Valid || !strings.HasPrefix(source.Origin, "telegram:") {

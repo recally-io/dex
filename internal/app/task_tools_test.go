@@ -19,9 +19,9 @@ import (
 )
 
 // taskToolJSON calls a task_* tool in a conversation and decodes its result.
-func taskToolJSON(t *testing.T, d *dex, chatID int64, name string, args, out any) {
+func taskToolJSON(t *testing.T, d *dex, sessionID int64, name string, args, out any) {
 	t.Helper()
-	got := taskTool(t, d, chatID, name, args)
+	got := taskTool(t, d, sessionID, name, args)
 	if !strings.HasPrefix(got, "tool: ") {
 		t.Fatalf("%s: %s", name, got)
 	}
@@ -33,8 +33,8 @@ func taskToolJSON(t *testing.T, d *dex, chatID int64, name string, args, out any
 func TestUserTracksWorkThroughTaskTools(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 
 	// Given a Task that Main creates on the owner's request.
 	var task tasktools.TaskInfo
@@ -51,7 +51,7 @@ func TestUserTracksWorkThroughTaskTools(t *testing.T) {
 		"title": "Login work", "message": "Implement login", "provider": "faux", "modelId": "echo",
 	})}
 	d.setModel(t, "tool")
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", main.ID), start, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", main.ID), start, nil, http.StatusAccepted)
 	eventually(t, "the Task links its primary Session", func() (bool, any) {
 		d.must(t, http.MethodGet, path, nil, &detail)
 		return detail.Task.PrimarySession != nil && detail.Task.PrimarySession.Title == "Login work", detail.Task.PrimarySession
@@ -65,7 +65,7 @@ func TestUserTracksWorkThroughTaskTools(t *testing.T) {
 		err := conn.QueryRowContext(t.Context(), `SELECT status FROM submissions WHERE id = ?`, work.ResultID).Scan(&status)
 		return err == nil && status != "pending", fmt.Sprintf("status=%s err=%v", status, err)
 	})
-	child := fmt.Sprint(detail.Task.PrimarySession.ConversationId)
+	child := fmt.Sprint(detail.Task.PrimarySession.SessionId)
 
 	// When Main links the PR of the work and records progress.
 	var updated tasktools.TaskInfo
@@ -129,8 +129,8 @@ func TestUserTracksWorkThroughTaskTools(t *testing.T) {
 func TestUserReadsTaskByKey(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 
 	// Given a Task with an initial Bot note.
 	var task struct {

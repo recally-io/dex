@@ -19,7 +19,7 @@ Bot API routes keep the normal active-bot authorization and rooted path checks.
 Only detected PNG, JPEG, GIF, and WebP bytes are inline; other files download.
 Markdown is rendered as text by the client. HTML and SVG never run inline.
 The open panel polls every three seconds, including in background tabs, and
-updates after mutations and chat reconnect/completion. Selection uses the current
+updates after mutations and session reconnect/completion. Selection uses the current
 file name. Modification time refreshes previews when bytes change.
 
 An agent calls `deliver_file` to copy a workspace-relative regular file of at most
@@ -28,7 +28,7 @@ a conflict. No deduplication or retry receipt is saved. Workspace source files
 are not changed by artifact rename or delete. The tool returns the actual bot
 file URL. A parent in another bot can link to that URL; it does not receive a
 shared artifact entry or a second copy. Continue editing uses the current
-writable conversation, or creates a Chat for a read-only conversation.
+writable conversation, or creates a Session for a read-only conversation.
 
 For a Telegram Main input, `deliver_file` also queues a native file for that input's
 original recipient. The tool caller supplies the native execution, source receipt,
@@ -74,7 +74,7 @@ safe URL without fetching the image. Raw HTML remains escaped. The renderer send
 
 Album members commit their upload references to `telegram_album_members` before
 polling ACK. Collection closes after 800 ms without a new member, at three seconds,
-or at ten files. The chat service freezes membership before it creates the normal
+or at ten files. The session service freezes membership before it creates the normal
 business input. Later members form an explicit continuation instead of changing a
 submitted payload. A restart restores collection and sealed batches from SQLite;
 raw member source keys resolve to the same stored input without downloading again.

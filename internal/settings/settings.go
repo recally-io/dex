@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/speech"
 )
 
@@ -26,7 +26,7 @@ var ErrInvalid = errors.New("invalid settings")
 
 // APIs are the APIs a custom provider can use, with their names for the UI.
 var APIs = map[string]string{
-	"openai-completions": "OpenAI Chat Completions",
+	"openai-completions": "OpenAI Session Completions",
 	"openai-responses":   "OpenAI Responses",
 	"anthropic-messages": "Anthropic Messages",
 }
@@ -149,8 +149,8 @@ func (s *Service) checkModel(ctx context.Context, provider, modelID string) erro
 	return nil
 }
 
-// CheckChat checks chat overrides and task settings before the caller saves them.
-func (s *Service) CheckChat(ctx context.Context, c chat.Settings) error {
+// CheckSession checks session overrides and task settings before the caller saves them.
+func (s *Service) CheckSession(ctx context.Context, c session.Settings) error {
 	if c.ThinkingLevel != "" && !slices.Contains(thinkingLevels, c.ThinkingLevel) {
 		return fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, c.ThinkingLevel)
 	}

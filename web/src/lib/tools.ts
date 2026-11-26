@@ -1,7 +1,7 @@
 // Tool arguments arrive as JSON values of any type.
 /* eslint-disable anti-slop/no-runtime-typeof */
 import type { Item, ToolItem } from "../api/generated/types.gen";
-import { isSystemInput, isTurnStart, type SystemInput } from "./chat-state";
+import { isSystemInput, isTurnStart, type SystemInput } from "./session-state";
 
 type ThinkingItem = Extract<Item, { kind: "thinking" }>;
 

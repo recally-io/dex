@@ -5,29 +5,29 @@ import (
 	"errors"
 	"time"
 
-	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/upload"
 )
 
-func (m *Manager) KnownTelegramAlbum(ctx context.Context, peer string, identity chat.ChannelContext) (bool, error) {
-	return m.chats.KnownTelegramAlbum(ctx, m.agentID, peer, identity)
+func (m *Manager) KnownTelegramAlbum(ctx context.Context, peer string, identity session.ChannelContext) (bool, error) {
+	return m.sessions.KnownTelegramAlbum(ctx, m.agentID, peer, identity)
 }
 
-func (m *Manager) StoreTelegramAlbum(ctx context.Context, peer, source string, msg chat.Message) error {
-	return m.chats.StoreTelegramAlbum(ctx, m.agentID, peer, source, msg)
+func (m *Manager) StoreTelegramAlbum(ctx context.Context, peer, source string, msg session.Message) error {
+	return m.sessions.StoreTelegramAlbum(ctx, m.agentID, peer, source, msg)
 }
 
-func (m *Manager) ReadyTelegramAlbums(ctx context.Context) ([]chat.TelegramAlbum, time.Duration, error) {
-	return m.chats.ReadyTelegramAlbums(ctx, m.agentID)
+func (m *Manager) ReadyTelegramAlbums(ctx context.Context) ([]session.TelegramAlbum, time.Duration, error) {
+	return m.sessions.ReadyTelegramAlbums(ctx, m.agentID)
 }
 
 func (m *Manager) FinishTelegramAlbum(ctx context.Context, source string) error {
-	return m.chats.FinishTelegramAlbum(ctx, m.agentID, source)
+	return m.sessions.FinishTelegramAlbum(ctx, m.agentID, source)
 }
 
 // CleanupTelegramAlbums deletes only uploads that never transferred to a business input.
 func (m *Manager) CleanupTelegramAlbums(ctx context.Context, store *upload.Store) error {
-	pending, err := m.chats.DiscardedTelegramUploads(ctx, m.agentID)
+	pending, err := m.sessions.DiscardedTelegramUploads(ctx, m.agentID)
 	if err != nil {
 		return err
 	}
@@ -37,7 +37,7 @@ func (m *Manager) CleanupTelegramAlbums(ctx context.Context, store *upload.Store
 				return err
 			}
 		}
-		if err := m.chats.ClearDiscardedTelegramUpload(ctx, m.agentID, item.Source); err != nil {
+		if err := m.sessions.ClearDiscardedTelegramUpload(ctx, m.agentID, item.Source); err != nil {
 			return err
 		}
 	}

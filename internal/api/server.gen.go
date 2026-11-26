@@ -24,8 +24,8 @@ import (
 	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 )
 
 // Defines values for AppendEventType.
@@ -130,66 +130,6 @@ func (e BoundaryItemStatus) Valid() bool {
 	case BoundaryItemStatusPending:
 		return true
 	case BoundaryItemStatusQueued:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ChatChannel.
-const (
-	ChatChannelAutomation ChatChannel = "automation"
-	ChatChannelFeishu     ChatChannel = "feishu"
-	ChatChannelTelegram   ChatChannel = "telegram"
-	ChatChannelWeb        ChatChannel = "web"
-	ChatChannelWechat     ChatChannel = "wechat"
-)
-
-// Valid indicates whether the value is a known member of the ChatChannel enum.
-func (e ChatChannel) Valid() bool {
-	switch e {
-	case ChatChannelAutomation:
-		return true
-	case ChatChannelFeishu:
-		return true
-	case ChatChannelTelegram:
-		return true
-	case ChatChannelWeb:
-		return true
-	case ChatChannelWechat:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ChatQuestionAction.
-const (
-	Archive ChatQuestionAction = "archive"
-)
-
-// Valid indicates whether the value is a known member of the ChatQuestionAction enum.
-func (e ChatQuestionAction) Valid() bool {
-	switch e {
-	case Archive:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ChatQuestionStatus.
-const (
-	Answered ChatQuestionStatus = "answered"
-	Open     ChatQuestionStatus = "open"
-)
-
-// Valid indicates whether the value is a known member of the ChatQuestionStatus enum.
-func (e ChatQuestionStatus) Valid() bool {
-	switch e {
-	case Answered:
-		return true
-	case Open:
 		return true
 	default:
 		return false
@@ -616,6 +556,66 @@ func (e RunnerKind) Valid() bool {
 	case RunnerKindRunner:
 		return true
 	case RunnerKindSsh:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SessionChannel.
+const (
+	SessionChannelAutomation SessionChannel = "automation"
+	SessionChannelFeishu     SessionChannel = "feishu"
+	SessionChannelTelegram   SessionChannel = "telegram"
+	SessionChannelWeb        SessionChannel = "web"
+	SessionChannelWechat     SessionChannel = "wechat"
+)
+
+// Valid indicates whether the value is a known member of the SessionChannel enum.
+func (e SessionChannel) Valid() bool {
+	switch e {
+	case SessionChannelAutomation:
+		return true
+	case SessionChannelFeishu:
+		return true
+	case SessionChannelTelegram:
+		return true
+	case SessionChannelWeb:
+		return true
+	case SessionChannelWechat:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SessionQuestionAction.
+const (
+	Archive SessionQuestionAction = "archive"
+)
+
+// Valid indicates whether the value is a known member of the SessionQuestionAction enum.
+func (e SessionQuestionAction) Valid() bool {
+	switch e {
+	case Archive:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SessionQuestionStatus.
+const (
+	Answered SessionQuestionStatus = "answered"
+	Open     SessionQuestionStatus = "open"
+)
+
+// Valid indicates whether the value is a known member of the SessionQuestionStatus enum.
+func (e SessionQuestionStatus) Valid() bool {
+	switch e {
+	case Answered:
+		return true
+	case Open:
 		return true
 	default:
 		return false
@@ -1375,7 +1375,6 @@ type AutomationResultSummary struct {
 	AgentId        string `json:"agentId"`
 	AutomationId   string `json:"automationId"`
 	AutomationName string `json:"automationName"`
-	ChatId         int64  `json:"chatId"`
 	CreatedAt      int64  `json:"createdAt"`
 
 	// Cwd The cwd on the Runner when the run started.
@@ -1385,8 +1384,9 @@ type AutomationResultSummary struct {
 	RunId   string                         `json:"runId"`
 
 	// RunnerId The Runner on which the run started. Empty if no Runner was recorded.
-	RunnerId string `json:"runnerId"`
-	Summary  string `json:"summary"`
+	RunnerId  string `json:"runnerId"`
+	SessionId int64  `json:"sessionId"`
+	Summary   string `json:"summary"`
 }
 
 // AutomationResultSummaryOutcome defines model for AutomationResultSummary.Outcome.
@@ -1419,11 +1419,11 @@ type BoardAttention struct {
 
 // BoardAttentionAutomation defines model for BoardAttentionAutomation.
 type BoardAttentionAutomation struct {
-	AgentId              string `json:"agentId"`
-	Id                   string `json:"id"`
-	Name                 string `json:"name"`
-	Setup                bool   `json:"setup"`
-	TargetConversationId *int64 `json:"targetConversationId,omitempty"`
+	AgentId         string `json:"agentId"`
+	Id              string `json:"id"`
+	Name            string `json:"name"`
+	Setup           bool   `json:"setup"`
+	TargetSessionId *int64 `json:"targetSessionId,omitempty"`
 }
 
 // BoardAttentionQuestion An open question that waits for the Owner.
@@ -1510,125 +1510,12 @@ type ChannelStatus = channel.Status
 // Channels defines model for Channels.
 type Channels = agent.Channels
 
-// Chat defines model for Chat.
-type Chat struct {
-	// AgentId The bot that owns this session. Only on a child session that belongs to another bot than the one in the request path. The list of the parent shows it.
-	AgentId *string `json:"agentId,omitempty"`
-
-	// AgentName The name of the bot in agentId. Present with agentId.
-	AgentName *string `json:"agentName,omitempty"`
-
-	// ArchivedAt When the user archived this Chat session, in Unix milliseconds. Absent when the session is not archived.
-	ArchivedAt *int64 `json:"archivedAt,omitempty"`
-
-	// AutomationId The automation that created the chat.
-	AutomationId *string `json:"automationId,omitempty"`
-
-	// Busy True while a message of the chat has no answer yet.
-	Busy bool `json:"busy"`
-
-	// Channel External channel chats are read-only in the web UI.
-	Channel   ChatChannel `json:"channel"`
-	CreatedAt int64       `json:"createdAt"`
-
-	// Cwd The saved project directory. Empty means the workspace of the Runner.
-	Cwd string `json:"cwd"`
-
-	// ForkedFrom The session that a Chat was forked from. Only on a single chat.
-	ForkedFrom *ChatOrigin `json:"forkedFrom,omitempty"`
-	Id         int64       `json:"id"`
-
-	// LastActivityAt The latest engine observation of activity. Only the session list sets it, and only while the session is busy.
-	LastActivityAt *int64 `json:"lastActivityAt,omitempty"`
-
-	// Main This is the agent's main timeline.
-	Main bool `json:"main"`
-
-	// ParentAgentId The bot of the parent session. Only on a child session whose parent belongs to another bot than the one in the request path.
-	ParentAgentId *string `json:"parentAgentId,omitempty"`
-
-	// ParentAgentName The name of the bot in parentAgentId. Present with parentAgentId.
-	ParentAgentName *string `json:"parentAgentName,omitempty"`
-
-	// ParentId The session that created this child session. Absent on any other session.
-	ParentId *int64 `json:"parentId,omitempty"`
-
-	// Question The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
-	Question *ChatQuestion `json:"question,omitempty"`
-
-	// ReadOnly The web cannot send messages to this chat now. A child session is writable at any time.
-	ReadOnly bool `json:"readOnly"`
-
-	// RunnerId The Runner that the Chat selects: "local" or a registered Runner ID. An empty value follows the default Runner of the agent.
-	RunnerId *string `json:"runnerId,omitempty"`
-
-	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
-	Settings ChatSettings `json:"settings"`
-
-	// StoppedWithParent True when a cascading Stop on the parent would act on this child. Web Stop on Main does not cascade. Only the session list sets it.
-	StoppedWithParent *bool  `json:"stoppedWithParent,omitempty"`
-	Title             string `json:"title"`
-
-	// ToolStartedAt The earliest start of a tool that runs now. Only the session list sets it, and only while the session is busy and runs a tool.
-	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
-
-	// UpdatedAt Latest activity time, in Unix milliseconds. Includes conversation creation, and input creation and settlement.
-	UpdatedAt int64 `json:"updatedAt"`
-}
-
-// ChatChannel External channel chats are read-only in the web UI.
-type ChatChannel string
-
-// ChatEvent defines model for ChatEvent.
-type ChatEvent struct {
-	union json.RawMessage
-}
-
-// ChatList defines model for ChatList.
-type ChatList struct {
-	Chats []Chat `json:"chats"`
-}
-
-// ChatOrigin The session that a Chat was forked from. Only on a single chat.
-type ChatOrigin struct {
-	Id    int64  `json:"id"`
-	Main  bool   `json:"main"`
-	Title string `json:"title"`
-}
-
-// ChatQuestion The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
-type ChatQuestion struct {
-	// Action Present when control acts on the answer. The question asks the owner to approve this action, and only the first option approves.
-	Action *ChatQuestionAction `json:"action,omitempty"`
-
-	// Answer The text of the answer. Present when the status is answered.
-	Answer  *string  `json:"answer,omitempty"`
-	Id      string   `json:"id"`
-	Options []string `json:"options"`
-
-	// Outcome What control decided for the answer. Present for an answered action question.
-	Outcome *string `json:"outcome,omitempty"`
-
-	// Status open waits for an answer. answered means the answer is saved and runs after the current reply.
-	Status ChatQuestionStatus `json:"status"`
-	Text   string             `json:"text"`
-}
-
-// ChatQuestionAction Present when control acts on the answer. The question asks the owner to approve this action, and only the first option approves.
-type ChatQuestionAction string
-
-// ChatQuestionStatus open waits for an answer. answered means the answer is saved and runs after the current reply.
-type ChatQuestionStatus string
-
-// ChatSettings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
-type ChatSettings = chat.Settings
-
-// ChildEvent Current state of this chat or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
+// ChildEvent Current state of this session or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
 type ChildEvent struct {
-	AgentId string          `json:"agentId"`
-	ChatId  int64           `json:"chatId"`
-	State   ChildEventState `json:"state"`
-	Type    ChildEventType  `json:"type"`
+	AgentId   string          `json:"agentId"`
+	SessionId int64           `json:"sessionId"`
+	State     ChildEventState `json:"state"`
+	Type      ChildEventType  `json:"type"`
 }
 
 // ChildEventState defines model for ChildEvent.State.
@@ -1831,7 +1718,7 @@ type MessageInput struct {
 	// Id A new UUID from the client. A retried request uses the same ID.
 	Id string `json:"id"`
 
-	// Mode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
+	// Mode What happens when the agent is already working in this session. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the session is idle.
 	Mode *MessageInputMode `json:"mode,omitempty"`
 
 	// TaskId Selects a Task for a Main message by key (for example, T-42) or UUID.
@@ -1841,7 +1728,7 @@ type MessageInput struct {
 	Text string `json:"text"`
 }
 
-// MessageInputMode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
+// MessageInputMode What happens when the agent is already working in this session. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the session is idle.
 type MessageInputMode string
 
 // Model defines model for Model.
@@ -2173,6 +2060,116 @@ type SentMessage struct {
 	SubmissionId string `json:"submissionId"`
 }
 
+// Session defines model for Session.
+type Session struct {
+	// AgentId The bot that owns this session. Only on a child session that belongs to another bot than the one in the request path. The list of the parent shows it.
+	AgentId *string `json:"agentId,omitempty"`
+
+	// AgentName The name of the bot in agentId. Present with agentId.
+	AgentName *string `json:"agentName,omitempty"`
+
+	// ArchivedAt When the user archived this session, in Unix milliseconds. Absent when the session is not archived.
+	ArchivedAt *int64 `json:"archivedAt,omitempty"`
+
+	// AutomationId The automation that created the session.
+	AutomationId *string `json:"automationId,omitempty"`
+
+	// Busy True while a message of the session has no answer yet.
+	Busy bool `json:"busy"`
+
+	// Channel External channel sessions are read-only in the web UI.
+	Channel   SessionChannel `json:"channel"`
+	CreatedAt int64          `json:"createdAt"`
+
+	// Cwd The saved project directory. Empty means the workspace of the Runner.
+	Cwd string `json:"cwd"`
+
+	// ForkedFrom The session that a Session was forked from. Only on a single session.
+	ForkedFrom *SessionOrigin `json:"forkedFrom,omitempty"`
+	Id         int64          `json:"id"`
+
+	// LastActivityAt The latest engine observation of activity. Only the session list sets it, and only while the session is busy.
+	LastActivityAt *int64 `json:"lastActivityAt,omitempty"`
+
+	// Main This is the agent's main timeline.
+	Main bool `json:"main"`
+
+	// ParentAgentId The bot of the parent session. Only on a child session whose parent belongs to another bot than the one in the request path.
+	ParentAgentId *string `json:"parentAgentId,omitempty"`
+
+	// ParentAgentName The name of the bot in parentAgentId. Present with parentAgentId.
+	ParentAgentName *string `json:"parentAgentName,omitempty"`
+
+	// ParentId The session that created this child session. Absent on any other session.
+	ParentId *int64 `json:"parentId,omitempty"`
+
+	// Question The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
+	Question *SessionQuestion `json:"question,omitempty"`
+
+	// ReadOnly The web cannot send messages to this session now. A child session is writable at any time.
+	ReadOnly bool `json:"readOnly"`
+
+	// RunnerId The Runner that the Session selects: "local" or a registered Runner ID. An empty value follows the default Runner of the agent.
+	RunnerId *string `json:"runnerId,omitempty"`
+
+	// Settings The settings that a session overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
+	Settings SessionSettings `json:"settings"`
+
+	// StoppedWithParent True when a cascading Stop on the parent would act on this child. Web Stop on Main does not cascade. Only the session list sets it.
+	StoppedWithParent *bool  `json:"stoppedWithParent,omitempty"`
+	Title             string `json:"title"`
+
+	// ToolStartedAt The earliest start of a tool that runs now. Only the session list sets it, and only while the session is busy and runs a tool.
+	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
+
+	// UpdatedAt Latest activity time, in Unix milliseconds. Includes session creation, and input creation and settlement.
+	UpdatedAt int64 `json:"updatedAt"`
+}
+
+// SessionChannel External channel sessions are read-only in the web UI.
+type SessionChannel string
+
+// SessionEvent defines model for SessionEvent.
+type SessionEvent struct {
+	union json.RawMessage
+}
+
+// SessionList defines model for SessionList.
+type SessionList struct {
+	Sessions []Session `json:"sessions"`
+}
+
+// SessionOrigin The session that a Session was forked from. Only on a single session.
+type SessionOrigin struct {
+	Id    int64  `json:"id"`
+	Main  bool   `json:"main"`
+	Title string `json:"title"`
+}
+
+// SessionQuestion The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
+type SessionQuestion struct {
+	// Action Present when control acts on the answer. The question asks the owner to approve this action, and only the first option approves.
+	Action *SessionQuestionAction `json:"action,omitempty"`
+
+	// Answer The text of the answer. Present when the status is answered.
+	Answer  *string  `json:"answer,omitempty"`
+	Id      string   `json:"id"`
+	Options []string `json:"options"`
+
+	// Outcome What control decided for the answer. Present for an answered action question.
+	Outcome *string `json:"outcome,omitempty"`
+
+	// Status open waits for an answer. answered means the answer is saved and runs after the current reply.
+	Status SessionQuestionStatus `json:"status"`
+	Text   string                `json:"text"`
+}
+
+// SessionQuestionAction Present when control acts on the answer. The question asks the owner to approve this action, and only the first option approves.
+type SessionQuestionAction string
+
+// SessionQuestionStatus open waits for an answer. answered means the answer is saved and runs after the current reply.
+type SessionQuestionStatus string
+
 // SessionResultItem Marks a child session result or report. The answer stays in the child session.
 type SessionResultItem struct {
 	// Alert True for a saved legacy Task alert.
@@ -2198,6 +2195,9 @@ type SessionResultItem struct {
 
 // SessionResultItemKind defines model for SessionResultItem.Kind.
 type SessionResultItemKind string
+
+// SessionSettings The settings that a session overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
+type SessionSettings = session.Settings
 
 // Settings defines model for Settings.
 type Settings struct {
@@ -2225,11 +2225,11 @@ type Skill struct {
 	// Path The SKILL.md file.
 	Path string `json:"path"`
 
-	// Scope A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the conversation's cwd.
+	// Scope A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the session's cwd.
 	Scope SkillScope `json:"scope"`
 }
 
-// SkillScope A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the conversation's cwd.
+// SkillScope A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the session's cwd.
 type SkillScope string
 
 // SnapshotEvent defines model for SnapshotEvent.
@@ -2528,12 +2528,12 @@ type TaskList struct {
 
 // TaskQuestion defines model for TaskQuestion.
 type TaskQuestion struct {
-	AgentId        string   `json:"agentId"`
-	ConversationId int64    `json:"conversationId"`
-	Id             string   `json:"id"`
-	Options        []string `json:"options"`
-	Queued         bool     `json:"queued"`
-	Text           string   `json:"text"`
+	AgentId   string   `json:"agentId"`
+	Id        string   `json:"id"`
+	Options   []string `json:"options"`
+	Queued    bool     `json:"queued"`
+	SessionId int64    `json:"sessionId"`
+	Text      string   `json:"text"`
 }
 
 // TaskRef defines model for TaskRef.
@@ -2559,14 +2559,14 @@ type TaskReviewerKind string
 
 // TaskSession defines model for TaskSession.
 type TaskSession struct {
-	AgentId        string           `json:"agentId"`
-	AgentName      string           `json:"agentName"`
-	ConversationId int64            `json:"conversationId"`
-	EndedAt        *int64           `json:"endedAt,omitempty"`
-	IsPrimary      bool             `json:"isPrimary"`
-	LinkedAt       int64            `json:"linkedAt"`
-	State          TaskSessionState `json:"state"`
-	Title          string           `json:"title"`
+	AgentId   string           `json:"agentId"`
+	AgentName string           `json:"agentName"`
+	EndedAt   *int64           `json:"endedAt,omitempty"`
+	IsPrimary bool             `json:"isPrimary"`
+	LinkedAt  int64            `json:"linkedAt"`
+	SessionId int64            `json:"sessionId"`
+	State     TaskSessionState `json:"state"`
+	Title     string           `json:"title"`
 }
 
 // TaskSessionState defines model for TaskSession.State.
@@ -2726,7 +2726,7 @@ type ThinkingItem struct {
 	// Text Empty when the provider redacted it.
 	Text string `json:"text"`
 
-	// Truncated True when text holds only the first line of a long thought. getChatItem returns all of it.
+	// Truncated True when text holds only the first line of a long thought. getSessionItem returns all of it.
 	Truncated *bool `json:"truncated,omitempty"`
 }
 
@@ -2761,7 +2761,7 @@ type ToolItem struct {
 	// Status A call that ended without a result is an error.
 	Status ToolItemStatus `json:"status"`
 
-	// Truncated True when output is empty because it is long. getChatItem returns it.
+	// Truncated True when output is empty because it is long. getSessionItem returns it.
 	Truncated *bool `json:"truncated,omitempty"`
 }
 
@@ -2848,11 +2848,11 @@ type AgentId = string
 // AutomationId defines model for AutomationId.
 type AutomationId = string
 
-// ChatId defines model for ChatId.
-type ChatId = int64
-
 // RunnerId defines model for RunnerId.
 type RunnerId = string
+
+// SessionId defines model for SessionId.
+type SessionId = int64
 
 // TaskKey defines model for TaskKey.
 type TaskKey = string
@@ -2868,72 +2868,6 @@ type RenameArtifactJSONBody struct {
 // PollWechatLoginJSONBody defines parameters for PollWechatLogin.
 type PollWechatLoginJSONBody struct {
 	VerifyCode *string `json:"verifyCode,omitempty"`
-}
-
-// AbortChatParams defines parameters for AbortChat.
-type AbortChatParams struct {
-	// RunTarget Required on Main. Use the native task target from the snapshot or run event. Omit for other sessions.
-	RunTarget *string `form:"runTarget,omitempty" json:"runTarget,omitempty"`
-}
-
-// ClearContextJSONBody defines parameters for ClearContext.
-type ClearContextJSONBody struct {
-	// Handoff Text that starts the new context as its first user message. It does not start a run; the next run reads it.
-	Handoff *string `json:"handoff,omitempty"`
-
-	// Id A stable client UUID for this reset.
-	Id string `json:"id"`
-}
-
-// CompactChatJSONBody defines parameters for CompactChat.
-type CompactChatJSONBody struct {
-	// Id Optional client UUID for safe retries.
-	Id *string `json:"id,omitempty"`
-
-	// Instructions What the summary must keep.
-	Instructions *string `json:"instructions,omitempty"`
-}
-
-// ContinueChatJSONBody defines parameters for ContinueChat.
-type ContinueChatJSONBody struct {
-	// Id A stable client UUID for this continue.
-	Id string `json:"id"`
-}
-
-// ForkChatJSONBody defines parameters for ForkChat.
-type ForkChatJSONBody struct {
-	// Before End the history just before the entry.
-	Before  *bool `json:"before,omitempty"`
-	EntryId int64 `json:"entryId"`
-
-	// Id Optional client UUID for safe retries.
-	Id *string `json:"id,omitempty"`
-
-	// RunnerId The Runner of the new Chat.
-	RunnerId *string `json:"runnerId,omitempty"`
-}
-
-// GetChatHistoryParams defines parameters for GetChatHistory.
-type GetChatHistoryParams struct {
-	Before             *int64  `form:"before,omitempty" json:"before,omitempty"`
-	BeforeNotification *string `form:"beforeNotification,omitempty" json:"beforeNotification,omitempty"`
-	Limit              *int    `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// GetChatItemParams defines parameters for GetChatItem.
-type GetChatItemParams struct {
-	// Entry The entryId of the item.
-	Entry int64 `form:"entry" json:"entry"`
-}
-
-// SetChatProjectJSONBody defines parameters for SetChatProject.
-type SetChatProjectJSONBody struct {
-	Cwd string `json:"cwd"`
-}
-
-// SetChatRunnerJSONBody defines parameters for SetChatRunner.
-type SetChatRunnerJSONBody struct {
-	RunnerId string `json:"runnerId"`
 }
 
 // StartMcpOAuthJSONBody defines parameters for StartMcpOAuth.
@@ -2952,6 +2886,72 @@ type SetPrimaryNotificationTargetJSONBody struct {
 type ListRecentProjectsParams struct {
 	// RunnerId A Runner ID. Omit to use the default Runner of the agent.
 	RunnerId *string `form:"runnerId,omitempty" json:"runnerId,omitempty"`
+}
+
+// AbortSessionParams defines parameters for AbortSession.
+type AbortSessionParams struct {
+	// RunTarget Required on Main. Use the native task target from the snapshot or run event. Omit for other sessions.
+	RunTarget *string `form:"runTarget,omitempty" json:"runTarget,omitempty"`
+}
+
+// ClearContextJSONBody defines parameters for ClearContext.
+type ClearContextJSONBody struct {
+	// Handoff Text that starts the new context as its first user message. It does not start a run; the next run reads it.
+	Handoff *string `json:"handoff,omitempty"`
+
+	// Id A stable client UUID for this reset.
+	Id string `json:"id"`
+}
+
+// CompactSessionJSONBody defines parameters for CompactSession.
+type CompactSessionJSONBody struct {
+	// Id Optional client UUID for safe retries.
+	Id *string `json:"id,omitempty"`
+
+	// Instructions What the summary must keep.
+	Instructions *string `json:"instructions,omitempty"`
+}
+
+// ContinueSessionJSONBody defines parameters for ContinueSession.
+type ContinueSessionJSONBody struct {
+	// Id A stable client UUID for this continue.
+	Id string `json:"id"`
+}
+
+// ForkSessionJSONBody defines parameters for ForkSession.
+type ForkSessionJSONBody struct {
+	// Before End the history just before the entry.
+	Before  *bool `json:"before,omitempty"`
+	EntryId int64 `json:"entryId"`
+
+	// Id Optional client UUID for safe retries.
+	Id *string `json:"id,omitempty"`
+
+	// RunnerId The Runner of the new Session.
+	RunnerId *string `json:"runnerId,omitempty"`
+}
+
+// GetSessionHistoryParams defines parameters for GetSessionHistory.
+type GetSessionHistoryParams struct {
+	Before             *int64  `form:"before,omitempty" json:"before,omitempty"`
+	BeforeNotification *string `form:"beforeNotification,omitempty" json:"beforeNotification,omitempty"`
+	Limit              *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetSessionItemParams defines parameters for GetSessionItem.
+type GetSessionItemParams struct {
+	// Entry The entryId of the item.
+	Entry int64 `form:"entry" json:"entry"`
+}
+
+// SetSessionProjectJSONBody defines parameters for SetSessionProject.
+type SetSessionProjectJSONBody struct {
+	Cwd string `json:"cwd"`
+}
+
+// SetSessionRunnerJSONBody defines parameters for SetSessionRunner.
+type SetSessionRunnerJSONBody struct {
+	RunnerId string `json:"runnerId"`
 }
 
 // CreateUploadMultipartBody defines parameters for CreateUpload.
@@ -3117,35 +3117,35 @@ type SetTelegramJSONRequestBody = TelegramInput
 // PollWechatLoginJSONRequestBody defines body for PollWechatLogin for application/json ContentType.
 type PollWechatLoginJSONRequestBody PollWechatLoginJSONBody
 
-// ClearContextJSONRequestBody defines body for ClearContext for application/json ContentType.
-type ClearContextJSONRequestBody ClearContextJSONBody
-
-// CompactChatJSONRequestBody defines body for CompactChat for application/json ContentType.
-type CompactChatJSONRequestBody CompactChatJSONBody
-
-// ContinueChatJSONRequestBody defines body for ContinueChat for application/json ContentType.
-type ContinueChatJSONRequestBody ContinueChatJSONBody
-
-// ForkChatJSONRequestBody defines body for ForkChat for application/json ContentType.
-type ForkChatJSONRequestBody ForkChatJSONBody
-
-// SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
-type SendMessageJSONRequestBody = MessageInput
-
-// SetChatProjectJSONRequestBody defines body for SetChatProject for application/json ContentType.
-type SetChatProjectJSONRequestBody SetChatProjectJSONBody
-
-// SetChatRunnerJSONRequestBody defines body for SetChatRunner for application/json ContentType.
-type SetChatRunnerJSONRequestBody SetChatRunnerJSONBody
-
-// SetChatSettingsJSONRequestBody defines body for SetChatSettings for application/json ContentType.
-type SetChatSettingsJSONRequestBody = ChatSettings
-
 // StartMcpOAuthJSONRequestBody defines body for StartMcpOAuth for application/json ContentType.
 type StartMcpOAuthJSONRequestBody StartMcpOAuthJSONBody
 
 // SetPrimaryNotificationTargetJSONRequestBody defines body for SetPrimaryNotificationTarget for application/json ContentType.
 type SetPrimaryNotificationTargetJSONRequestBody SetPrimaryNotificationTargetJSONBody
+
+// ClearContextJSONRequestBody defines body for ClearContext for application/json ContentType.
+type ClearContextJSONRequestBody ClearContextJSONBody
+
+// CompactSessionJSONRequestBody defines body for CompactSession for application/json ContentType.
+type CompactSessionJSONRequestBody CompactSessionJSONBody
+
+// ContinueSessionJSONRequestBody defines body for ContinueSession for application/json ContentType.
+type ContinueSessionJSONRequestBody ContinueSessionJSONBody
+
+// ForkSessionJSONRequestBody defines body for ForkSession for application/json ContentType.
+type ForkSessionJSONRequestBody ForkSessionJSONBody
+
+// SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
+type SendMessageJSONRequestBody = MessageInput
+
+// SetSessionProjectJSONRequestBody defines body for SetSessionProject for application/json ContentType.
+type SetSessionProjectJSONRequestBody SetSessionProjectJSONBody
+
+// SetSessionRunnerJSONRequestBody defines body for SetSessionRunner for application/json ContentType.
+type SetSessionRunnerJSONRequestBody SetSessionRunnerJSONBody
+
+// SetSessionSettingsJSONRequestBody defines body for SetSessionSettings for application/json ContentType.
+type SetSessionSettingsJSONRequestBody = SessionSettings
 
 // CreateUploadMultipartRequestBody defines body for CreateUpload for multipart/form-data ContentType.
 type CreateUploadMultipartRequestBody CreateUploadMultipartBody
@@ -3227,251 +3227,6 @@ type SplitTaskJSONRequestBody = TaskSplit
 
 // SetTelegramManagerJSONRequestBody defines body for SetTelegramManager for application/json ContentType.
 type SetTelegramManagerJSONRequestBody SetTelegramManagerJSONBody
-
-// AsSnapshotEvent returns the union data inside the ChatEvent as a SnapshotEvent
-func (t ChatEvent) AsSnapshotEvent() (SnapshotEvent, error) {
-	var body SnapshotEvent
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromSnapshotEvent overwrites any union data inside the ChatEvent as the provided SnapshotEvent
-func (t *ChatEvent) FromSnapshotEvent(v SnapshotEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"snapshot"}`))
-	t.union = b
-	return err
-}
-
-// MergeSnapshotEvent performs a merge with any union data inside the ChatEvent, using the provided SnapshotEvent
-func (t *ChatEvent) MergeSnapshotEvent(v SnapshotEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"snapshot"}`))
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsItemEvent returns the union data inside the ChatEvent as a ItemEvent
-func (t ChatEvent) AsItemEvent() (ItemEvent, error) {
-	var body ItemEvent
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromItemEvent overwrites any union data inside the ChatEvent as the provided ItemEvent
-func (t *ChatEvent) FromItemEvent(v ItemEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"item"}`))
-	t.union = b
-	return err
-}
-
-// MergeItemEvent performs a merge with any union data inside the ChatEvent, using the provided ItemEvent
-func (t *ChatEvent) MergeItemEvent(v ItemEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"item"}`))
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsAppendEvent returns the union data inside the ChatEvent as a AppendEvent
-func (t ChatEvent) AsAppendEvent() (AppendEvent, error) {
-	var body AppendEvent
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromAppendEvent overwrites any union data inside the ChatEvent as the provided AppendEvent
-func (t *ChatEvent) FromAppendEvent(v AppendEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"append"}`))
-	t.union = b
-	return err
-}
-
-// MergeAppendEvent performs a merge with any union data inside the ChatEvent, using the provided AppendEvent
-func (t *ChatEvent) MergeAppendEvent(v AppendEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"append"}`))
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsRunEvent returns the union data inside the ChatEvent as a RunEvent
-func (t ChatEvent) AsRunEvent() (RunEvent, error) {
-	var body RunEvent
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromRunEvent overwrites any union data inside the ChatEvent as the provided RunEvent
-func (t *ChatEvent) FromRunEvent(v RunEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"run"}`))
-	t.union = b
-	return err
-}
-
-// MergeRunEvent performs a merge with any union data inside the ChatEvent, using the provided RunEvent
-func (t *ChatEvent) MergeRunEvent(v RunEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"run"}`))
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsChildEvent returns the union data inside the ChatEvent as a ChildEvent
-func (t ChatEvent) AsChildEvent() (ChildEvent, error) {
-	var body ChildEvent
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromChildEvent overwrites any union data inside the ChatEvent as the provided ChildEvent
-func (t *ChatEvent) FromChildEvent(v ChildEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"child"}`))
-	t.union = b
-	return err
-}
-
-// MergeChildEvent performs a merge with any union data inside the ChatEvent, using the provided ChildEvent
-func (t *ChatEvent) MergeChildEvent(v ChildEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"child"}`))
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsNotificationsEvent returns the union data inside the ChatEvent as a NotificationsEvent
-func (t ChatEvent) AsNotificationsEvent() (NotificationsEvent, error) {
-	var body NotificationsEvent
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromNotificationsEvent overwrites any union data inside the ChatEvent as the provided NotificationsEvent
-func (t *ChatEvent) FromNotificationsEvent(v NotificationsEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"notifications"}`))
-	t.union = b
-	return err
-}
-
-// MergeNotificationsEvent performs a merge with any union data inside the ChatEvent, using the provided NotificationsEvent
-func (t *ChatEvent) MergeNotificationsEvent(v NotificationsEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"notifications"}`))
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t ChatEvent) Discriminator() (string, error) {
-	var discriminator struct {
-		Discriminator string `json:"type"`
-	}
-	err := json.Unmarshal(t.union, &discriminator)
-	return discriminator.Discriminator, err
-}
-
-func (t ChatEvent) ValueByDiscriminator() (interface{}, error) {
-	discriminator, err := t.Discriminator()
-	if err != nil {
-		return nil, err
-	}
-	switch discriminator {
-	case "append":
-		return t.AsAppendEvent()
-	case "child":
-		return t.AsChildEvent()
-	case "item":
-		return t.AsItemEvent()
-	case "notifications":
-		return t.AsNotificationsEvent()
-	case "run":
-		return t.AsRunEvent()
-	case "snapshot":
-		return t.AsSnapshotEvent()
-	default:
-		return nil, errors.New("unknown discriminator value: " + discriminator)
-	}
-}
-
-func (t ChatEvent) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
-
-func (t *ChatEvent) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
 
 // AsUserItem returns the union data inside the Item as a UserItem
 func (t Item) AsUserItem() (UserItem, error) {
@@ -3826,6 +3581,251 @@ func (t *Item) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// AsSnapshotEvent returns the union data inside the SessionEvent as a SnapshotEvent
+func (t SessionEvent) AsSnapshotEvent() (SnapshotEvent, error) {
+	var body SnapshotEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSnapshotEvent overwrites any union data inside the SessionEvent as the provided SnapshotEvent
+func (t *SessionEvent) FromSnapshotEvent(v SnapshotEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"snapshot"}`))
+	t.union = b
+	return err
+}
+
+// MergeSnapshotEvent performs a merge with any union data inside the SessionEvent, using the provided SnapshotEvent
+func (t *SessionEvent) MergeSnapshotEvent(v SnapshotEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"snapshot"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsItemEvent returns the union data inside the SessionEvent as a ItemEvent
+func (t SessionEvent) AsItemEvent() (ItemEvent, error) {
+	var body ItemEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromItemEvent overwrites any union data inside the SessionEvent as the provided ItemEvent
+func (t *SessionEvent) FromItemEvent(v ItemEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"item"}`))
+	t.union = b
+	return err
+}
+
+// MergeItemEvent performs a merge with any union data inside the SessionEvent, using the provided ItemEvent
+func (t *SessionEvent) MergeItemEvent(v ItemEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"item"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAppendEvent returns the union data inside the SessionEvent as a AppendEvent
+func (t SessionEvent) AsAppendEvent() (AppendEvent, error) {
+	var body AppendEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAppendEvent overwrites any union data inside the SessionEvent as the provided AppendEvent
+func (t *SessionEvent) FromAppendEvent(v AppendEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"append"}`))
+	t.union = b
+	return err
+}
+
+// MergeAppendEvent performs a merge with any union data inside the SessionEvent, using the provided AppendEvent
+func (t *SessionEvent) MergeAppendEvent(v AppendEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"append"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsRunEvent returns the union data inside the SessionEvent as a RunEvent
+func (t SessionEvent) AsRunEvent() (RunEvent, error) {
+	var body RunEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRunEvent overwrites any union data inside the SessionEvent as the provided RunEvent
+func (t *SessionEvent) FromRunEvent(v RunEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"run"}`))
+	t.union = b
+	return err
+}
+
+// MergeRunEvent performs a merge with any union data inside the SessionEvent, using the provided RunEvent
+func (t *SessionEvent) MergeRunEvent(v RunEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"run"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsChildEvent returns the union data inside the SessionEvent as a ChildEvent
+func (t SessionEvent) AsChildEvent() (ChildEvent, error) {
+	var body ChildEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromChildEvent overwrites any union data inside the SessionEvent as the provided ChildEvent
+func (t *SessionEvent) FromChildEvent(v ChildEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"child"}`))
+	t.union = b
+	return err
+}
+
+// MergeChildEvent performs a merge with any union data inside the SessionEvent, using the provided ChildEvent
+func (t *SessionEvent) MergeChildEvent(v ChildEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"child"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsNotificationsEvent returns the union data inside the SessionEvent as a NotificationsEvent
+func (t SessionEvent) AsNotificationsEvent() (NotificationsEvent, error) {
+	var body NotificationsEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromNotificationsEvent overwrites any union data inside the SessionEvent as the provided NotificationsEvent
+func (t *SessionEvent) FromNotificationsEvent(v NotificationsEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"notifications"}`))
+	t.union = b
+	return err
+}
+
+// MergeNotificationsEvent performs a merge with any union data inside the SessionEvent, using the provided NotificationsEvent
+func (t *SessionEvent) MergeNotificationsEvent(v NotificationsEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"notifications"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SessionEvent) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t SessionEvent) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "append":
+		return t.AsAppendEvent()
+	case "child":
+		return t.AsChildEvent()
+	case "item":
+		return t.AsItemEvent()
+	case "notifications":
+		return t.AsNotificationsEvent()
+	case "run":
+		return t.AsRunEvent()
+	case "snapshot":
+		return t.AsSnapshotEvent()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t SessionEvent) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SessionEvent) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
@@ -3925,72 +3925,6 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/channels/wechat/login/{loginId}/poll)
 	PollWechatLogin(w http.ResponseWriter, r *http.Request, agentId AgentId, loginId string)
 
-	// (GET /api/agents/{agentId}/chats)
-	ListChats(w http.ResponseWriter, r *http.Request, agentId string)
-
-	// (POST /api/agents/{agentId}/chats)
-	CreateChat(w http.ResponseWriter, r *http.Request, agentId string)
-
-	// (GET /api/agents/{agentId}/chats/main)
-	GetMainChat(w http.ResponseWriter, r *http.Request, agentId string)
-
-	// (GET /api/agents/{agentId}/chats/{chatId})
-	GetChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/abort)
-	AbortChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, params AbortChatParams)
-
-	// (DELETE /api/agents/{agentId}/chats/{chatId}/archive)
-	UnarchiveChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (PUT /api/agents/{agentId}/chats/{chatId}/archive)
-	ArchiveChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/clear)
-	ClearContext(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/compact)
-	CompactChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/continue)
-	ContinueChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (GET /api/agents/{agentId}/chats/{chatId}/events)
-	WatchChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/fork)
-	ForkChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (GET /api/agents/{agentId}/chats/{chatId}/history)
-	GetChatHistory(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, params GetChatHistoryParams)
-
-	// (GET /api/agents/{agentId}/chats/{chatId}/items/{itemId})
-	GetChatItem(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, itemId string, params GetChatItemParams)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/messages)
-	SendMessage(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw)
-	WithdrawMessage(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, messageId string)
-
-	// (GET /api/agents/{agentId}/chats/{chatId}/monitors)
-	ListChatMonitors(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (DELETE /api/agents/{agentId}/chats/{chatId}/monitors/{monitorId})
-	CancelChatMonitor(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, monitorId string)
-
-	// (GET /api/agents/{agentId}/chats/{chatId}/outbox)
-	ListChatOutbox(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (PUT /api/agents/{agentId}/chats/{chatId}/project)
-	SetChatProject(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (PUT /api/agents/{agentId}/chats/{chatId}/runner)
-	SetChatRunner(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
-	// (PUT /api/agents/{agentId}/chats/{chatId}/settings)
-	SetChatSettings(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
 	// (GET /api/agents/{agentId}/integrations)
 	GetBotIntegrations(w http.ResponseWriter, r *http.Request, agentId string)
 
@@ -4014,6 +3948,72 @@ type ServerInterface interface {
 
 	// (GET /api/agents/{agentId}/runners)
 	ListAgentRunners(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (GET /api/agents/{agentId}/sessions)
+	ListSessions(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (POST /api/agents/{agentId}/sessions)
+	CreateAgentSession(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (GET /api/agents/{agentId}/sessions/main)
+	GetMainSession(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId})
+	GetSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/abort)
+	AbortSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId, params AbortSessionParams)
+
+	// (DELETE /api/agents/{agentId}/sessions/{sessionId}/archive)
+	UnarchiveSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (PUT /api/agents/{agentId}/sessions/{sessionId}/archive)
+	ArchiveSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/clear)
+	ClearContext(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/compact)
+	CompactSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/continue)
+	ContinueSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId}/events)
+	WatchSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/fork)
+	ForkSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId}/history)
+	GetSessionHistory(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId, params GetSessionHistoryParams)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId}/items/{itemId})
+	GetSessionItem(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId, itemId string, params GetSessionItemParams)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/messages)
+	SendMessage(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/messages/{messageId}/withdraw)
+	WithdrawMessage(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId, messageId string)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId}/monitors)
+	ListSessionMonitors(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (DELETE /api/agents/{agentId}/sessions/{sessionId}/monitors/{monitorId})
+	CancelSessionMonitor(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId, monitorId string)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId}/outbox)
+	ListSessionOutbox(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (PUT /api/agents/{agentId}/sessions/{sessionId}/project)
+	SetSessionProject(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (PUT /api/agents/{agentId}/sessions/{sessionId}/runner)
+	SetSessionRunner(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
+
+	// (PUT /api/agents/{agentId}/sessions/{sessionId}/settings)
+	SetSessionSettings(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId)
 
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, agentId string)
@@ -5124,850 +5124,6 @@ func (siw *ServerInterfaceWrapper) PollWechatLogin(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// ListChats operation middleware
-func (siw *ServerInterfaceWrapper) ListChats(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListChats(w, r, agentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateChat operation middleware
-func (siw *ServerInterfaceWrapper) CreateChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateChat(w, r, agentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetMainChat operation middleware
-func (siw *ServerInterfaceWrapper) GetMainChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetMainChat(w, r, agentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetChat operation middleware
-func (siw *ServerInterfaceWrapper) GetChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetChat(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// AbortChat operation middleware
-func (siw *ServerInterfaceWrapper) AbortChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params AbortChatParams
-
-	// ------------- Optional query parameter "runTarget" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "runTarget", r.URL.Query(), &params.RunTarget, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "runTarget"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runTarget", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AbortChat(w, r, agentId, chatId, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// UnarchiveChat operation middleware
-func (siw *ServerInterfaceWrapper) UnarchiveChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UnarchiveChat(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ArchiveChat operation middleware
-func (siw *ServerInterfaceWrapper) ArchiveChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ArchiveChat(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ClearContext operation middleware
-func (siw *ServerInterfaceWrapper) ClearContext(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ClearContext(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CompactChat operation middleware
-func (siw *ServerInterfaceWrapper) CompactChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CompactChat(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ContinueChat operation middleware
-func (siw *ServerInterfaceWrapper) ContinueChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ContinueChat(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// WatchChat operation middleware
-func (siw *ServerInterfaceWrapper) WatchChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.WatchChat(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ForkChat operation middleware
-func (siw *ServerInterfaceWrapper) ForkChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ForkChat(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetChatHistory operation middleware
-func (siw *ServerInterfaceWrapper) GetChatHistory(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetChatHistoryParams
-
-	// ------------- Optional query parameter "before" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "beforeNotification" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "beforeNotification", r.URL.Query(), &params.BeforeNotification, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "beforeNotification"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "beforeNotification", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetChatHistory(w, r, agentId, chatId, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetChatItem operation middleware
-func (siw *ServerInterfaceWrapper) GetChatItem(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "itemId" -------------
-	var itemId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetChatItemParams
-
-	// ------------- Required query parameter "entry" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "entry", r.URL.Query(), &params.Entry, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "entry"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entry", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetChatItem(w, r, agentId, chatId, itemId, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SendMessage operation middleware
-func (siw *ServerInterfaceWrapper) SendMessage(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SendMessage(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// WithdrawMessage operation middleware
-func (siw *ServerInterfaceWrapper) WithdrawMessage(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "messageId" -------------
-	var messageId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "messageId", r.PathValue("messageId"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "messageId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.WithdrawMessage(w, r, agentId, chatId, messageId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListChatMonitors operation middleware
-func (siw *ServerInterfaceWrapper) ListChatMonitors(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListChatMonitors(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CancelChatMonitor operation middleware
-func (siw *ServerInterfaceWrapper) CancelChatMonitor(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "monitorId" -------------
-	var monitorId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "monitorId", r.PathValue("monitorId"), &monitorId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "monitorId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CancelChatMonitor(w, r, agentId, chatId, monitorId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListChatOutbox operation middleware
-func (siw *ServerInterfaceWrapper) ListChatOutbox(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListChatOutbox(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SetChatProject operation middleware
-func (siw *ServerInterfaceWrapper) SetChatProject(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetChatProject(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SetChatRunner operation middleware
-func (siw *ServerInterfaceWrapper) SetChatRunner(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetChatRunner(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SetChatSettings operation middleware
-func (siw *ServerInterfaceWrapper) SetChatSettings(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetChatSettings(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetBotIntegrations operation middleware
 func (siw *ServerInterfaceWrapper) GetBotIntegrations(w http.ResponseWriter, r *http.Request) {
 
@@ -6192,6 +5348,850 @@ func (siw *ServerInterfaceWrapper) ListAgentRunners(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAgentRunners(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessions(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAgentSession operation middleware
+func (siw *ServerInterfaceWrapper) CreateAgentSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAgentSession(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMainSession operation middleware
+func (siw *ServerInterfaceWrapper) GetMainSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMainSession(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSession operation middleware
+func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSession(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AbortSession operation middleware
+func (siw *ServerInterfaceWrapper) AbortSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AbortSessionParams
+
+	// ------------- Optional query parameter "runTarget" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "runTarget", r.URL.Query(), &params.RunTarget, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "runTarget"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runTarget", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AbortSession(w, r, agentId, sessionId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnarchiveSession operation middleware
+func (siw *ServerInterfaceWrapper) UnarchiveSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnarchiveSession(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ArchiveSession operation middleware
+func (siw *ServerInterfaceWrapper) ArchiveSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ArchiveSession(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClearContext operation middleware
+func (siw *ServerInterfaceWrapper) ClearContext(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearContext(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompactSession operation middleware
+func (siw *ServerInterfaceWrapper) CompactSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompactSession(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ContinueSession operation middleware
+func (siw *ServerInterfaceWrapper) ContinueSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ContinueSession(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// WatchSession operation middleware
+func (siw *ServerInterfaceWrapper) WatchSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.WatchSession(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ForkSession operation middleware
+func (siw *ServerInterfaceWrapper) ForkSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ForkSession(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSessionHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetSessionHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSessionHistoryParams
+
+	// ------------- Optional query parameter "before" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "beforeNotification" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "beforeNotification", r.URL.Query(), &params.BeforeNotification, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "beforeNotification"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "beforeNotification", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSessionHistory(w, r, agentId, sessionId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSessionItem operation middleware
+func (siw *ServerInterfaceWrapper) GetSessionItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSessionItemParams
+
+	// ------------- Required query parameter "entry" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "entry", r.URL.Query(), &params.Entry, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "entry"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entry", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSessionItem(w, r, agentId, sessionId, itemId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendMessage operation middleware
+func (siw *ServerInterfaceWrapper) SendMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendMessage(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// WithdrawMessage operation middleware
+func (siw *ServerInterfaceWrapper) WithdrawMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "messageId" -------------
+	var messageId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "messageId", r.PathValue("messageId"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "messageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.WithdrawMessage(w, r, agentId, sessionId, messageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSessionMonitors operation middleware
+func (siw *ServerInterfaceWrapper) ListSessionMonitors(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessionMonitors(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelSessionMonitor operation middleware
+func (siw *ServerInterfaceWrapper) CancelSessionMonitor(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "monitorId" -------------
+	var monitorId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "monitorId", r.PathValue("monitorId"), &monitorId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "monitorId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelSessionMonitor(w, r, agentId, sessionId, monitorId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSessionOutbox operation middleware
+func (siw *ServerInterfaceWrapper) ListSessionOutbox(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessionOutbox(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetSessionProject operation middleware
+func (siw *ServerInterfaceWrapper) SetSessionProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetSessionProject(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetSessionRunner operation middleware
+func (siw *ServerInterfaceWrapper) SetSessionRunner(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetSessionRunner(w, r, agentId, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetSessionSettings operation middleware
+func (siw *ServerInterfaceWrapper) SetSessionSettings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId SessionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetSessionSettings(w, r, agentId, sessionId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8087,30 +8087,30 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/archive", wrapper.RestoreAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/runners", wrapper.ListAgentRunners)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/runner/reset", wrapper.ResetAgentRunner)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.CreateChat)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}", wrapper.GetChat)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.UnarchiveChat)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.ArchiveChat)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/sessions/main", wrapper.GetMainSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/sessions", wrapper.ListSessions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/sessions", wrapper.CreateAgentSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}", wrapper.GetSession)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/archive", wrapper.UnarchiveSession)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/archive", wrapper.ArchiveSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/projects", wrapper.ListRecentProjects)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/runner", wrapper.SetChatRunner)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/project", wrapper.SetChatProject)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/settings", wrapper.SetChatSettings)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages", wrapper.SendMessage)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw", wrapper.WithdrawMessage)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/clear", wrapper.ClearContext)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/continue", wrapper.ContinueChat)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/fork", wrapper.ForkChat)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/compact", wrapper.CompactChat)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/history", wrapper.GetChatHistory)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/items/{itemId}", wrapper.GetChatItem)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/abort", wrapper.AbortChat)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/monitors", wrapper.ListChatMonitors)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/monitors/{monitorId}", wrapper.CancelChatMonitor)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/outbox", wrapper.ListChatOutbox)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/events", wrapper.WatchChat)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/runner", wrapper.SetSessionRunner)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/project", wrapper.SetSessionProject)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/settings", wrapper.SetSessionSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/messages", wrapper.SendMessage)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/messages/{messageId}/withdraw", wrapper.WithdrawMessage)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/clear", wrapper.ClearContext)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/continue", wrapper.ContinueSession)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/fork", wrapper.ForkSession)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/compact", wrapper.CompactSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/history", wrapper.GetSessionHistory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/items/{itemId}", wrapper.GetSessionItem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/abort", wrapper.AbortSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/monitors", wrapper.ListSessionMonitors)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/monitors/{monitorId}", wrapper.CancelSessionMonitor)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/outbox", wrapper.ListSessionOutbox)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/sessions/{sessionId}/events", wrapper.WatchSession)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/uploads", wrapper.CreateUpload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/uploads/{uploadId}", wrapper.GetUpload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/artifacts", wrapper.ListArtifacts)
@@ -9706,1652 +9706,6 @@ func (response PollWechatLogindefaultJSONResponse) VisitPollWechatLoginResponse(
 	return err
 }
 
-type ListChatsRequestObject struct {
-	AgentId string `json:"agentId"`
-}
-
-type ListChatsResponseObject interface {
-	VisitListChatsResponse(w http.ResponseWriter) error
-}
-
-type ListChats200JSONResponse ChatList
-
-func (response ListChats200JSONResponse) VisitListChatsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChats404JSONResponse struct{ ErrorJSONResponse }
-
-func (response ListChats404JSONResponse) VisitListChatsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListChatsdefaultJSONResponse) VisitListChatsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateChatRequestObject struct {
-	AgentId string `json:"agentId"`
-}
-
-type CreateChatResponseObject interface {
-	VisitCreateChatResponse(w http.ResponseWriter) error
-}
-
-type CreateChat201JSONResponse Chat
-
-func (response CreateChat201JSONResponse) VisitCreateChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateChat404JSONResponse struct{ ErrorJSONResponse }
-
-func (response CreateChat404JSONResponse) VisitCreateChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateChatdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response CreateChatdefaultJSONResponse) VisitCreateChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetMainChatRequestObject struct {
-	AgentId string `json:"agentId"`
-}
-
-type GetMainChatResponseObject interface {
-	VisitGetMainChatResponse(w http.ResponseWriter) error
-}
-
-type GetMainChat200JSONResponse Chat
-
-func (response GetMainChat200JSONResponse) VisitGetMainChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetMainChat404JSONResponse struct{ ErrorJSONResponse }
-
-func (response GetMainChat404JSONResponse) VisitGetMainChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetMainChatdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetMainChatdefaultJSONResponse) VisitGetMainChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChatRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-}
-
-type GetChatResponseObject interface {
-	VisitGetChatResponse(w http.ResponseWriter) error
-}
-
-type GetChat200JSONResponse Chat
-
-func (response GetChat200JSONResponse) VisitGetChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChat404JSONResponse struct{ ErrorJSONResponse }
-
-func (response GetChat404JSONResponse) VisitGetChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChatdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetChatdefaultJSONResponse) VisitGetChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AbortChatRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Params  AbortChatParams
-}
-
-type AbortChatResponseObject interface {
-	VisitAbortChatResponse(w http.ResponseWriter) error
-}
-
-type AbortChat200JSONResponse Ok
-
-func (response AbortChat200JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AbortChat400JSONResponse struct{ ErrorJSONResponse }
-
-func (response AbortChat400JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AbortChat403JSONResponse Error
-
-func (response AbortChat403JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AbortChat404JSONResponse Error
-
-func (response AbortChat404JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AbortChat409JSONResponse Error
-
-func (response AbortChat409JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AbortChatdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response AbortChatdefaultJSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UnarchiveChatRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-}
-
-type UnarchiveChatResponseObject interface {
-	VisitUnarchiveChatResponse(w http.ResponseWriter) error
-}
-
-type UnarchiveChat200JSONResponse Chat
-
-func (response UnarchiveChat200JSONResponse) VisitUnarchiveChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UnarchiveChat403JSONResponse struct{ ErrorJSONResponse }
-
-func (response UnarchiveChat403JSONResponse) VisitUnarchiveChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UnarchiveChat404JSONResponse Error
-
-func (response UnarchiveChat404JSONResponse) VisitUnarchiveChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UnarchiveChatdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response UnarchiveChatdefaultJSONResponse) VisitUnarchiveChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ArchiveChatRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-}
-
-type ArchiveChatResponseObject interface {
-	VisitArchiveChatResponse(w http.ResponseWriter) error
-}
-
-type ArchiveChat200JSONResponse Chat
-
-func (response ArchiveChat200JSONResponse) VisitArchiveChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ArchiveChat403JSONResponse struct{ ErrorJSONResponse }
-
-func (response ArchiveChat403JSONResponse) VisitArchiveChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ArchiveChat404JSONResponse Error
-
-func (response ArchiveChat404JSONResponse) VisitArchiveChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ArchiveChatdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ArchiveChatdefaultJSONResponse) VisitArchiveChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ClearContextRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Body    *ClearContextJSONRequestBody
-}
-
-type ClearContextResponseObject interface {
-	VisitClearContextResponse(w http.ResponseWriter) error
-}
-
-type ClearContext202JSONResponse SentMessage
-
-func (response ClearContext202JSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(202)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ClearContext400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ClearContext400JSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ClearContext403JSONResponse Error
-
-func (response ClearContext403JSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ClearContext404JSONResponse Error
-
-func (response ClearContext404JSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ClearContext409JSONResponse Error
-
-func (response ClearContext409JSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ClearContextdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ClearContextdefaultJSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CompactChatRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Body    *CompactChatJSONRequestBody
-}
-
-type CompactChatResponseObject interface {
-	VisitCompactChatResponse(w http.ResponseWriter) error
-}
-
-type CompactChat202Response struct {
-}
-
-func (response CompactChat202Response) VisitCompactChatResponse(w http.ResponseWriter) error {
-	w.WriteHeader(202)
-	return nil
-}
-
-type CompactChat400JSONResponse struct{ ErrorJSONResponse }
-
-func (response CompactChat400JSONResponse) VisitCompactChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CompactChat403JSONResponse Error
-
-func (response CompactChat403JSONResponse) VisitCompactChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CompactChat404JSONResponse Error
-
-func (response CompactChat404JSONResponse) VisitCompactChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CompactChat409JSONResponse Error
-
-func (response CompactChat409JSONResponse) VisitCompactChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CompactChatdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response CompactChatdefaultJSONResponse) VisitCompactChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ContinueChatRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Body    *ContinueChatJSONRequestBody
-}
-
-type ContinueChatResponseObject interface {
-	VisitContinueChatResponse(w http.ResponseWriter) error
-}
-
-type ContinueChat202JSONResponse SentMessage
-
-func (response ContinueChat202JSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(202)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ContinueChat400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ContinueChat400JSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ContinueChat403JSONResponse Error
-
-func (response ContinueChat403JSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ContinueChat404JSONResponse Error
-
-func (response ContinueChat404JSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ContinueChat409JSONResponse Error
-
-func (response ContinueChat409JSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ContinueChatdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ContinueChatdefaultJSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WatchChatRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-}
-
-type WatchChatResponseObject interface {
-	VisitWatchChatResponse(w http.ResponseWriter) error
-}
-
-type WatchChat200TexteventStreamResponse struct {
-	Body          io.Reader
-	ContentLength int64
-}
-
-func (response WatchChat200TexteventStreamResponse) VisitWatchChatResponse(w http.ResponseWriter) error {
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	if response.ContentLength != 0 {
-		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
-	}
-	w.WriteHeader(200)
-
-	if closer, ok := response.Body.(io.ReadCloser); ok {
-		defer closer.Close()
-	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		// If w doesn't support flushing, fall back to io.Copy.
-		_, err := io.Copy(w, response.Body)
-		return err
-	}
-	// text/event-stream messages are typically small; use a
-	// modest buffer and flush after each chunk so clients see
-	// events immediately instead of waiting on OS buffering.
-	buf := make([]byte, 4096)
-	for {
-		n, err := response.Body.Read(buf)
-		if n > 0 {
-			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				return writeErr
-			}
-			flusher.Flush()
-		}
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
-	}
-}
-
-type WatchChat404JSONResponse struct{ ErrorJSONResponse }
-
-func (response WatchChat404JSONResponse) VisitWatchChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ForkChatRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Body    *ForkChatJSONRequestBody
-}
-
-type ForkChatResponseObject interface {
-	VisitForkChatResponse(w http.ResponseWriter) error
-}
-
-type ForkChat201JSONResponse struct {
-	ChatId int64 `json:"chatId"`
-}
-
-func (response ForkChat201JSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ForkChat400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ForkChat400JSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ForkChat403JSONResponse Error
-
-func (response ForkChat403JSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ForkChat404JSONResponse Error
-
-func (response ForkChat404JSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ForkChat409JSONResponse Error
-
-func (response ForkChat409JSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChatHistoryRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Params  GetChatHistoryParams
-}
-
-type GetChatHistoryResponseObject interface {
-	VisitGetChatHistoryResponse(w http.ResponseWriter) error
-}
-
-type GetChatHistory200JSONResponse HistoryPage
-
-func (response GetChatHistory200JSONResponse) VisitGetChatHistoryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChatHistory400JSONResponse struct{ ErrorJSONResponse }
-
-func (response GetChatHistory400JSONResponse) VisitGetChatHistoryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChatHistory404JSONResponse Error
-
-func (response GetChatHistory404JSONResponse) VisitGetChatHistoryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChatHistorydefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetChatHistorydefaultJSONResponse) VisitGetChatHistoryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChatItemRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	ItemId  string `json:"itemId"`
-	Params  GetChatItemParams
-}
-
-type GetChatItemResponseObject interface {
-	VisitGetChatItemResponse(w http.ResponseWriter) error
-}
-
-type GetChatItem200JSONResponse Item
-
-func (t GetChatItem200JSONResponse) MarshalJSON() ([]byte, error) {
-	return Item(t).MarshalJSON()
-}
-
-func (t *GetChatItem200JSONResponse) UnmarshalJSON(b []byte) error {
-	return (*Item)(t).UnmarshalJSON(b)
-}
-
-func (response GetChatItem200JSONResponse) VisitGetChatItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChatItem400JSONResponse struct{ ErrorJSONResponse }
-
-func (response GetChatItem400JSONResponse) VisitGetChatItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChatItem404JSONResponse Error
-
-func (response GetChatItem404JSONResponse) VisitGetChatItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetChatItemdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetChatItemdefaultJSONResponse) VisitGetChatItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendMessageRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Body    *SendMessageJSONRequestBody
-}
-
-type SendMessageResponseObject interface {
-	VisitSendMessageResponse(w http.ResponseWriter) error
-}
-
-type SendMessage202JSONResponse SentMessage
-
-func (response SendMessage202JSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(202)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendMessage400JSONResponse struct{ ErrorJSONResponse }
-
-func (response SendMessage400JSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendMessage403JSONResponse Error
-
-func (response SendMessage403JSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendMessage404JSONResponse Error
-
-func (response SendMessage404JSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendMessage409JSONResponse Error
-
-func (response SendMessage409JSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendMessagedefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SendMessagedefaultJSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawMessageRequestObject struct {
-	AgentId   string `json:"agentId"`
-	ChatId    ChatId `json:"chatId"`
-	MessageId string `json:"messageId"`
-}
-
-type WithdrawMessageResponseObject interface {
-	VisitWithdrawMessageResponse(w http.ResponseWriter) error
-}
-
-type WithdrawMessage200JSONResponse WithdrawnMessage
-
-func (response WithdrawMessage200JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawMessage403JSONResponse struct{ ErrorJSONResponse }
-
-func (response WithdrawMessage403JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawMessage404JSONResponse Error
-
-func (response WithdrawMessage404JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawMessage409JSONResponse Error
-
-func (response WithdrawMessage409JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawMessagedefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response WithdrawMessagedefaultJSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatMonitorsRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-}
-
-type ListChatMonitorsResponseObject interface {
-	VisitListChatMonitorsResponse(w http.ResponseWriter) error
-}
-
-type ListChatMonitors200JSONResponse MonitorList
-
-func (response ListChatMonitors200JSONResponse) VisitListChatMonitorsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatMonitors404JSONResponse struct{ ErrorJSONResponse }
-
-func (response ListChatMonitors404JSONResponse) VisitListChatMonitorsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatMonitorsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListChatMonitorsdefaultJSONResponse) VisitListChatMonitorsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CancelChatMonitorRequestObject struct {
-	AgentId   string `json:"agentId"`
-	ChatId    ChatId `json:"chatId"`
-	MonitorId string `json:"monitorId"`
-}
-
-type CancelChatMonitorResponseObject interface {
-	VisitCancelChatMonitorResponse(w http.ResponseWriter) error
-}
-
-type CancelChatMonitor200JSONResponse Monitor
-
-func (response CancelChatMonitor200JSONResponse) VisitCancelChatMonitorResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CancelChatMonitor403JSONResponse struct{ ErrorJSONResponse }
-
-func (response CancelChatMonitor403JSONResponse) VisitCancelChatMonitorResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CancelChatMonitor404JSONResponse Error
-
-func (response CancelChatMonitor404JSONResponse) VisitCancelChatMonitorResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CancelChatMonitordefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response CancelChatMonitordefaultJSONResponse) VisitCancelChatMonitorResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatOutboxRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-}
-
-type ListChatOutboxResponseObject interface {
-	VisitListChatOutboxResponse(w http.ResponseWriter) error
-}
-
-type ListChatOutbox200JSONResponse OutboxMessageList
-
-func (response ListChatOutbox200JSONResponse) VisitListChatOutboxResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatOutbox404JSONResponse struct{ ErrorJSONResponse }
-
-func (response ListChatOutbox404JSONResponse) VisitListChatOutboxResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatOutboxdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListChatOutboxdefaultJSONResponse) VisitListChatOutboxResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatProjectRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Body    *SetChatProjectJSONRequestBody
-}
-
-type SetChatProjectResponseObject interface {
-	VisitSetChatProjectResponse(w http.ResponseWriter) error
-}
-
-type SetChatProject200JSONResponse Chat
-
-func (response SetChatProject200JSONResponse) VisitSetChatProjectResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatProject400JSONResponse struct{ ErrorJSONResponse }
-
-func (response SetChatProject400JSONResponse) VisitSetChatProjectResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatProject403JSONResponse Error
-
-func (response SetChatProject403JSONResponse) VisitSetChatProjectResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatProject404JSONResponse Error
-
-func (response SetChatProject404JSONResponse) VisitSetChatProjectResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatProjectdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SetChatProjectdefaultJSONResponse) VisitSetChatProjectResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatRunnerRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Body    *SetChatRunnerJSONRequestBody
-}
-
-type SetChatRunnerResponseObject interface {
-	VisitSetChatRunnerResponse(w http.ResponseWriter) error
-}
-
-type SetChatRunner200JSONResponse Chat
-
-func (response SetChatRunner200JSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatRunner400JSONResponse struct{ ErrorJSONResponse }
-
-func (response SetChatRunner400JSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatRunner403JSONResponse Error
-
-func (response SetChatRunner403JSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatRunner404JSONResponse Error
-
-func (response SetChatRunner404JSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatRunner409JSONResponse Error
-
-func (response SetChatRunner409JSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatRunnerdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SetChatRunnerdefaultJSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatSettingsRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Body    *SetChatSettingsJSONRequestBody
-}
-
-type SetChatSettingsResponseObject interface {
-	VisitSetChatSettingsResponse(w http.ResponseWriter) error
-}
-
-type SetChatSettings200JSONResponse Chat
-
-func (response SetChatSettings200JSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatSettings400JSONResponse struct{ ErrorJSONResponse }
-
-func (response SetChatSettings400JSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatSettings403JSONResponse Error
-
-func (response SetChatSettings403JSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatSettings404JSONResponse Error
-
-func (response SetChatSettings404JSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatSettingsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SetChatSettingsdefaultJSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetBotIntegrationsRequestObject struct {
 	AgentId string `json:"agentId"`
 }
@@ -11797,6 +10151,1652 @@ type ListAgentRunnersdefaultJSONResponse struct {
 }
 
 func (response ListAgentRunnersdefaultJSONResponse) VisitListAgentRunnersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionsRequestObject struct {
+	AgentId string `json:"agentId"`
+}
+
+type ListSessionsResponseObject interface {
+	VisitListSessionsResponse(w http.ResponseWriter) error
+}
+
+type ListSessions200JSONResponse SessionList
+
+func (response ListSessions200JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessions404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListSessions404JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListSessionsdefaultJSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentSessionRequestObject struct {
+	AgentId string `json:"agentId"`
+}
+
+type CreateAgentSessionResponseObject interface {
+	VisitCreateAgentSessionResponse(w http.ResponseWriter) error
+}
+
+type CreateAgentSession201JSONResponse Session
+
+func (response CreateAgentSession201JSONResponse) VisitCreateAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentSession404JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateAgentSession404JSONResponse) VisitCreateAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateAgentSessiondefaultJSONResponse) VisitCreateAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMainSessionRequestObject struct {
+	AgentId string `json:"agentId"`
+}
+
+type GetMainSessionResponseObject interface {
+	VisitGetMainSessionResponse(w http.ResponseWriter) error
+}
+
+type GetMainSession200JSONResponse Session
+
+func (response GetMainSession200JSONResponse) VisitGetMainSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMainSession404JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetMainSession404JSONResponse) VisitGetMainSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMainSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetMainSessiondefaultJSONResponse) VisitGetMainSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+}
+
+type GetSessionResponseObject interface {
+	VisitGetSessionResponse(w http.ResponseWriter) error
+}
+
+type GetSession200JSONResponse Session
+
+func (response GetSession200JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSession404JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetSession404JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetSessiondefaultJSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AbortSessionRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	Params    AbortSessionParams
+}
+
+type AbortSessionResponseObject interface {
+	VisitAbortSessionResponse(w http.ResponseWriter) error
+}
+
+type AbortSession200JSONResponse Ok
+
+func (response AbortSession200JSONResponse) VisitAbortSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AbortSession400JSONResponse struct{ ErrorJSONResponse }
+
+func (response AbortSession400JSONResponse) VisitAbortSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AbortSession403JSONResponse Error
+
+func (response AbortSession403JSONResponse) VisitAbortSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AbortSession404JSONResponse Error
+
+func (response AbortSession404JSONResponse) VisitAbortSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AbortSession409JSONResponse Error
+
+func (response AbortSession409JSONResponse) VisitAbortSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AbortSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AbortSessiondefaultJSONResponse) VisitAbortSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveSessionRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+}
+
+type UnarchiveSessionResponseObject interface {
+	VisitUnarchiveSessionResponse(w http.ResponseWriter) error
+}
+
+type UnarchiveSession200JSONResponse Session
+
+func (response UnarchiveSession200JSONResponse) VisitUnarchiveSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveSession403JSONResponse struct{ ErrorJSONResponse }
+
+func (response UnarchiveSession403JSONResponse) VisitUnarchiveSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveSession404JSONResponse Error
+
+func (response UnarchiveSession404JSONResponse) VisitUnarchiveSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UnarchiveSessiondefaultJSONResponse) VisitUnarchiveSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveSessionRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+}
+
+type ArchiveSessionResponseObject interface {
+	VisitArchiveSessionResponse(w http.ResponseWriter) error
+}
+
+type ArchiveSession200JSONResponse Session
+
+func (response ArchiveSession200JSONResponse) VisitArchiveSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveSession403JSONResponse struct{ ErrorJSONResponse }
+
+func (response ArchiveSession403JSONResponse) VisitArchiveSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveSession404JSONResponse Error
+
+func (response ArchiveSession404JSONResponse) VisitArchiveSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ArchiveSessiondefaultJSONResponse) VisitArchiveSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearContextRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	Body      *ClearContextJSONRequestBody
+}
+
+type ClearContextResponseObject interface {
+	VisitClearContextResponse(w http.ResponseWriter) error
+}
+
+type ClearContext202JSONResponse SentMessage
+
+func (response ClearContext202JSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearContext400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ClearContext400JSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearContext403JSONResponse Error
+
+func (response ClearContext403JSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearContext404JSONResponse Error
+
+func (response ClearContext404JSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearContext409JSONResponse Error
+
+func (response ClearContext409JSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearContextdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ClearContextdefaultJSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompactSessionRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	Body      *CompactSessionJSONRequestBody
+}
+
+type CompactSessionResponseObject interface {
+	VisitCompactSessionResponse(w http.ResponseWriter) error
+}
+
+type CompactSession202Response struct {
+}
+
+func (response CompactSession202Response) VisitCompactSessionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type CompactSession400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CompactSession400JSONResponse) VisitCompactSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompactSession403JSONResponse Error
+
+func (response CompactSession403JSONResponse) VisitCompactSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompactSession404JSONResponse Error
+
+func (response CompactSession404JSONResponse) VisitCompactSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompactSession409JSONResponse Error
+
+func (response CompactSession409JSONResponse) VisitCompactSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompactSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CompactSessiondefaultJSONResponse) VisitCompactSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueSessionRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	Body      *ContinueSessionJSONRequestBody
+}
+
+type ContinueSessionResponseObject interface {
+	VisitContinueSessionResponse(w http.ResponseWriter) error
+}
+
+type ContinueSession202JSONResponse SentMessage
+
+func (response ContinueSession202JSONResponse) VisitContinueSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueSession400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ContinueSession400JSONResponse) VisitContinueSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueSession403JSONResponse Error
+
+func (response ContinueSession403JSONResponse) VisitContinueSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueSession404JSONResponse Error
+
+func (response ContinueSession404JSONResponse) VisitContinueSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueSession409JSONResponse Error
+
+func (response ContinueSession409JSONResponse) VisitContinueSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ContinueSessiondefaultJSONResponse) VisitContinueSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WatchSessionRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+}
+
+type WatchSessionResponseObject interface {
+	VisitWatchSessionResponse(w http.ResponseWriter) error
+}
+
+type WatchSession200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response WatchSession200TexteventStreamResponse) VisitWatchSessionResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type WatchSession404JSONResponse struct{ ErrorJSONResponse }
+
+func (response WatchSession404JSONResponse) VisitWatchSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkSessionRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	Body      *ForkSessionJSONRequestBody
+}
+
+type ForkSessionResponseObject interface {
+	VisitForkSessionResponse(w http.ResponseWriter) error
+}
+
+type ForkSession201JSONResponse struct {
+	SessionId int64 `json:"sessionId"`
+}
+
+func (response ForkSession201JSONResponse) VisitForkSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkSession400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ForkSession400JSONResponse) VisitForkSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkSession403JSONResponse Error
+
+func (response ForkSession403JSONResponse) VisitForkSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkSession404JSONResponse Error
+
+func (response ForkSession404JSONResponse) VisitForkSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkSession409JSONResponse Error
+
+func (response ForkSession409JSONResponse) VisitForkSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionHistoryRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	Params    GetSessionHistoryParams
+}
+
+type GetSessionHistoryResponseObject interface {
+	VisitGetSessionHistoryResponse(w http.ResponseWriter) error
+}
+
+type GetSessionHistory200JSONResponse HistoryPage
+
+func (response GetSessionHistory200JSONResponse) VisitGetSessionHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionHistory400JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetSessionHistory400JSONResponse) VisitGetSessionHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionHistory404JSONResponse Error
+
+func (response GetSessionHistory404JSONResponse) VisitGetSessionHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionHistorydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetSessionHistorydefaultJSONResponse) VisitGetSessionHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionItemRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	ItemId    string    `json:"itemId"`
+	Params    GetSessionItemParams
+}
+
+type GetSessionItemResponseObject interface {
+	VisitGetSessionItemResponse(w http.ResponseWriter) error
+}
+
+type GetSessionItem200JSONResponse Item
+
+func (t GetSessionItem200JSONResponse) MarshalJSON() ([]byte, error) {
+	return Item(t).MarshalJSON()
+}
+
+func (t *GetSessionItem200JSONResponse) UnmarshalJSON(b []byte) error {
+	return (*Item)(t).UnmarshalJSON(b)
+}
+
+func (response GetSessionItem200JSONResponse) VisitGetSessionItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionItem400JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetSessionItem400JSONResponse) VisitGetSessionItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionItem404JSONResponse Error
+
+func (response GetSessionItem404JSONResponse) VisitGetSessionItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionItemdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetSessionItemdefaultJSONResponse) VisitGetSessionItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendMessageRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	Body      *SendMessageJSONRequestBody
+}
+
+type SendMessageResponseObject interface {
+	VisitSendMessageResponse(w http.ResponseWriter) error
+}
+
+type SendMessage202JSONResponse SentMessage
+
+func (response SendMessage202JSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendMessage400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SendMessage400JSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendMessage403JSONResponse Error
+
+func (response SendMessage403JSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendMessage404JSONResponse Error
+
+func (response SendMessage404JSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendMessage409JSONResponse Error
+
+func (response SendMessage409JSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendMessagedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SendMessagedefaultJSONResponse) VisitSendMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawMessageRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	MessageId string    `json:"messageId"`
+}
+
+type WithdrawMessageResponseObject interface {
+	VisitWithdrawMessageResponse(w http.ResponseWriter) error
+}
+
+type WithdrawMessage200JSONResponse WithdrawnMessage
+
+func (response WithdrawMessage200JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawMessage403JSONResponse struct{ ErrorJSONResponse }
+
+func (response WithdrawMessage403JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawMessage404JSONResponse Error
+
+func (response WithdrawMessage404JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawMessage409JSONResponse Error
+
+func (response WithdrawMessage409JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawMessagedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response WithdrawMessagedefaultJSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionMonitorsRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+}
+
+type ListSessionMonitorsResponseObject interface {
+	VisitListSessionMonitorsResponse(w http.ResponseWriter) error
+}
+
+type ListSessionMonitors200JSONResponse MonitorList
+
+func (response ListSessionMonitors200JSONResponse) VisitListSessionMonitorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionMonitors404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListSessionMonitors404JSONResponse) VisitListSessionMonitorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionMonitorsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListSessionMonitorsdefaultJSONResponse) VisitListSessionMonitorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelSessionMonitorRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	MonitorId string    `json:"monitorId"`
+}
+
+type CancelSessionMonitorResponseObject interface {
+	VisitCancelSessionMonitorResponse(w http.ResponseWriter) error
+}
+
+type CancelSessionMonitor200JSONResponse Monitor
+
+func (response CancelSessionMonitor200JSONResponse) VisitCancelSessionMonitorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelSessionMonitor403JSONResponse struct{ ErrorJSONResponse }
+
+func (response CancelSessionMonitor403JSONResponse) VisitCancelSessionMonitorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelSessionMonitor404JSONResponse Error
+
+func (response CancelSessionMonitor404JSONResponse) VisitCancelSessionMonitorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelSessionMonitordefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CancelSessionMonitordefaultJSONResponse) VisitCancelSessionMonitorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionOutboxRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+}
+
+type ListSessionOutboxResponseObject interface {
+	VisitListSessionOutboxResponse(w http.ResponseWriter) error
+}
+
+type ListSessionOutbox200JSONResponse OutboxMessageList
+
+func (response ListSessionOutbox200JSONResponse) VisitListSessionOutboxResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionOutbox404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListSessionOutbox404JSONResponse) VisitListSessionOutboxResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionOutboxdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListSessionOutboxdefaultJSONResponse) VisitListSessionOutboxResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionProjectRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	Body      *SetSessionProjectJSONRequestBody
+}
+
+type SetSessionProjectResponseObject interface {
+	VisitSetSessionProjectResponse(w http.ResponseWriter) error
+}
+
+type SetSessionProject200JSONResponse Session
+
+func (response SetSessionProject200JSONResponse) VisitSetSessionProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionProject400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SetSessionProject400JSONResponse) VisitSetSessionProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionProject403JSONResponse Error
+
+func (response SetSessionProject403JSONResponse) VisitSetSessionProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionProject404JSONResponse Error
+
+func (response SetSessionProject404JSONResponse) VisitSetSessionProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionProjectdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetSessionProjectdefaultJSONResponse) VisitSetSessionProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionRunnerRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	Body      *SetSessionRunnerJSONRequestBody
+}
+
+type SetSessionRunnerResponseObject interface {
+	VisitSetSessionRunnerResponse(w http.ResponseWriter) error
+}
+
+type SetSessionRunner200JSONResponse Session
+
+func (response SetSessionRunner200JSONResponse) VisitSetSessionRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionRunner400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SetSessionRunner400JSONResponse) VisitSetSessionRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionRunner403JSONResponse Error
+
+func (response SetSessionRunner403JSONResponse) VisitSetSessionRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionRunner404JSONResponse Error
+
+func (response SetSessionRunner404JSONResponse) VisitSetSessionRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionRunner409JSONResponse Error
+
+func (response SetSessionRunner409JSONResponse) VisitSetSessionRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionRunnerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetSessionRunnerdefaultJSONResponse) VisitSetSessionRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionSettingsRequestObject struct {
+	AgentId   string    `json:"agentId"`
+	SessionId SessionId `json:"sessionId"`
+	Body      *SetSessionSettingsJSONRequestBody
+}
+
+type SetSessionSettingsResponseObject interface {
+	VisitSetSessionSettingsResponse(w http.ResponseWriter) error
+}
+
+type SetSessionSettings200JSONResponse Session
+
+func (response SetSessionSettings200JSONResponse) VisitSetSessionSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionSettings400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SetSessionSettings400JSONResponse) VisitSetSessionSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionSettings403JSONResponse Error
+
+func (response SetSessionSettings403JSONResponse) VisitSetSessionSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionSettings404JSONResponse Error
+
+func (response SetSessionSettings404JSONResponse) VisitSetSessionSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSessionSettingsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetSessionSettingsdefaultJSONResponse) VisitSetSessionSettingsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12422,7 +12422,7 @@ type ListDirectoriesResponseObject interface {
 	VisitListDirectoriesResponse(w http.ResponseWriter) error
 }
 
-type ListDirectories200JSONResponse chat.DirectoryListing
+type ListDirectories200JSONResponse session.DirectoryListing
 
 func (response ListDirectories200JSONResponse) VisitListDirectoriesResponse(w http.ResponseWriter) error {
 
@@ -15281,72 +15281,6 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/channels/wechat/login/{loginId}/poll)
 	PollWechatLogin(ctx context.Context, request PollWechatLoginRequestObject) (PollWechatLoginResponseObject, error)
 
-	// (GET /api/agents/{agentId}/chats)
-	ListChats(ctx context.Context, request ListChatsRequestObject) (ListChatsResponseObject, error)
-
-	// (POST /api/agents/{agentId}/chats)
-	CreateChat(ctx context.Context, request CreateChatRequestObject) (CreateChatResponseObject, error)
-
-	// (GET /api/agents/{agentId}/chats/main)
-	GetMainChat(ctx context.Context, request GetMainChatRequestObject) (GetMainChatResponseObject, error)
-
-	// (GET /api/agents/{agentId}/chats/{chatId})
-	GetChat(ctx context.Context, request GetChatRequestObject) (GetChatResponseObject, error)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/abort)
-	AbortChat(ctx context.Context, request AbortChatRequestObject) (AbortChatResponseObject, error)
-
-	// (DELETE /api/agents/{agentId}/chats/{chatId}/archive)
-	UnarchiveChat(ctx context.Context, request UnarchiveChatRequestObject) (UnarchiveChatResponseObject, error)
-
-	// (PUT /api/agents/{agentId}/chats/{chatId}/archive)
-	ArchiveChat(ctx context.Context, request ArchiveChatRequestObject) (ArchiveChatResponseObject, error)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/clear)
-	ClearContext(ctx context.Context, request ClearContextRequestObject) (ClearContextResponseObject, error)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/compact)
-	CompactChat(ctx context.Context, request CompactChatRequestObject) (CompactChatResponseObject, error)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/continue)
-	ContinueChat(ctx context.Context, request ContinueChatRequestObject) (ContinueChatResponseObject, error)
-
-	// (GET /api/agents/{agentId}/chats/{chatId}/events)
-	WatchChat(ctx context.Context, request WatchChatRequestObject) (WatchChatResponseObject, error)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/fork)
-	ForkChat(ctx context.Context, request ForkChatRequestObject) (ForkChatResponseObject, error)
-
-	// (GET /api/agents/{agentId}/chats/{chatId}/history)
-	GetChatHistory(ctx context.Context, request GetChatHistoryRequestObject) (GetChatHistoryResponseObject, error)
-
-	// (GET /api/agents/{agentId}/chats/{chatId}/items/{itemId})
-	GetChatItem(ctx context.Context, request GetChatItemRequestObject) (GetChatItemResponseObject, error)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/messages)
-	SendMessage(ctx context.Context, request SendMessageRequestObject) (SendMessageResponseObject, error)
-
-	// (POST /api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw)
-	WithdrawMessage(ctx context.Context, request WithdrawMessageRequestObject) (WithdrawMessageResponseObject, error)
-
-	// (GET /api/agents/{agentId}/chats/{chatId}/monitors)
-	ListChatMonitors(ctx context.Context, request ListChatMonitorsRequestObject) (ListChatMonitorsResponseObject, error)
-
-	// (DELETE /api/agents/{agentId}/chats/{chatId}/monitors/{monitorId})
-	CancelChatMonitor(ctx context.Context, request CancelChatMonitorRequestObject) (CancelChatMonitorResponseObject, error)
-
-	// (GET /api/agents/{agentId}/chats/{chatId}/outbox)
-	ListChatOutbox(ctx context.Context, request ListChatOutboxRequestObject) (ListChatOutboxResponseObject, error)
-
-	// (PUT /api/agents/{agentId}/chats/{chatId}/project)
-	SetChatProject(ctx context.Context, request SetChatProjectRequestObject) (SetChatProjectResponseObject, error)
-
-	// (PUT /api/agents/{agentId}/chats/{chatId}/runner)
-	SetChatRunner(ctx context.Context, request SetChatRunnerRequestObject) (SetChatRunnerResponseObject, error)
-
-	// (PUT /api/agents/{agentId}/chats/{chatId}/settings)
-	SetChatSettings(ctx context.Context, request SetChatSettingsRequestObject) (SetChatSettingsResponseObject, error)
-
 	// (GET /api/agents/{agentId}/integrations)
 	GetBotIntegrations(ctx context.Context, request GetBotIntegrationsRequestObject) (GetBotIntegrationsResponseObject, error)
 
@@ -15370,6 +15304,72 @@ type StrictServerInterface interface {
 
 	// (GET /api/agents/{agentId}/runners)
 	ListAgentRunners(ctx context.Context, request ListAgentRunnersRequestObject) (ListAgentRunnersResponseObject, error)
+
+	// (GET /api/agents/{agentId}/sessions)
+	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
+
+	// (POST /api/agents/{agentId}/sessions)
+	CreateAgentSession(ctx context.Context, request CreateAgentSessionRequestObject) (CreateAgentSessionResponseObject, error)
+
+	// (GET /api/agents/{agentId}/sessions/main)
+	GetMainSession(ctx context.Context, request GetMainSessionRequestObject) (GetMainSessionResponseObject, error)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId})
+	GetSession(ctx context.Context, request GetSessionRequestObject) (GetSessionResponseObject, error)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/abort)
+	AbortSession(ctx context.Context, request AbortSessionRequestObject) (AbortSessionResponseObject, error)
+
+	// (DELETE /api/agents/{agentId}/sessions/{sessionId}/archive)
+	UnarchiveSession(ctx context.Context, request UnarchiveSessionRequestObject) (UnarchiveSessionResponseObject, error)
+
+	// (PUT /api/agents/{agentId}/sessions/{sessionId}/archive)
+	ArchiveSession(ctx context.Context, request ArchiveSessionRequestObject) (ArchiveSessionResponseObject, error)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/clear)
+	ClearContext(ctx context.Context, request ClearContextRequestObject) (ClearContextResponseObject, error)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/compact)
+	CompactSession(ctx context.Context, request CompactSessionRequestObject) (CompactSessionResponseObject, error)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/continue)
+	ContinueSession(ctx context.Context, request ContinueSessionRequestObject) (ContinueSessionResponseObject, error)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId}/events)
+	WatchSession(ctx context.Context, request WatchSessionRequestObject) (WatchSessionResponseObject, error)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/fork)
+	ForkSession(ctx context.Context, request ForkSessionRequestObject) (ForkSessionResponseObject, error)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId}/history)
+	GetSessionHistory(ctx context.Context, request GetSessionHistoryRequestObject) (GetSessionHistoryResponseObject, error)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId}/items/{itemId})
+	GetSessionItem(ctx context.Context, request GetSessionItemRequestObject) (GetSessionItemResponseObject, error)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/messages)
+	SendMessage(ctx context.Context, request SendMessageRequestObject) (SendMessageResponseObject, error)
+
+	// (POST /api/agents/{agentId}/sessions/{sessionId}/messages/{messageId}/withdraw)
+	WithdrawMessage(ctx context.Context, request WithdrawMessageRequestObject) (WithdrawMessageResponseObject, error)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId}/monitors)
+	ListSessionMonitors(ctx context.Context, request ListSessionMonitorsRequestObject) (ListSessionMonitorsResponseObject, error)
+
+	// (DELETE /api/agents/{agentId}/sessions/{sessionId}/monitors/{monitorId})
+	CancelSessionMonitor(ctx context.Context, request CancelSessionMonitorRequestObject) (CancelSessionMonitorResponseObject, error)
+
+	// (GET /api/agents/{agentId}/sessions/{sessionId}/outbox)
+	ListSessionOutbox(ctx context.Context, request ListSessionOutboxRequestObject) (ListSessionOutboxResponseObject, error)
+
+	// (PUT /api/agents/{agentId}/sessions/{sessionId}/project)
+	SetSessionProject(ctx context.Context, request SetSessionProjectRequestObject) (SetSessionProjectResponseObject, error)
+
+	// (PUT /api/agents/{agentId}/sessions/{sessionId}/runner)
+	SetSessionRunner(ctx context.Context, request SetSessionRunnerRequestObject) (SetSessionRunnerResponseObject, error)
+
+	// (PUT /api/agents/{agentId}/sessions/{sessionId}/settings)
+	SetSessionSettings(ctx context.Context, request SetSessionSettingsRequestObject) (SetSessionSettingsResponseObject, error)
 
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(ctx context.Context, request CreateUploadRequestObject) (CreateUploadResponseObject, error)
@@ -16515,662 +16515,6 @@ func (sh *strictHandler) PollWechatLogin(w http.ResponseWriter, r *http.Request,
 	}
 }
 
-// ListChats operation middleware
-func (sh *strictHandler) ListChats(w http.ResponseWriter, r *http.Request, agentId string) {
-	var request ListChatsRequestObject
-
-	request.AgentId = agentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListChats(ctx, request.(ListChatsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListChats")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListChatsResponseObject); ok {
-		if err := validResponse.VisitListChatsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateChat operation middleware
-func (sh *strictHandler) CreateChat(w http.ResponseWriter, r *http.Request, agentId string) {
-	var request CreateChatRequestObject
-
-	request.AgentId = agentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateChat(ctx, request.(CreateChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CreateChatResponseObject); ok {
-		if err := validResponse.VisitCreateChatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetMainChat operation middleware
-func (sh *strictHandler) GetMainChat(w http.ResponseWriter, r *http.Request, agentId string) {
-	var request GetMainChatRequestObject
-
-	request.AgentId = agentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetMainChat(ctx, request.(GetMainChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetMainChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetMainChatResponseObject); ok {
-		if err := validResponse.VisitGetMainChatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetChat operation middleware
-func (sh *strictHandler) GetChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request GetChatRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetChat(ctx, request.(GetChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetChatResponseObject); ok {
-		if err := validResponse.VisitGetChatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// AbortChat operation middleware
-func (sh *strictHandler) AbortChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, params AbortChatParams) {
-	var request AbortChatRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.AbortChat(ctx, request.(AbortChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AbortChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(AbortChatResponseObject); ok {
-		if err := validResponse.VisitAbortChatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// UnarchiveChat operation middleware
-func (sh *strictHandler) UnarchiveChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request UnarchiveChatRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.UnarchiveChat(ctx, request.(UnarchiveChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "UnarchiveChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(UnarchiveChatResponseObject); ok {
-		if err := validResponse.VisitUnarchiveChatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ArchiveChat operation middleware
-func (sh *strictHandler) ArchiveChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request ArchiveChatRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ArchiveChat(ctx, request.(ArchiveChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ArchiveChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ArchiveChatResponseObject); ok {
-		if err := validResponse.VisitArchiveChatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ClearContext operation middleware
-func (sh *strictHandler) ClearContext(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request ClearContextRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	var body ClearContextJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ClearContext(ctx, request.(ClearContextRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ClearContext")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ClearContextResponseObject); ok {
-		if err := validResponse.VisitClearContextResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CompactChat operation middleware
-func (sh *strictHandler) CompactChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request CompactChatRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	var body CompactChatJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		if !errors.Is(err, io.EOF) {
-			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-			return
-		}
-	} else {
-		request.Body = &body
-	}
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CompactChat(ctx, request.(CompactChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CompactChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CompactChatResponseObject); ok {
-		if err := validResponse.VisitCompactChatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ContinueChat operation middleware
-func (sh *strictHandler) ContinueChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request ContinueChatRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	var body ContinueChatJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ContinueChat(ctx, request.(ContinueChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ContinueChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ContinueChatResponseObject); ok {
-		if err := validResponse.VisitContinueChatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// WatchChat operation middleware
-func (sh *strictHandler) WatchChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request WatchChatRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.WatchChat(ctx, request.(WatchChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "WatchChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(WatchChatResponseObject); ok {
-		if err := validResponse.VisitWatchChatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ForkChat operation middleware
-func (sh *strictHandler) ForkChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request ForkChatRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	var body ForkChatJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ForkChat(ctx, request.(ForkChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ForkChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ForkChatResponseObject); ok {
-		if err := validResponse.VisitForkChatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetChatHistory operation middleware
-func (sh *strictHandler) GetChatHistory(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, params GetChatHistoryParams) {
-	var request GetChatHistoryRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetChatHistory(ctx, request.(GetChatHistoryRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetChatHistory")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetChatHistoryResponseObject); ok {
-		if err := validResponse.VisitGetChatHistoryResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetChatItem operation middleware
-func (sh *strictHandler) GetChatItem(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, itemId string, params GetChatItemParams) {
-	var request GetChatItemRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-	request.ItemId = itemId
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetChatItem(ctx, request.(GetChatItemRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetChatItem")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetChatItemResponseObject); ok {
-		if err := validResponse.VisitGetChatItemResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SendMessage operation middleware
-func (sh *strictHandler) SendMessage(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request SendMessageRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	var body SendMessageJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SendMessage(ctx, request.(SendMessageRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SendMessage")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SendMessageResponseObject); ok {
-		if err := validResponse.VisitSendMessageResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// WithdrawMessage operation middleware
-func (sh *strictHandler) WithdrawMessage(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, messageId string) {
-	var request WithdrawMessageRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-	request.MessageId = messageId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.WithdrawMessage(ctx, request.(WithdrawMessageRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "WithdrawMessage")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(WithdrawMessageResponseObject); ok {
-		if err := validResponse.VisitWithdrawMessageResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListChatMonitors operation middleware
-func (sh *strictHandler) ListChatMonitors(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request ListChatMonitorsRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListChatMonitors(ctx, request.(ListChatMonitorsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListChatMonitors")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListChatMonitorsResponseObject); ok {
-		if err := validResponse.VisitListChatMonitorsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CancelChatMonitor operation middleware
-func (sh *strictHandler) CancelChatMonitor(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, monitorId string) {
-	var request CancelChatMonitorRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-	request.MonitorId = monitorId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CancelChatMonitor(ctx, request.(CancelChatMonitorRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CancelChatMonitor")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CancelChatMonitorResponseObject); ok {
-		if err := validResponse.VisitCancelChatMonitorResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListChatOutbox operation middleware
-func (sh *strictHandler) ListChatOutbox(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request ListChatOutboxRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListChatOutbox(ctx, request.(ListChatOutboxRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListChatOutbox")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListChatOutboxResponseObject); ok {
-		if err := validResponse.VisitListChatOutboxResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SetChatProject operation middleware
-func (sh *strictHandler) SetChatProject(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request SetChatProjectRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	var body SetChatProjectJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetChatProject(ctx, request.(SetChatProjectRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetChatProject")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetChatProjectResponseObject); ok {
-		if err := validResponse.VisitSetChatProjectResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SetChatRunner operation middleware
-func (sh *strictHandler) SetChatRunner(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request SetChatRunnerRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	var body SetChatRunnerJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetChatRunner(ctx, request.(SetChatRunnerRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetChatRunner")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetChatRunnerResponseObject); ok {
-		if err := validResponse.VisitSetChatRunnerResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SetChatSettings operation middleware
-func (sh *strictHandler) SetChatSettings(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request SetChatSettingsRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	var body SetChatSettingsJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetChatSettings(ctx, request.(SetChatSettingsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetChatSettings")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetChatSettingsResponseObject); ok {
-		if err := validResponse.VisitSetChatSettingsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // GetBotIntegrations operation middleware
 func (sh *strictHandler) GetBotIntegrations(w http.ResponseWriter, r *http.Request, agentId string) {
 	var request GetBotIntegrationsRequestObject
@@ -17388,6 +16732,662 @@ func (sh *strictHandler) ListAgentRunners(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListAgentRunnersResponseObject); ok {
 		if err := validResponse.VisitListAgentRunnersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSessions operation middleware
+func (sh *strictHandler) ListSessions(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request ListSessionsRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSessions(ctx, request.(ListSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSessionsResponseObject); ok {
+		if err := validResponse.VisitListSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAgentSession operation middleware
+func (sh *strictHandler) CreateAgentSession(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request CreateAgentSessionRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAgentSession(ctx, request.(CreateAgentSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAgentSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAgentSessionResponseObject); ok {
+		if err := validResponse.VisitCreateAgentSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMainSession operation middleware
+func (sh *strictHandler) GetMainSession(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request GetMainSessionRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMainSession(ctx, request.(GetMainSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMainSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMainSessionResponseObject); ok {
+		if err := validResponse.VisitGetMainSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSession operation middleware
+func (sh *strictHandler) GetSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request GetSessionRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSession(ctx, request.(GetSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSessionResponseObject); ok {
+		if err := validResponse.VisitGetSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AbortSession operation middleware
+func (sh *strictHandler) AbortSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId, params AbortSessionParams) {
+	var request AbortSessionRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AbortSession(ctx, request.(AbortSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AbortSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AbortSessionResponseObject); ok {
+		if err := validResponse.VisitAbortSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnarchiveSession operation middleware
+func (sh *strictHandler) UnarchiveSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request UnarchiveSessionRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnarchiveSession(ctx, request.(UnarchiveSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnarchiveSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnarchiveSessionResponseObject); ok {
+		if err := validResponse.VisitUnarchiveSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ArchiveSession operation middleware
+func (sh *strictHandler) ArchiveSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request ArchiveSessionRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ArchiveSession(ctx, request.(ArchiveSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ArchiveSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ArchiveSessionResponseObject); ok {
+		if err := validResponse.VisitArchiveSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClearContext operation middleware
+func (sh *strictHandler) ClearContext(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request ClearContextRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	var body ClearContextJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearContext(ctx, request.(ClearContextRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearContext")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClearContextResponseObject); ok {
+		if err := validResponse.VisitClearContextResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompactSession operation middleware
+func (sh *strictHandler) CompactSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request CompactSessionRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	var body CompactSessionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompactSession(ctx, request.(CompactSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompactSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompactSessionResponseObject); ok {
+		if err := validResponse.VisitCompactSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ContinueSession operation middleware
+func (sh *strictHandler) ContinueSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request ContinueSessionRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	var body ContinueSessionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ContinueSession(ctx, request.(ContinueSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ContinueSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ContinueSessionResponseObject); ok {
+		if err := validResponse.VisitContinueSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// WatchSession operation middleware
+func (sh *strictHandler) WatchSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request WatchSessionRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.WatchSession(ctx, request.(WatchSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "WatchSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(WatchSessionResponseObject); ok {
+		if err := validResponse.VisitWatchSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ForkSession operation middleware
+func (sh *strictHandler) ForkSession(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request ForkSessionRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	var body ForkSessionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ForkSession(ctx, request.(ForkSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ForkSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ForkSessionResponseObject); ok {
+		if err := validResponse.VisitForkSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSessionHistory operation middleware
+func (sh *strictHandler) GetSessionHistory(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId, params GetSessionHistoryParams) {
+	var request GetSessionHistoryRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSessionHistory(ctx, request.(GetSessionHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSessionHistory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSessionHistoryResponseObject); ok {
+		if err := validResponse.VisitGetSessionHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSessionItem operation middleware
+func (sh *strictHandler) GetSessionItem(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId, itemId string, params GetSessionItemParams) {
+	var request GetSessionItemRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+	request.ItemId = itemId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSessionItem(ctx, request.(GetSessionItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSessionItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSessionItemResponseObject); ok {
+		if err := validResponse.VisitGetSessionItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendMessage operation middleware
+func (sh *strictHandler) SendMessage(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request SendMessageRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	var body SendMessageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendMessage(ctx, request.(SendMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendMessageResponseObject); ok {
+		if err := validResponse.VisitSendMessageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// WithdrawMessage operation middleware
+func (sh *strictHandler) WithdrawMessage(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId, messageId string) {
+	var request WithdrawMessageRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+	request.MessageId = messageId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.WithdrawMessage(ctx, request.(WithdrawMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "WithdrawMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(WithdrawMessageResponseObject); ok {
+		if err := validResponse.VisitWithdrawMessageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSessionMonitors operation middleware
+func (sh *strictHandler) ListSessionMonitors(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request ListSessionMonitorsRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSessionMonitors(ctx, request.(ListSessionMonitorsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSessionMonitors")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSessionMonitorsResponseObject); ok {
+		if err := validResponse.VisitListSessionMonitorsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelSessionMonitor operation middleware
+func (sh *strictHandler) CancelSessionMonitor(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId, monitorId string) {
+	var request CancelSessionMonitorRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+	request.MonitorId = monitorId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelSessionMonitor(ctx, request.(CancelSessionMonitorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelSessionMonitor")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelSessionMonitorResponseObject); ok {
+		if err := validResponse.VisitCancelSessionMonitorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSessionOutbox operation middleware
+func (sh *strictHandler) ListSessionOutbox(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request ListSessionOutboxRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSessionOutbox(ctx, request.(ListSessionOutboxRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSessionOutbox")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSessionOutboxResponseObject); ok {
+		if err := validResponse.VisitListSessionOutboxResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetSessionProject operation middleware
+func (sh *strictHandler) SetSessionProject(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request SetSessionProjectRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	var body SetSessionProjectJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetSessionProject(ctx, request.(SetSessionProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetSessionProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetSessionProjectResponseObject); ok {
+		if err := validResponse.VisitSetSessionProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetSessionRunner operation middleware
+func (sh *strictHandler) SetSessionRunner(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request SetSessionRunnerRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	var body SetSessionRunnerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetSessionRunner(ctx, request.(SetSessionRunnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetSessionRunner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetSessionRunnerResponseObject); ok {
+		if err := validResponse.VisitSetSessionRunnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetSessionSettings operation middleware
+func (sh *strictHandler) SetSessionSettings(w http.ResponseWriter, r *http.Request, agentId string, sessionId SessionId) {
+	var request SetSessionSettingsRequestObject
+
+	request.AgentId = agentId
+	request.SessionId = sessionId
+
+	var body SetSessionSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetSessionSettings(ctx, request.(SetSessionSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetSessionSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetSessionSettingsResponseObject); ok {
+		if err := validResponse.VisitSetSessionSettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

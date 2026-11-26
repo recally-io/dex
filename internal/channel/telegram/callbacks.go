@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/session"
 )
 
 type callbackQuery struct {
@@ -67,7 +67,7 @@ func (b *Bot) receiveCallback(ctx context.Context, query *callbackQuery) error {
 	accepted := false
 	id, valid := b.callbackID(query.Data)
 	if valid {
-		identity := chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(query.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10)}
+		identity := session.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(query.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10)}
 		peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
 		var err error
 		accepted, err = b.chats.ClaimTelegramCallback(ctx, id, peer, strconv.FormatInt(m.ID, 10), identity)

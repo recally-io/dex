@@ -19,8 +19,8 @@ func TestUserMainReadsATaskAlertWithoutExternalText(t *testing.T) {
 	deliverGitHub(t, d, secret, "issue-1", "issues", issue)
 
 	// Then Main runs one turn for the Task wake. The model sees only Task pointers.
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 	w := d.watch(t, main.ID)
 	var answer item
 	w.until(t, "the answer to the Task alert", func(tr *transcript) bool {

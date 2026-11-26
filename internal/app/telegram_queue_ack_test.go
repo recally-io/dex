@@ -18,7 +18,7 @@ func TestUserTelegramQueuedAcknowledgementRetriesWhileWaiting(t *testing.T) {
 	f.reactGate = gate
 	d := startTelegram(t, f, data, 42)
 	d.setModel(t, "bash")
-	d.send(t, d.mainChat(t), taskGate(t, data, "earlier"))
+	d.send(t, d.mainSession(t), taskGate(t, data, "earlier"))
 	waitTaskFile(t, filepath.Join(data, "earlier.pid"))
 
 	// When Telegram sends the input and then repeats the update.
@@ -66,7 +66,7 @@ func TestUserTelegramQueuedAcknowledgementSkipsRetryAfterTurnStarts(t *testing.T
 	f.reactGate = gate
 	d := startTelegram(t, f, data, 42)
 	d.setModel(t, "bash")
-	d.send(t, d.mainChat(t), taskGate(t, data, "earlier"))
+	d.send(t, d.mainSession(t), taskGate(t, data, "earlier"))
 	waitTaskFile(t, filepath.Join(data, "earlier.pid"))
 	started := time.Now()
 	f.message(1, 42, 42, taskGate(t, data, "incoming"))

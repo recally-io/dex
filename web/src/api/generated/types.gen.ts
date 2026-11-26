@@ -57,7 +57,7 @@ export type TaskSummary = {
 };
 
 export type TaskSession = {
-    conversationId: number;
+    sessionId: number;
     agentId: string;
     agentName: string;
     title: string;
@@ -230,7 +230,7 @@ export type TaskQuestion = {
     options: Array<string>;
     queued: boolean;
     agentId: string;
-    conversationId: number;
+    sessionId: number;
 };
 
 export type TaskEvent = {
@@ -377,10 +377,10 @@ export type AgentRunners = {
     }>;
 };
 
-export type Chat = {
+export type Session = {
     id: number;
     /**
-     * External channel chats are read-only in the web UI.
+     * External channel sessions are read-only in the web UI.
      */
     channel: 'web' | 'telegram' | 'wechat' | 'feishu' | 'automation';
     /**
@@ -388,11 +388,11 @@ export type Chat = {
      */
     main: boolean;
     /**
-     * The web cannot send messages to this chat now. A child session is writable at any time.
+     * The web cannot send messages to this session now. A child session is writable at any time.
      */
     readOnly: boolean;
     /**
-     * The automation that created the chat.
+     * The automation that created the session.
      */
     automationId?: string;
     /**
@@ -400,26 +400,26 @@ export type Chat = {
      */
     cwd: string;
     /**
-     * The Runner that the Chat selects: "local" or a registered Runner ID. An empty value follows the default Runner of the agent.
+     * The Runner that the Session selects: "local" or a registered Runner ID. An empty value follows the default Runner of the agent.
      */
     runnerId?: string;
     title: string;
     createdAt: number;
     /**
-     * Latest activity time, in Unix milliseconds. Includes conversation creation, and input creation and settlement.
+     * Latest activity time, in Unix milliseconds. Includes session creation, and input creation and settlement.
      */
     updatedAt: number;
     /**
-     * True while a message of the chat has no answer yet.
+     * True while a message of the session has no answer yet.
      */
     busy: boolean;
     /**
-     * When the user archived this Chat session, in Unix milliseconds. Absent when the session is not archived.
+     * When the user archived this session, in Unix milliseconds. Absent when the session is not archived.
      */
     archivedAt?: number;
-    settings: ChatSettings;
-    question?: ChatQuestion;
-    forkedFrom?: ChatOrigin;
+    settings: SessionSettings;
+    question?: SessionQuestion;
+    forkedFrom?: SessionOrigin;
     /**
      * The session that created this child session. Absent on any other session.
      */
@@ -455,26 +455,26 @@ export type Chat = {
 };
 
 /**
- * The session that a Chat was forked from. Only on a single chat.
+ * The session that a Session was forked from. Only on a single session.
  */
-export type ChatOrigin = {
+export type SessionOrigin = {
     id: number;
     title: string;
     main: boolean;
 };
 
 /**
- * The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
+ * The settings that a session overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
  *
  */
-export type ChatSettings = {
+export type SessionSettings = {
     provider?: string;
     modelId?: string;
     thinkingLevel?: ThinkingLevel;
 };
 
-export type ChatList = {
-    chats: Array<Chat>;
+export type SessionList = {
+    sessions: Array<Session>;
 };
 
 export type MessageInput = {
@@ -501,7 +501,7 @@ export type MessageInput = {
      */
     answersQuestionId?: string;
     /**
-     * What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
+     * What happens when the agent is already working in this session. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the session is idle.
      *
      */
     mode?: 'followUp' | 'steer' | 'reject';
@@ -511,7 +511,7 @@ export type MessageInput = {
  * The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
  *
  */
-export type ChatQuestion = {
+export type SessionQuestion = {
     id: string;
     text: string;
     options: Array<string>;
@@ -623,16 +623,16 @@ export type AutomationInput = {
     schedule: Schedule;
     timeZone: string;
     /**
-     * New starts a new chat each run. Reuse uses one dedicated chat. Session sends a follow-up to an existing chat and uses its Runner and directory.
+     * New starts a new session each run. Reuse uses one dedicated session. Session sends a follow-up to an existing session and uses its Runner and directory.
      */
     session: 'new' | 'reuse' | 'session';
     /**
      * Required in session mode. Absent if the saved target was deleted.
      */
-    targetConversationId?: number;
+    targetSessionId?: number;
     enabled: boolean;
     /**
-     * Local or an SSH Machine ID for the runs. An empty value follows the bot's Runner. A run never uses another Runner: when this one was removed, the run is skipped with a reason. A reused chat that ran on another Runner stays readable, and the run starts a new chat. An update can keep a removed Runner.
+     * Local or an SSH Machine ID for the runs. An empty value follows the bot's Runner. A run never uses another Runner: when this one was removed, the run is skipped with a reason. A reused session that ran on another Runner stays readable, and the run starts a new session. An update can keep a removed Runner.
      *
      */
     runnerId?: string;
@@ -692,7 +692,7 @@ export type BoardAttentionAutomation = {
     agentId: string;
     name: string;
     setup: boolean;
-    targetConversationId?: number;
+    targetSessionId?: number;
 };
 
 export type AutomationResultSummary = {
@@ -700,7 +700,7 @@ export type AutomationResultSummary = {
     agentId: string;
     automationId: string;
     automationName: string;
-    chatId: number;
+    sessionId: number;
     outcome: 'changed' | 'failed';
     summary: string;
     createdAt: number;
@@ -762,7 +762,7 @@ export type AutomationRun = {
      * Why Dex could not queue a notification for this run, if applicable.
      */
     notificationNote?: string;
-    chatId?: number;
+    sessionId?: number;
     /**
      * The Runner on which the run started. Empty for a run with no message, and for a run from before Dex stored it.
      */
@@ -944,7 +944,7 @@ export type ThinkingItem = {
      */
     text: string;
     /**
-     * True when text holds only the first line of a long thought. getChatItem returns all of it.
+     * True when text holds only the first line of a long thought. getSessionItem returns all of it.
      *
      */
     truncated?: boolean;
@@ -963,7 +963,7 @@ export type ToolItem = {
     };
     output: string;
     /**
-     * True when output is empty because it is long. getChatItem returns it.
+     * True when output is empty because it is long. getSessionItem returns it.
      *
      */
     truncated?: boolean;
@@ -1019,7 +1019,7 @@ export type Retry = {
     reason: string;
 };
 
-export type ChatEvent = ({
+export type SessionEvent = ({
     type: 'snapshot';
 } & SnapshotEvent) | ({
     type: 'item';
@@ -1047,11 +1047,11 @@ export type NotificationsEvent = {
 };
 
 /**
- * Current state of this chat or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
+ * Current state of this session or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
  */
 export type ChildEvent = {
     type: 'child';
-    chatId: number;
+    sessionId: number;
     agentId: string;
     state: 'waiting' | 'running' | 'idle' | 'unavailable';
 };
@@ -1466,7 +1466,7 @@ export type Skill = {
     name: string;
     description: string;
     /**
-     * A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the conversation's cwd.
+     * A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the session's cwd.
      *
      */
     scope: 'dex' | 'agent' | 'project';
@@ -1798,7 +1798,7 @@ export type AgentId = string;
 
 export type AutomationId = string;
 
-export type ChatId = number;
+export type SessionId = number;
 
 export type RunnerId = string;
 
@@ -4679,16 +4679,16 @@ export type ResetAgentRunnerResponses = {
 
 export type ResetAgentRunnerResponse = ResetAgentRunnerResponses[keyof ResetAgentRunnerResponses];
 
-export type GetMainChatData = {
+export type GetMainSessionData = {
     body?: never;
     path: {
         agentId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/main';
+    url: '/api/agents/{agentId}/sessions/main';
 };
 
-export type GetMainChatErrors = {
+export type GetMainSessionErrors = {
     /**
      * The request failed.
      */
@@ -4699,27 +4699,27 @@ export type GetMainChatErrors = {
     default: Error;
 };
 
-export type GetMainChatError = GetMainChatErrors[keyof GetMainChatErrors];
+export type GetMainSessionError = GetMainSessionErrors[keyof GetMainSessionErrors];
 
-export type GetMainChatResponses = {
+export type GetMainSessionResponses = {
     /**
      * The main timeline.
      */
-    200: Chat;
+    200: Session;
 };
 
-export type GetMainChatResponse = GetMainChatResponses[keyof GetMainChatResponses];
+export type GetMainSessionResponse = GetMainSessionResponses[keyof GetMainSessionResponses];
 
-export type ListChatsData = {
+export type ListSessionsData = {
     body?: never;
     path: {
         agentId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats';
+    url: '/api/agents/{agentId}/sessions';
 };
 
-export type ListChatsErrors = {
+export type ListSessionsErrors = {
     /**
      * The request failed.
      */
@@ -4730,27 +4730,27 @@ export type ListChatsErrors = {
     default: Error;
 };
 
-export type ListChatsError = ListChatsErrors[keyof ListChatsErrors];
+export type ListSessionsError = ListSessionsErrors[keyof ListSessionsErrors];
 
-export type ListChatsResponses = {
+export type ListSessionsResponses = {
     /**
      * The sessions.
      */
-    200: ChatList;
+    200: SessionList;
 };
 
-export type ListChatsResponse = ListChatsResponses[keyof ListChatsResponses];
+export type ListSessionsResponse = ListSessionsResponses[keyof ListSessionsResponses];
 
-export type CreateChatData = {
+export type CreateAgentSessionData = {
     body?: never;
     path: {
         agentId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats';
+    url: '/api/agents/{agentId}/sessions';
 };
 
-export type CreateChatErrors = {
+export type CreateAgentSessionErrors = {
     /**
      * The request failed.
      */
@@ -4761,28 +4761,28 @@ export type CreateChatErrors = {
     default: Error;
 };
 
-export type CreateChatError = CreateChatErrors[keyof CreateChatErrors];
+export type CreateAgentSessionError = CreateAgentSessionErrors[keyof CreateAgentSessionErrors];
 
-export type CreateChatResponses = {
+export type CreateAgentSessionResponses = {
     /**
-     * The new or reused Chat session.
+     * The new or reused session.
      */
-    201: Chat;
+    201: Session;
 };
 
-export type CreateChatResponse = CreateChatResponses[keyof CreateChatResponses];
+export type CreateAgentSessionResponse = CreateAgentSessionResponses[keyof CreateAgentSessionResponses];
 
-export type GetChatData = {
+export type GetSessionData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}';
+    url: '/api/agents/{agentId}/sessions/{sessionId}';
 };
 
-export type GetChatErrors = {
+export type GetSessionErrors = {
     /**
      * The request failed.
      */
@@ -4793,28 +4793,28 @@ export type GetChatErrors = {
     default: Error;
 };
 
-export type GetChatError = GetChatErrors[keyof GetChatErrors];
+export type GetSessionError = GetSessionErrors[keyof GetSessionErrors];
 
-export type GetChatResponses = {
+export type GetSessionResponses = {
     /**
-     * The chat.
+     * The session.
      */
-    200: Chat;
+    200: Session;
 };
 
-export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
+export type GetSessionResponse = GetSessionResponses[keyof GetSessionResponses];
 
-export type UnarchiveChatData = {
+export type UnarchiveSessionData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/archive';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/archive';
 };
 
-export type UnarchiveChatErrors = {
+export type UnarchiveSessionErrors = {
     /**
      * The request failed.
      */
@@ -4829,28 +4829,28 @@ export type UnarchiveChatErrors = {
     default: Error;
 };
 
-export type UnarchiveChatError = UnarchiveChatErrors[keyof UnarchiveChatErrors];
+export type UnarchiveSessionError = UnarchiveSessionErrors[keyof UnarchiveSessionErrors];
 
-export type UnarchiveChatResponses = {
+export type UnarchiveSessionResponses = {
     /**
-     * The restored chat.
+     * The restored session.
      */
-    200: Chat;
+    200: Session;
 };
 
-export type UnarchiveChatResponse = UnarchiveChatResponses[keyof UnarchiveChatResponses];
+export type UnarchiveSessionResponse = UnarchiveSessionResponses[keyof UnarchiveSessionResponses];
 
-export type ArchiveChatData = {
+export type ArchiveSessionData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/archive';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/archive';
 };
 
-export type ArchiveChatErrors = {
+export type ArchiveSessionErrors = {
     /**
      * The request failed.
      */
@@ -4865,16 +4865,16 @@ export type ArchiveChatErrors = {
     default: Error;
 };
 
-export type ArchiveChatError = ArchiveChatErrors[keyof ArchiveChatErrors];
+export type ArchiveSessionError = ArchiveSessionErrors[keyof ArchiveSessionErrors];
 
-export type ArchiveChatResponses = {
+export type ArchiveSessionResponses = {
     /**
-     * The archived chat.
+     * The archived session.
      */
-    200: Chat;
+    200: Session;
 };
 
-export type ArchiveChatResponse = ArchiveChatResponses[keyof ArchiveChatResponses];
+export type ArchiveSessionResponse = ArchiveSessionResponses[keyof ArchiveSessionResponses];
 
 export type ListDirectoriesData = {
     body?: never;
@@ -4960,19 +4960,19 @@ export type ListRecentProjectsResponses = {
 
 export type ListRecentProjectsResponse = ListRecentProjectsResponses[keyof ListRecentProjectsResponses];
 
-export type SetChatRunnerData = {
+export type SetSessionRunnerData = {
     body: {
         runnerId: string;
     };
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/runner';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/runner';
 };
 
-export type SetChatRunnerErrors = {
+export type SetSessionRunnerErrors = {
     /**
      * The request failed.
      */
@@ -4995,30 +4995,30 @@ export type SetChatRunnerErrors = {
     default: Error;
 };
 
-export type SetChatRunnerError = SetChatRunnerErrors[keyof SetChatRunnerErrors];
+export type SetSessionRunnerError = SetSessionRunnerErrors[keyof SetSessionRunnerErrors];
 
-export type SetChatRunnerResponses = {
+export type SetSessionRunnerResponses = {
     /**
-     * The Chat session with its Runner selection.
+     * The session with its Runner selection.
      */
-    200: Chat;
+    200: Session;
 };
 
-export type SetChatRunnerResponse = SetChatRunnerResponses[keyof SetChatRunnerResponses];
+export type SetSessionRunnerResponse = SetSessionRunnerResponses[keyof SetSessionRunnerResponses];
 
-export type SetChatProjectData = {
+export type SetSessionProjectData = {
     body: {
         cwd: string;
     };
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/project';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/project';
 };
 
-export type SetChatProjectErrors = {
+export type SetSessionProjectErrors = {
     /**
      * The request failed.
      */
@@ -5037,28 +5037,28 @@ export type SetChatProjectErrors = {
     default: Error;
 };
 
-export type SetChatProjectError = SetChatProjectErrors[keyof SetChatProjectErrors];
+export type SetSessionProjectError = SetSessionProjectErrors[keyof SetSessionProjectErrors];
 
-export type SetChatProjectResponses = {
+export type SetSessionProjectResponses = {
     /**
-     * The Chat session with its saved project directory.
+     * The session with its saved project directory.
      */
-    200: Chat;
+    200: Session;
 };
 
-export type SetChatProjectResponse = SetChatProjectResponses[keyof SetChatProjectResponses];
+export type SetSessionProjectResponse = SetSessionProjectResponses[keyof SetSessionProjectResponses];
 
-export type SetChatSettingsData = {
-    body: ChatSettings;
+export type SetSessionSettingsData = {
+    body: SessionSettings;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/settings';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/settings';
 };
 
-export type SetChatSettingsErrors = {
+export type SetSessionSettingsErrors = {
     /**
      * The request failed.
      */
@@ -5077,25 +5077,25 @@ export type SetChatSettingsErrors = {
     default: Error;
 };
 
-export type SetChatSettingsError = SetChatSettingsErrors[keyof SetChatSettingsErrors];
+export type SetSessionSettingsError = SetSessionSettingsErrors[keyof SetSessionSettingsErrors];
 
-export type SetChatSettingsResponses = {
+export type SetSessionSettingsResponses = {
     /**
      * Saved.
      */
-    200: Chat;
+    200: Session;
 };
 
-export type SetChatSettingsResponse = SetChatSettingsResponses[keyof SetChatSettingsResponses];
+export type SetSessionSettingsResponse = SetSessionSettingsResponses[keyof SetSessionSettingsResponses];
 
 export type SendMessageData = {
     body: MessageInput;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/messages';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/messages';
 };
 
 export type SendMessageErrors = {
@@ -5136,11 +5136,11 @@ export type WithdrawMessageData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
         messageId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/messages/{messageId}/withdraw';
 };
 
 export type WithdrawMessageErrors = {
@@ -5187,10 +5187,10 @@ export type ClearContextData = {
     };
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/clear';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/clear';
 };
 
 export type ClearContextErrors = {
@@ -5227,7 +5227,7 @@ export type ClearContextResponses = {
 
 export type ClearContextResponse = ClearContextResponses[keyof ClearContextResponses];
 
-export type ContinueChatData = {
+export type ContinueSessionData = {
     body: {
         /**
          * A stable client UUID for this continue.
@@ -5236,13 +5236,13 @@ export type ContinueChatData = {
     };
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/continue';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/continue';
 };
 
-export type ContinueChatErrors = {
+export type ContinueSessionErrors = {
     /**
      * The request failed.
      */
@@ -5265,18 +5265,18 @@ export type ContinueChatErrors = {
     default: Error;
 };
 
-export type ContinueChatError = ContinueChatErrors[keyof ContinueChatErrors];
+export type ContinueSessionError = ContinueSessionErrors[keyof ContinueSessionErrors];
 
-export type ContinueChatResponses = {
+export type ContinueSessionResponses = {
     /**
      * The run started.
      */
     202: SentMessage;
 };
 
-export type ContinueChatResponse = ContinueChatResponses[keyof ContinueChatResponses];
+export type ContinueSessionResponse = ContinueSessionResponses[keyof ContinueSessionResponses];
 
-export type ForkChatData = {
+export type ForkSessionData = {
     body: {
         /**
          * Optional client UUID for safe retries.
@@ -5288,19 +5288,19 @@ export type ForkChatData = {
          */
         before?: boolean;
         /**
-         * The Runner of the new Chat.
+         * The Runner of the new Session.
          */
         runnerId?: string;
     };
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/fork';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/fork';
 };
 
-export type ForkChatErrors = {
+export type ForkSessionErrors = {
     /**
      * The request failed.
      */
@@ -5319,20 +5319,20 @@ export type ForkChatErrors = {
     409: Error;
 };
 
-export type ForkChatError = ForkChatErrors[keyof ForkChatErrors];
+export type ForkSessionError = ForkSessionErrors[keyof ForkSessionErrors];
 
-export type ForkChatResponses = {
+export type ForkSessionResponses = {
     /**
-     * The new Chat.
+     * The new Session.
      */
     201: {
-        chatId: number;
+        sessionId: number;
     };
 };
 
-export type ForkChatResponse = ForkChatResponses[keyof ForkChatResponses];
+export type ForkSessionResponse = ForkSessionResponses[keyof ForkSessionResponses];
 
-export type CompactChatData = {
+export type CompactSessionData = {
     body?: {
         /**
          * Optional client UUID for safe retries.
@@ -5345,13 +5345,13 @@ export type CompactChatData = {
     };
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/compact';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/compact';
 };
 
-export type CompactChatErrors = {
+export type CompactSessionErrors = {
     /**
      * The request failed.
      */
@@ -5374,30 +5374,30 @@ export type CompactChatErrors = {
     default: Error;
 };
 
-export type CompactChatError = CompactChatErrors[keyof CompactChatErrors];
+export type CompactSessionError = CompactSessionErrors[keyof CompactSessionErrors];
 
-export type CompactChatResponses = {
+export type CompactSessionResponses = {
     /**
      * The compaction started.
      */
     202: unknown;
 };
 
-export type GetChatHistoryData = {
+export type GetSessionHistoryData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: {
         before?: number;
         beforeNotification?: string;
         limit?: number;
     };
-    url: '/api/agents/{agentId}/chats/{chatId}/history';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/history';
 };
 
-export type GetChatHistoryErrors = {
+export type GetSessionHistoryErrors = {
     /**
      * The request failed.
      */
@@ -5412,22 +5412,22 @@ export type GetChatHistoryErrors = {
     default: Error;
 };
 
-export type GetChatHistoryError = GetChatHistoryErrors[keyof GetChatHistoryErrors];
+export type GetSessionHistoryError = GetSessionHistoryErrors[keyof GetSessionHistoryErrors];
 
-export type GetChatHistoryResponses = {
+export type GetSessionHistoryResponses = {
     /**
      * A history page. An absent cursor means that source has no more entries.
      */
     200: HistoryPage;
 };
 
-export type GetChatHistoryResponse = GetChatHistoryResponses[keyof GetChatHistoryResponses];
+export type GetSessionHistoryResponse = GetSessionHistoryResponses[keyof GetSessionHistoryResponses];
 
-export type GetChatItemData = {
+export type GetSessionItemData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
         itemId: string;
     };
     query: {
@@ -5436,10 +5436,10 @@ export type GetChatItemData = {
          */
         entry: number;
     };
-    url: '/api/agents/{agentId}/chats/{chatId}/items/{itemId}';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/items/{itemId}';
 };
 
-export type GetChatItemErrors = {
+export type GetSessionItemErrors = {
     /**
      * The request failed.
      */
@@ -5454,22 +5454,22 @@ export type GetChatItemErrors = {
     default: Error;
 };
 
-export type GetChatItemError = GetChatItemErrors[keyof GetChatItemErrors];
+export type GetSessionItemError = GetSessionItemErrors[keyof GetSessionItemErrors];
 
-export type GetChatItemResponses = {
+export type GetSessionItemResponses = {
     /**
      * The full item.
      */
     200: Item;
 };
 
-export type GetChatItemResponse = GetChatItemResponses[keyof GetChatItemResponses];
+export type GetSessionItemResponse = GetSessionItemResponses[keyof GetSessionItemResponses];
 
-export type AbortChatData = {
+export type AbortSessionData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: {
         /**
@@ -5477,10 +5477,10 @@ export type AbortChatData = {
          */
         runTarget?: string;
     };
-    url: '/api/agents/{agentId}/chats/{chatId}/abort';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/abort';
 };
 
-export type AbortChatErrors = {
+export type AbortSessionErrors = {
     /**
      * The request failed.
      */
@@ -5503,28 +5503,28 @@ export type AbortChatErrors = {
     default: Error;
 };
 
-export type AbortChatError = AbortChatErrors[keyof AbortChatErrors];
+export type AbortSessionError = AbortSessionErrors[keyof AbortSessionErrors];
 
-export type AbortChatResponses = {
+export type AbortSessionResponses = {
     /**
      * Cancellation is requested.
      */
     200: Ok;
 };
 
-export type AbortChatResponse = AbortChatResponses[keyof AbortChatResponses];
+export type AbortSessionResponse = AbortSessionResponses[keyof AbortSessionResponses];
 
-export type ListChatMonitorsData = {
+export type ListSessionMonitorsData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/monitors';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/monitors';
 };
 
-export type ListChatMonitorsErrors = {
+export type ListSessionMonitorsErrors = {
     /**
      * The request failed.
      */
@@ -5535,29 +5535,29 @@ export type ListChatMonitorsErrors = {
     default: Error;
 };
 
-export type ListChatMonitorsError = ListChatMonitorsErrors[keyof ListChatMonitorsErrors];
+export type ListSessionMonitorsError = ListSessionMonitorsErrors[keyof ListSessionMonitorsErrors];
 
-export type ListChatMonitorsResponses = {
+export type ListSessionMonitorsResponses = {
     /**
      * Follow-up monitors ordered with scheduled monitors first.
      */
     200: MonitorList;
 };
 
-export type ListChatMonitorsResponse = ListChatMonitorsResponses[keyof ListChatMonitorsResponses];
+export type ListSessionMonitorsResponse = ListSessionMonitorsResponses[keyof ListSessionMonitorsResponses];
 
-export type CancelChatMonitorData = {
+export type CancelSessionMonitorData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
         monitorId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/monitors/{monitorId}';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/monitors/{monitorId}';
 };
 
-export type CancelChatMonitorErrors = {
+export type CancelSessionMonitorErrors = {
     /**
      * The request failed.
      */
@@ -5572,28 +5572,28 @@ export type CancelChatMonitorErrors = {
     default: Error;
 };
 
-export type CancelChatMonitorError = CancelChatMonitorErrors[keyof CancelChatMonitorErrors];
+export type CancelSessionMonitorError = CancelSessionMonitorErrors[keyof CancelSessionMonitorErrors];
 
-export type CancelChatMonitorResponses = {
+export type CancelSessionMonitorResponses = {
     /**
      * The updated monitor record.
      */
     200: Monitor;
 };
 
-export type CancelChatMonitorResponse = CancelChatMonitorResponses[keyof CancelChatMonitorResponses];
+export type CancelSessionMonitorResponse = CancelSessionMonitorResponses[keyof CancelSessionMonitorResponses];
 
-export type ListChatOutboxData = {
+export type ListSessionOutboxData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/outbox';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/outbox';
 };
 
-export type ListChatOutboxErrors = {
+export type ListSessionOutboxErrors = {
     /**
      * The request failed.
      */
@@ -5604,44 +5604,44 @@ export type ListChatOutboxErrors = {
     default: Error;
 };
 
-export type ListChatOutboxError = ListChatOutboxErrors[keyof ListChatOutboxErrors];
+export type ListSessionOutboxError = ListSessionOutboxErrors[keyof ListSessionOutboxErrors];
 
-export type ListChatOutboxResponses = {
+export type ListSessionOutboxResponses = {
     /**
      * Recent outbox messages, newest first.
      */
     200: OutboxMessageList;
 };
 
-export type ListChatOutboxResponse = ListChatOutboxResponses[keyof ListChatOutboxResponses];
+export type ListSessionOutboxResponse = ListSessionOutboxResponses[keyof ListSessionOutboxResponses];
 
-export type WatchChatData = {
+export type WatchSessionData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
+        sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/events';
+    url: '/api/agents/{agentId}/sessions/{sessionId}/events';
 };
 
-export type WatchChatErrors = {
+export type WatchSessionErrors = {
     /**
      * The request failed.
      */
     404: Error;
 };
 
-export type WatchChatError = WatchChatErrors[keyof WatchChatErrors];
+export type WatchSessionError = WatchSessionErrors[keyof WatchSessionErrors];
 
-export type WatchChatResponses = {
+export type WatchSessionResponses = {
     /**
      * The event stream.
      */
-    200: ChatEvent;
+    200: SessionEvent;
 };
 
-export type WatchChatResponse = WatchChatResponses[keyof WatchChatResponses];
+export type WatchSessionResponse = WatchSessionResponses[keyof WatchSessionResponses];
 
 export type CreateUploadData = {
     body: {

@@ -14,7 +14,7 @@ func TestUserManagesHostSkillsFromTwoRunners(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "tool")
-	// Given a connected runner and a chat of the default bot.
+	// Given a connected runner and a session of the default bot.
 	start := func(name string) (*machine, int64) {
 		t.Helper()
 		m := addMachine(t, d, name)
@@ -33,14 +33,14 @@ func TestUserManagesHostSkillsFromTwoRunners(t *testing.T) {
 				return err
 			})
 		})
-		chat := d.newSession(t).ID
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", chat), map[string]string{"runnerId": m.envID}, nil)
-		return m, chat
+		session := d.newSession(t).ID
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", session), map[string]string{"runnerId": m.envID}, nil)
+		return m, session
 	}
-	first, chat := start("First machine")
-	call := func(chat int64, tool string, args map[string]any) string {
+	first, session := start("First machine")
+	call := func(session int64, tool string, args map[string]any) string {
 		t.Helper()
-		return taskTurn(t, d, chat, tool+" "+taskJSON(t, args))
+		return taskTurn(t, d, session, tool+" "+taskJSON(t, args))
 	}
 	description := "---\nname: deploy\ndescription: Deploy from a runner\n---\nDeploy.\n"
 	writeAndRun := fmt.Sprintf(`
@@ -56,7 +56,7 @@ if (printf unwanted > ./unwanted) 2>/dev/null; then exit 7; fi
 printf script-ran
 `))
 	// When one script writes files and runs the executable without another prompt render.
-	answer := call(chat, "codemode", map[string]any{"code": writeAndRun})
+	answer := call(session, "codemode", map[string]any{"code": writeAndRun})
 	mirror := filepath.Join(first.botWorkspace("default"), ".dex", "skills", "agent", "deploy")
 	if !strings.Contains(answer, "script-ran") || !strings.Contains(answer, filepath.Join(mirror, "SKILL.md")) {
 		t.Fatalf("write and execute in one code mode script from %s: %s", mirror, answer)
@@ -65,9 +65,9 @@ printf script-ran
 	if data, err := os.ReadFile(filepath.Join(store, "deploy", "SKILL.md")); err != nil || string(data) != description {
 		t.Fatalf("control host SKILL.md = %q, %v", data, err)
 	}
-	eventually(t, "one skill commit for the chat", func() (bool, any) {
+	eventually(t, "one skill commit for the session", func() (bool, any) {
 		out, err := exec.CommandContext(t.Context(), "git", "-C", store, "log", "--format=%s").CombinedOutput()
-		return strings.TrimSpace(string(out)) == fmt.Sprintf("Update skills from dex:default/chat/%d", chat) && err == nil, string(out)
+		return strings.TrimSpace(string(out)) == fmt.Sprintf("Update skills from dex:default/chat/%d", session) && err == nil, string(out)
 	})
 
 	// Then the other lease sees the skill on its next request.
@@ -77,14 +77,14 @@ printf script-ran
 		t.Fatal(got)
 	}
 	for _, target := range []string{filepath.Join(store, "deploy", "SKILL.md"), filepath.Join(mirror, "SKILL.md")} {
-		if got := call(chat, "write", map[string]any{"path": target, "content": "must fail"}); !strings.Contains(got, "skill_*") {
+		if got := call(session, "write", map[string]any{"path": target, "content": "must fail"}); !strings.Contains(got, "skill_*") {
 			t.Fatal(got)
 		}
-		if got := call(chat, "edit", map[string]any{"path": target, "edits": []map[string]string{{"oldText": "Deploy.", "newText": "must fail"}}}); !strings.Contains(got, "skill_*") {
+		if got := call(session, "edit", map[string]any{"path": target, "edits": []map[string]string{{"oldText": "Deploy.", "newText": "must fail"}}}); !strings.Contains(got, "skill_*") {
 			t.Fatal(got)
 		}
 	}
-	if got := call(chat, "skill_edit", map[string]any{"path": "agent/deploy/SKILL.md", "edits": []map[string]string{{"oldText": "not present", "newText": "must fail"}}}); !strings.HasPrefix(got, "tool error:") {
+	if got := call(session, "skill_edit", map[string]any{"path": "agent/deploy/SKILL.md", "edits": []map[string]string{{"oldText": "not present", "newText": "must fail"}}}); !strings.HasPrefix(got, "tool error:") {
 		t.Fatal(got)
 	}
 
@@ -108,10 +108,10 @@ printf script-ran
 	if err := os.Symlink("SKILL.md", filepath.Join(source, "alias.md")); err != nil {
 		t.Fatal(err)
 	}
-	if got := call(chat, "skill_import", map[string]any{"path": source, "level": "dex"}); !strings.HasSuffix(got, "/dex/example") {
+	if got := call(session, "skill_import", map[string]any{"path": source, "level": "dex"}); !strings.HasSuffix(got, "/dex/example") {
 		t.Fatal(got)
 	}
-	if got := call(chat, "skill_list", map[string]any{}); !strings.Contains(got, "example/external") || !strings.Contains(got, `"overrides":true`) {
+	if got := call(session, "skill_list", map[string]any{}); !strings.Contains(got, "example/external") || !strings.Contains(got, `"overrides":true`) {
 		t.Fatal(got)
 	}
 	secondModule := filepath.Join(second.botWorkspace("default"), ".dex", "skills", "dex", "example", "node_modules", "pkg", "index.js")
@@ -130,10 +130,10 @@ printf script-ran
 			}
 		}
 	}
-	if got := call(chat, "bash", map[string]any{"command": `test -z "$SKILL_FILE_ONLY" && cat .dex/cache/skills/deploy/value`}); got != "tool: cached" {
+	if got := call(session, "bash", map[string]any{"command": `test -z "$SKILL_FILE_ONLY" && cat .dex/cache/skills/deploy/value`}); got != "tool: cached" {
 		t.Fatal(got)
 	}
-	if got := call(chat, "skill_delete", map[string]any{"path": "agent/deploy"}); !strings.HasSuffix(got, "/agent/deploy") {
+	if got := call(session, "skill_delete", map[string]any{"path": "agent/deploy"}); !strings.HasSuffix(got, "/agent/deploy") {
 		t.Fatal(got)
 	}
 	if _, err := os.Stat(mirror); !os.IsNotExist(err) {

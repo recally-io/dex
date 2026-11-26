@@ -20,9 +20,9 @@ func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 	for _, stmt := range []string{
 		`INSERT INTO agents (id,name,model_provider,model_id,created_at) VALUES ('default','Dex','faux','echo',1),('other','Other','faux','echo',1)`,
-		`INSERT INTO conversations (id,agent_id,channel_key,created_at) VALUES (1,'default','main',1),(2,'other','main',1)`,
+		`INSERT INTO sessions (id,agent_id,channel_key,created_at) VALUES (1,'default','main',1),(2,'other','main',1)`,
 		`WITH RECURSIVE history(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM history WHERE n<10000)
-		INSERT INTO submissions (id,conversation_id,content,status,answer,created_at,origin)
+		INSERT INTO submissions (id,session_id,content,status,answer,created_at,origin)
 		SELECT 'history-'||n,1,'old input','done','old answer',1,
 		CASE WHEN n%3=0 THEN 'telegram:7' ELSE 'web' END FROM history`,
 	} {
@@ -66,7 +66,7 @@ func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
 
 	// Then the pending count includes only the exact peer and agent.
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO submissions
-		(id,conversation_id,content,status,created_at,origin,kind) VALUES
+		(id,session_id,content,status,created_at,origin,kind) VALUES
 		('pending',1,'wait','pending',1,'telegram:7','message'),
 		('near-peer',1,'wait','pending',1,'telegram:70','message'),
 		('other-pending',2,'wait','pending',1,'telegram:7','message'),
@@ -90,11 +90,11 @@ func TestUserTelegramPendingResetDoesNotHoldFollowingReply(t *testing.T) {
 	if _, err := conn.ExecContext(ctx, `
 INSERT INTO agents (id, name, model_provider, model_id, created_at) VALUES ('bot', 'Bot', '', '', 1);
 INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('bot', '123:fixture', '42');
-INSERT INTO conversations (id, agent_id, channel_key, created_at) VALUES (1, 'bot', 'main', 1);
-INSERT INTO submissions (id, conversation_id, content, status, origin, created_at) VALUES
+INSERT INTO sessions (id, agent_id, channel_key, created_at) VALUES (1, 'bot', 'main', 1);
+INSERT INTO submissions (id, session_id, content, status, origin, created_at) VALUES
   ('earlier', 1, 'input', 'pending', 'telegram:42', 1),
   ('later', 1, 'input', 'done', 'telegram:42', 2);
-INSERT INTO outbox_messages (id, event_id, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, body, created_at)
+INSERT INTO outbox_messages (id, event_id, agent_id, session_id, source_submission_id, kind, peer, channel_context, body, created_at)
 VALUES ('reply', 'reply:later', 'bot', 1, 'later', 'reply', 'telegram:42', '{"accountId":"123","senderId":"42"}', 'answer', 2);`); err != nil {
 		t.Fatal(err)
 	}

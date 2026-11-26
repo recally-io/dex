@@ -35,23 +35,23 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 		if strings.HasPrefix(key, "task:") {
 			parent = 100
 		}
-		if _, err := conn.ExecContext(t.Context(), "INSERT INTO conversations (id,agent_id,channel_key,parent_id,created_at) VALUES (?,'default',?,?,1)", id, key, parent); err != nil {
+		if _, err := conn.ExecContext(t.Context(), "INSERT INTO sessions (id,agent_id,channel_key,parent_id,created_at) VALUES (?,'default',?,?,1)", id, key, parent); err != nil {
 			t.Fatal(err)
 		}
 		kind := "message"
 		if key == "chat:empty" {
 			kind = "session_result"
 		}
-		if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions (id,conversation_id,content,status,created_at,kind) VALUES (?,?,'fixture','pending',1,?)", fmt.Sprint(id), id, kind); err != nil {
+		if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions (id,session_id,content,status,created_at,kind) VALUES (?,?,'fixture','pending',1,?)", fmt.Sprint(id), id, kind); err != nil {
 			t.Fatal(err)
 		}
 	}
-	// A session with a pending input counts, and so does a child session. Two inputs in a Chat count once.
+	// A session with a pending input counts, and so does a child session. Two inputs in a Session count once.
 	for _, stmt := range []string{
-		"UPDATE submissions SET status='done' WHERE conversation_id=103",
+		"UPDATE submissions SET status='done' WHERE session_id=103",
 		// A finished task has settled its own input. A pending input there would be a continuation.
-		"UPDATE submissions SET status='done' WHERE conversation_id IN (105,106,107,108)",
-		"INSERT INTO submissions (id,conversation_id,content,status,created_at) VALUES ('second-input',101,'second','pending',2)",
+		"UPDATE submissions SET status='done' WHERE session_id IN (105,106,107,108)",
+		"INSERT INTO submissions (id,session_id,content,status,created_at) VALUES ('second-input',101,'second','pending',2)",
 	} {
 		if _, err := conn.ExecContext(t.Context(), stmt); err != nil {
 			t.Fatal(err)
@@ -59,18 +59,18 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 	}
 	// A finished child session that holds a pending user message is active again.
 	for _, stmt := range []string{
-		"INSERT INTO conversations (id,agent_id,channel_key,parent_id,created_at) VALUES (300,'default','chat:continued',100,1)",
-		"INSERT INTO submissions (id,conversation_id,content,status,created_at,kind) VALUES ('300',300,'goal','done',1,'message')",
-		"INSERT INTO submissions (id,conversation_id,content,status,created_at,kind) VALUES ('continuation',300,'reply','pending',2,'message')",
+		"INSERT INTO sessions (id,agent_id,channel_key,parent_id,created_at) VALUES (300,'default','chat:continued',100,1)",
+		"INSERT INTO submissions (id,session_id,content,status,created_at,kind) VALUES ('300',300,'goal','done',1,'message')",
+		"INSERT INTO submissions (id,session_id,content,status,created_at,kind) VALUES ('continuation',300,'reply','pending',2,'message')",
 	} {
 		if _, err := conn.ExecContext(t.Context(), stmt); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := conn.ExecContext(t.Context(), "INSERT INTO conversations (id,agent_id,channel_key,created_at) VALUES (200,?,'chat:B',1)", b.ID); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO sessions (id,agent_id,channel_key,created_at) VALUES (200,?,'chat:B',1)", b.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions (id,conversation_id,content,status,created_at) VALUES ('B-input',200,'B','pending',1)"); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions (id,session_id,content,status,created_at) VALUES ('B-input',200,'B','pending',1)"); err != nil {
 		t.Fatal(err)
 	}
 	for i, agent := range []string{"default", "default", "default", b.ID} {
@@ -103,13 +103,13 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 			t.Fatalf("agent %s activity=%+v want=%+v", agent.ID, agent.Activity, want[agent.ID])
 		}
 		var sessions struct {
-			Chats []struct {
+			Sessions []struct {
 				Busy bool `json:"busy"`
-			} `json:"chats"`
+			} `json:"sessions"`
 		}
-		d.must(t, http.MethodGet, "/api/agents/"+agent.ID+"/chats", nil, &sessions)
+		d.must(t, http.MethodGet, "/api/agents/"+agent.ID+"/sessions", nil, &sessions)
 		var active int64
-		for _, session := range sessions.Chats {
+		for _, session := range sessions.Sessions {
 			if session.Busy {
 				active++
 			}

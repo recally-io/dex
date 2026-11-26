@@ -11,7 +11,7 @@ import type {
   TaskSummary,
 } from "../api/generated/types.gen";
 import { getTask, reviewTask, sendMessage } from "../api/generated/sdk.gen";
-import { errorText, refreshBoardAttention, refreshChats } from "../lib/queries";
+import { errorText, refreshBoardAttention, refreshSessions } from "../lib/queries";
 import {
   automationResultsOptions,
   useContinueResult,
@@ -85,13 +85,13 @@ function shortTime(timestamp: number) {
 
 export function QuestionRow({
   agent,
-  chat,
+  session,
   questionId,
   text,
   options,
 }: {
   agent: { id: string; name: string };
-  chat: BoardAttentionSession;
+  session: BoardAttentionSession;
   questionId: string;
   text: string;
   options: string[];
@@ -99,11 +99,11 @@ export function QuestionRow({
   const answer = useMutation({
     mutationFn: (choice: string) =>
       sendMessage({
-        path: { agentId: agent.id, chatId: chat.id },
+        path: { agentId: agent.id, sessionId: session.id },
         body: { id: newId(), text: choice, answersQuestionId: questionId },
         throwOnError: true,
       }),
-    onSuccess: () => Promise.all([refreshBoardAttention(), refreshChats(agent.id)]),
+    onSuccess: () => Promise.all([refreshBoardAttention(), refreshSessions(agent.id)]),
   });
 
   const uniqueOptions = Array.from(new Set(options));
@@ -116,7 +116,7 @@ export function QuestionRow({
         <div className="min-w-0 flex-1">
           <p className="whitespace-pre-wrap break-words text-[14px] font-medium text-foreground">{text}</p>
           <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-            {agent.name} · {chat.main ? "Main" : chat.title || "Session"}
+            {agent.name} · {session.main ? "Main" : session.title || "Session"}
           </p>
         </div>
       </div>
@@ -132,7 +132,7 @@ export function QuestionRow({
             {choice}
           </Button>
         ))}
-        {chat.main ? (
+        {session.main ? (
           <Link
             className={buttonVariants({ variant: "ghost", size: "sm" })}
             to="/a/$agentId"
@@ -143,8 +143,8 @@ export function QuestionRow({
         ) : (
           <Link
             className={buttonVariants({ variant: "ghost", size: "sm" })}
-            to="/a/$agentId/c/$chatId"
-            params={{ agentId: agent.id, chatId: String(chat.id) }}
+            to="/a/$agentId/s/$sessionId"
+            params={{ agentId: agent.id, sessionId: String(session.id) }}
           >
             Open session
           </Link>
@@ -330,7 +330,7 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
             <Button size="sm" disabled={busy} onClick={dismissGroup}>
               {group.runs.length > 1 ? `Done (${group.runs.length})` : "Done"}
             </Button>
-            {latest.chatId ? (
+            {latest.sessionId ? (
               <Button
                 size="sm"
                 variant="secondary"
@@ -340,10 +340,10 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
                 Continue in session
               </Button>
             ) : null}
-            {latest.chatId ? (
+            {latest.sessionId ? (
               <Link
-                to="/a/$agentId/c/$chatId"
-                params={{ agentId: latest.agentId, chatId: String(latest.chatId) }}
+                to="/a/$agentId/s/$sessionId"
+                params={{ agentId: latest.agentId, sessionId: String(latest.sessionId) }}
                 className={buttonVariants({ variant: "ghost", size: "sm" })}
               >
                 Run transcript
@@ -477,7 +477,7 @@ function BoardResultDetail({
             >
               Done
             </Button>
-            {item.chatId ? (
+            {item.sessionId ? (
               <Button
                 variant="secondary"
                 onClick={() => next.mutate({ result: item })}
@@ -486,10 +486,10 @@ function BoardResultDetail({
                 Continue in session
               </Button>
             ) : null}
-            {item.chatId ? (
+            {item.sessionId ? (
               <Link
-                to="/a/$agentId/c/$chatId"
-                params={{ agentId: item.agentId, chatId: String(item.chatId) }}
+                to="/a/$agentId/s/$sessionId"
+                params={{ agentId: item.agentId, sessionId: String(item.sessionId) }}
                 className={buttonVariants({ variant: "ghost" })}
               >
                 Run transcript

@@ -2,8 +2,8 @@ import { useEffect } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Archive, MessageCircle } from "lucide-react";
-import type { Chat } from "../api/generated/types.gen";
-import { listAgentsOptions, listChatsOptions } from "../api/generated/@tanstack/react-query.gen";
+import type { Session } from "../api/generated/types.gen";
+import { listAgentsOptions, listSessionsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { sessionAgentId } from "../lib/sessions";
 import { AgentAvatar } from "./agent-avatar";
 import { Failure } from "./feedback";
@@ -34,7 +34,7 @@ export function SearchDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {open ? (
         <DialogContent showCloseButton={false} className="gap-0 overflow-hidden p-0 sm:max-w-lg">
-          <DialogTitle className="sr-only">Search bots and conversations</DialogTitle>
+          <DialogTitle className="sr-only">Search bots and sessions</DialogTitle>
           <DialogDescription className="sr-only">Search bot names and conversation titles.</DialogDescription>
           <SearchResults close={() => onOpenChange(false)} />
         </DialogContent>
@@ -48,43 +48,39 @@ function SearchResults({ close }: { close: () => void }) {
   const agents = useQuery(listAgentsOptions());
   const bots = agents.data?.agents ?? [];
 
-  // Lists include archived chats and cross-bot children. Load only while search is open.
+  // Lists include archived sessions and cross-bot children. Load only while search is open.
   const lists = useQueries({
     queries: bots.map((agent) => ({
-      ...listChatsOptions({ path: { agentId: agent.id! } }),
+      ...listSessionsOptions({ path: { agentId: agent.id! } }),
       staleTime: 30_000,
     })),
   });
 
-  const conversations = new Map<string, { chat: Chat; agentId: string; name: string }>();
+  const sessions = new Map<string, { session: Session; agentId: string; name: string }>();
 
   lists.forEach((list, index) => {
     const bot = bots[index]!;
 
-    for (const chat of list.data?.chats ?? []) {
-      const agentId = sessionAgentId(chat, bot.id!);
-      const name = bots.find((agent) => agent.id === agentId)?.name ?? chat.agentName ?? bot.name;
-      conversations.set(`${agentId}/${chat.id}`, { chat, agentId, name });
+    for (const session of list.data?.sessions ?? []) {
+      const agentId = sessionAgentId(session, bot.id!);
+      const name = bots.find((agent) => agent.id === agentId)?.name ?? session.agentName ?? bot.name;
+      sessions.set(`${agentId}/${session.id}`, { session, agentId, name });
     }
   });
 
-  const sorted = [...conversations.values()].sort(
-    (a, b) => b.chat.updatedAt - a.chat.updatedAt || b.chat.id - a.chat.id,
+  const sorted = [...sessions.values()].sort(
+    (a, b) => b.session.updatedAt - a.session.updatedAt || b.session.id - a.session.id,
   );
 
   const loading = agents.isPending || lists.some((list) => list.isPending);
 
   return (
     <Command>
-      <CommandInput
-        autoFocus
-        aria-label="Search bots and conversations"
-        placeholder="Search bots and conversations…"
-      />
+      <CommandInput autoFocus aria-label="Search bots and sessions" placeholder="Search bots and sessions…" />
       <CommandList className="max-h-[min(360px,60dvh)] p-1">
         {loading ? (
           <p role="status" className="p-2 text-xs text-muted-foreground">
-            Loading conversations…
+            Loading sessions…
           </p>
         ) : (
           <CommandEmpty>No matches.</CommandEmpty>
@@ -106,23 +102,26 @@ function SearchResults({ close }: { close: () => void }) {
             </CommandItem>
           ))}
         </CommandGroup>
-        <CommandGroup heading="Conversations">
-          {sorted.map(({ chat, agentId, name }) => (
+        <CommandGroup heading="Sessions">
+          {sorted.map(({ session, agentId, name }) => (
             <CommandItem
-              key={`${agentId}/${chat.id}`}
-              value={`chat/${agentId}/${chat.id}`}
-              keywords={[chat.title || "New session", name]}
+              key={`${agentId}/${session.id}`}
+              value={`session/${agentId}/${session.id}`}
+              keywords={[session.title || "New session", name]}
               onSelect={() => {
                 close();
-                void navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chat.id) } });
+                void navigate({
+                  to: "/a/$agentId/s/$sessionId",
+                  params: { agentId, sessionId: String(session.id) },
+                });
               }}
             >
               <MessageCircle />
-              <span className="min-w-0 flex-1 truncate" title={chat.title}>
-                {chat.title || "New session"}
+              <span className="min-w-0 flex-1 truncate" title={session.title}>
+                {session.title || "New session"}
               </span>
               <span className="max-w-24 truncate text-muted-foreground">{name}</span>
-              {chat.archivedAt ? (
+              {session.archivedAt ? (
                 <Archive aria-label="Archived conversation" className="text-muted-foreground" />
               ) : null}
             </CommandItem>
@@ -136,7 +135,7 @@ function SearchResults({ close }: { close: () => void }) {
         list.isError ? (
           <Failure
             key={bots[index]!.id}
-            title={`Could not load conversations of ${bots[index]!.name}`}
+            title={`Could not load sessions of ${bots[index]!.name}`}
             error={list.error}
             retry={() => void list.refetch()}
           />

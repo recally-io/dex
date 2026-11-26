@@ -43,8 +43,8 @@ func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
 	}
 	deliverGitHubStatus(t, d, secret, "review-1", "pull_request_review", `{}`, http.StatusNotFound)
 	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret}, nil, http.StatusNotFound)
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 	got := taskTool(t, d, main.ID, "task_link_github_pull", map[string]any{"id": task.Id, "repositoryId": 10, "pullNumber": 3})
 	t.Logf("artifact: tool call=%s", got)
 	if !strings.Contains(got, "Tool task_link_github_pull is not available") {

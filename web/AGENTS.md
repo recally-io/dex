@@ -25,16 +25,17 @@ Run `mise run build:web` to build it separately.
 
 Each page in `src/routes/` reads the API only. The app keeps no settings in
 `localStorage`. It stores only browser choices there: the theme (`dex-theme`),
-the open or closed Context panel of a chat (`dex-context`), the bot rail
+the open or closed Context panel of a session (`dex-context`), the bot rail
 (`dex-sidebar`), and the Sessions sidebar (`dex-chats`). Automation result read
 and dismissed state live in `control.sqlite`, not browser storage. The unsaved agent instructions are in
 memory (`src/lib/app-state.tsx`), so a draft stays when the user opens another page, and a reload discards it.
 `src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
 agent first, so a model change does not overwrite the instructions.
 Main defaults to the Bot's model and thinking level. The composer offers model
-overrides in writable Chats, including child Sessions. Main and Chats can
-select a project directory.
-New session sends `POST /api/agents/{agentId}/chats` with no request body.
+overrides in writable sessions, including child sessions. These sessions and
+Main can select a project directory.
+New session sends `POST /api/agents/{agentId}/sessions` with no request body.
+A session detail page uses `/a/$agentId/s/$sessionId`. The former `/c/` route has no redirect.
 When a registered Runner exists, a session with no messages shows Local and
 the registered Runners (`GET /api/agents/{agentId}/runners`). Offline Runners are visible
 but disabled. The project picker lists folders on the chosen Runner. After
@@ -111,7 +112,7 @@ The panel shows the Monitor mode, attempt limit, and latest outcome. The user
 can cancel an active Monitor in a writable session. Monitor creation uses the
 session tool, not this panel.
 
-Main and Chat display explicit Web-origin notifications in their
+Main and Web sessions display explicit Web-origin notifications in their
 transcripts. The client merges the live notification pages and older pages by
 notification ID. The native transcript and notifications have separate cursors;
 **Show earlier messages** loads both. Channel and Automation delivery records stay

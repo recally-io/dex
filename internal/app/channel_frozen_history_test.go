@@ -12,14 +12,14 @@ func TestUserResumesFrozenFeishuTextAtTheSameDestination(t *testing.T) {
 	f := newFakeFeishu(t)
 	d := startFeishu(t, f, data)
 	pairFeishu(t, d, f)
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	d.stop()
 
 	// Given a stored text part, independent of the current Part writer.
 	const frozen = `{"text":"Frozen plain text"}`
 	conn := controlWriteDB(t, data)
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO outbox_messages
-		(id, event_id, agent_id, conversation_id, kind, peer, channel_context, body, rendered_message, created_at)
+		(id, event_id, agent_id, session_id, kind, peer, channel_context, body, rendered_message, created_at)
         VALUES ('history-text', 'history-text', 'default', ?, 'proactive', 'feishu:owner', '{"accountId":"app"}', 'Do not render this text', ?, 1)`, main, frozen); err != nil {
 		t.Fatal(err)
 	}

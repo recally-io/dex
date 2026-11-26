@@ -17,7 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import type { Attachment, Item, Retry, TimelineNotification, ToolItem } from "../../api/generated/types.gen";
-import { getChatItemOptions } from "../../api/generated/@tanstack/react-query.gen";
+import { getSessionItemOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { formatSize, isImage } from "../../lib/attachments";
 import {
   blocks,
@@ -31,7 +31,7 @@ import {
 } from "../../lib/tools";
 import { markdownOptions } from "../../lib/markdown";
 import { strongText } from "../../lib/strong";
-import { isQueued, isTurnStart, retryMessage } from "../../lib/chat-state";
+import { isQueued, isTurnStart, retryMessage } from "../../lib/session-state";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -186,8 +186,8 @@ function Trace({ children }: { children: ReactNode }) {
 const outputBox =
   "overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-[12px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]";
 
-// The chat of the transcript, to load a step that the server truncated.
-const TranscriptChat = createContext(0);
+// The session of the transcript, to load a step that the server truncated.
+const TranscriptSession = createContext(0);
 
 /**
  * The server leaves out a long tool output or thought until its step opens. A committed item does
@@ -195,13 +195,13 @@ const TranscriptChat = createContext(0);
  */
 function useFull<T extends Step>(step: T) {
   const agentId = useAgentId();
-  const chatId = useContext(TranscriptChat);
+  const sessionId = useContext(TranscriptSession);
 
-  const enabled = !!step.truncated && !!step.entryId && chatId > 0;
+  const enabled = !!step.truncated && !!step.entryId && sessionId > 0;
 
   const full = useQuery({
-    ...getChatItemOptions({
-      path: { agentId, chatId, itemId: step.id },
+    ...getSessionItemOptions({
+      path: { agentId, sessionId, itemId: step.id },
       query: { entry: step.entryId ?? 0 },
     }),
     enabled,
@@ -437,7 +437,7 @@ function StepsRow({
   );
 }
 
-// With other runners, Fork from here asks where the new chat runs.
+// With other runners, Fork from here asks where the new session runs.
 function ForkAction({ actions, entryId }: { actions: MessageActions; entryId: number }) {
   const targets = actions.forkTargets ?? [];
 
@@ -587,7 +587,7 @@ function splitAnswer(text: string): { question: string; answer: string } | null 
 }
 
 /** Edit and Remove for messages that wait in the native queue. */
-/** Starts a new Chat from a message. before ends the copy just before the entry; text prefills the new composer. */
+/** Starts a new Session from a message. before ends the copy just before the entry; text prefills the new composer. */
 export type MessageActions = {
   pending: boolean;
   /** Environments other than the current one that a fork can move to. */
@@ -922,7 +922,7 @@ function retryable(items: Item[], index: number) {
 }
 
 export function Transcript({
-  chatId,
+  sessionId,
   items,
   running,
   retry,
@@ -932,7 +932,7 @@ export function Transcript({
   messageActions,
   notifications,
 }: {
-  chatId: number;
+  sessionId: number;
   notifications?: TimelineNotification[];
   items: Item[];
   running: boolean;
@@ -1004,7 +1004,7 @@ export function Transcript({
 
   for (const notice of notifications?.slice(next) ?? []) rows.push(notificationRow(notice));
 
-  return <TranscriptChat.Provider value={chatId}>{rows}</TranscriptChat.Provider>;
+  return <TranscriptSession.Provider value={sessionId}>{rows}</TranscriptSession.Provider>;
 }
 
 function notificationRow(notice: TimelineNotification) {

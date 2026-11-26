@@ -28,29 +28,29 @@ import (
 // of the real service. getUpdates returns every queued update with an ID at or above the offset,
 // as Telegram does.
 type fakeTelegram struct {
-	reactGate      *reactionGate
-	holdRich       func(context.Context, string)
-	fileGate       <-chan struct{}
-	pollStarted    chan struct{}
-	pollCanceled   chan struct{}
-	pollRelease    <-chan struct{}
-	permanentChat  atomic.Int64
-	failAfter      atomic.Int64
-	sendCount      atomic.Int64
-	pollOffset     atomic.Int64
-	webhookPolls   atomic.Int64
-	lastCallback   atomic.Int64
-	failSend       atomic.Bool
-	failMedia      atomic.Bool
-	mediaSent      chan telegramMedia
-	mediaAttempts  chan telegramMedia
-	mediaCalls     chan time.Time
-	mediaSuccesses atomic.Int64
-	fileRequests   atomic.Int64
-	mediaFailAfter atomic.Int64
-	attempted      chan struct{}
-	srv            *httptest.Server
-	sent           chan sentMessage
+	reactGate        *reactionGate
+	holdRich         func(context.Context, string)
+	fileGate         <-chan struct{}
+	pollStarted      chan struct{}
+	pollCanceled     chan struct{}
+	pollRelease      <-chan struct{}
+	permanentSession atomic.Int64
+	failAfter        atomic.Int64
+	sendCount        atomic.Int64
+	pollOffset       atomic.Int64
+	webhookPolls     atomic.Int64
+	lastCallback     atomic.Int64
+	failSend         atomic.Bool
+	failMedia        atomic.Bool
+	mediaSent        chan telegramMedia
+	mediaAttempts    chan telegramMedia
+	mediaCalls       chan time.Time
+	mediaSuccesses   atomic.Int64
+	fileRequests     atomic.Int64
+	mediaFailAfter   atomic.Int64
+	attempted        chan struct{}
+	srv              *httptest.Server
+	sent             chan sentMessage
 
 	mu           sync.Mutex
 	webhook      telegramRegistration
@@ -112,28 +112,28 @@ func newFakeTelegram(t *testing.T) *fakeTelegram {
 	return f
 }
 
-// message queues a text message from user in chat. Telegram delivers an update again until the bot
+// message queues a text message from user in session. Telegram delivers an update again until the bot
 // confirms it, so a test can queue one updateID twice.
-func (f *fakeTelegram) message(updateID, user, chat int64, text string) {
+func (f *fakeTelegram) message(updateID, user, session int64, text string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.updates = append(f.updates, map[string]any{
 		"update_id": updateID,
 		"message": map[string]any{
-			"message_id": updateID, "from": map[string]any{"id": user}, "chat": map[string]any{"id": chat, "type": "private"},
+			"message_id": updateID, "from": map[string]any{"id": user}, "chat": map[string]any{"id": session, "type": "private"},
 			"text": text,
 		},
 	})
 }
 
 // reply queues a message that quotes the bot's message replyTo.
-func (f *fakeTelegram) reply(updateID, user, chat int64, text string, replyTo int64) {
+func (f *fakeTelegram) reply(updateID, user, session int64, text string, replyTo int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.updates = append(f.updates, map[string]any{
 		"update_id": updateID,
 		"message": map[string]any{
-			"message_id": updateID, "from": map[string]any{"id": user}, "chat": map[string]any{"id": chat, "type": "private"},
+			"message_id": updateID, "from": map[string]any{"id": user}, "chat": map[string]any{"id": session, "type": "private"},
 			"text": text, "reply_to_message": map[string]any{"message_id": replyTo},
 		},
 	})
@@ -396,7 +396,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 				m.Text += "/" + command.Command + " "
 			}
 		}
-		if f.permanentChat.Load() == m.ChatID && m.ChatID != 0 {
+		if f.permanentSession.Load() == m.ChatID && m.ChatID != 0 {
 			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 403, "description": "bot was blocked by the user"})
 			return
 		}
@@ -486,10 +486,10 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
 
-	// When user 42 sends a message in chat 7
+	// When user 42 sends a message in session 7
 	f.message(1, 42, 7, "hi")
 
-	// Then the bot sends the agent's answer to chat 7
+	// Then the bot sends the agent's answer to session 7
 	got := f.next(t)
 	got.ID = 0 // the fake assigns IDs; only the quote-reply test reads them
 	if got != (sentMessage{ChatID: 7, Text: "echo: hi", RichHTML: "<p>echo: hi</p>"}) {
@@ -497,11 +497,11 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 	}
 
 	// The main timeline shows the same input and takes web messages.
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	d.watch(t, main).until(t, "channel input in main", answered("echo: hi"))
 	d.send(t, main, "from the web")
 	d.watch(t, main).until(t, "web answer in main", answered("echo: from the web"))
-	if c := d.mainInfo(t); !c.Main || c.ReadOnly || len(d.chats(t)) != 0 {
+	if c := d.mainInfo(t); !c.Main || c.ReadOnly || len(d.sessions(t)) != 0 {
 		t.Fatalf("main: %+v", c)
 	}
 	// Main takes a session override like a Chat session; its tests are in main_settings_test.go.
@@ -515,7 +515,7 @@ func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {
 	dataDir := t.TempDir()
 	d := startTelegram(t, f, dataDir, 42)
 
-	// When user 99 sends a message in chat 8, and then user 42 sends one in chat 7
+	// When user 99 sends a message in session 8, and then user 42 sends one in session 7
 	f.message(1, 99, 8, "let me in")
 	f.mu.Lock()
 	f.updates = append(f.updates, map[string]any{"update_id": int64(2), "message": map[string]any{
@@ -545,7 +545,7 @@ func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("dex stored %d inputs from a group or another user", n)
 	}
-	d.watch(t, d.mainChat(t)).until(t, "owner input on main", answered("echo: ok"))
+	d.watch(t, d.mainSession(t)).until(t, "owner input on main", answered("echo: ok"))
 }
 
 func TestTelegramMessageDeliveredTwiceIsAnsweredOnce(t *testing.T) {
@@ -597,8 +597,8 @@ func TestUserPairsTelegramOwnerOnce(t *testing.T) {
 	if got := f.next(t); got.Text != "echo: hello" || got.ChatID != 7 {
 		t.Fatalf("owner reply = %+v", got)
 	}
-	if chats := d.chats(t); len(chats) != 0 {
-		t.Fatalf("channel in Sessions: %+v", chats)
+	if sessions := d.sessions(t); len(sessions) != 0 {
+		t.Fatalf("channel in Sessions: %+v", sessions)
 	}
 }
 
@@ -649,7 +649,7 @@ func TestUserSendsTelegramPhotoAndDocument(t *testing.T) {
 	}
 	f.next(t)
 	f.next(t)
-	watch := d.watch(t, d.mainChat(t))
+	watch := d.watch(t, d.mainSession(t))
 	watch.until(t, "two attachment messages", func(tr *transcript) bool {
 		count := 0
 		for _, item := range tr.items {
@@ -713,7 +713,7 @@ func TestUserCannotPairTelegramWithExpiredCode(t *testing.T) {
 	if err = conn.QueryRowContext(t.Context(), "SELECT allowed_users FROM telegram_settings").Scan(&users); err != nil {
 		t.Fatal(err)
 	}
-	if users != "" || len(d.chats(t)) != 0 {
+	if users != "" || len(d.sessions(t)) != 0 {
 		t.Fatalf("expired code stored user %q", users)
 	}
 }
@@ -762,7 +762,7 @@ func TestUserCannotSendOversizeTelegramDocument(t *testing.T) {
 	if got := f.next(t); !strings.Contains(got.Text, "20 MB") {
 		t.Fatalf("size reply = %+v", got)
 	}
-	if len(d.chats(t)) != 0 {
+	if len(d.sessions(t)) != 0 {
 		t.Fatal("oversize file created a conversation")
 	}
 	assertNoStoredInput(t, d)

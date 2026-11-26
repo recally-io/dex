@@ -1,7 +1,7 @@
 -- name: CreateBackgroundCommand :execrows
 -- The row exists before the process, in state starting. A call key that exists already stores
 -- nothing, and the caller reads the stored row.
-INSERT INTO background_commands (id, call_key, conversation_id, source_request_id, wake, label, command, cwd, output_path, timeout_ms, pid, pgid, process_started_at, state)
+INSERT INTO background_commands (id, call_key, session_id, source_request_id, wake, label, command, cwd, output_path, timeout_ms, pid, pgid, process_started_at, state)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 'starting')
 ON CONFLICT DO NOTHING;
 
@@ -20,19 +20,19 @@ SELECT * FROM background_commands WHERE id = ?;
 SELECT * FROM background_commands WHERE call_key = ?;
 
 -- name: ListBackgroundCommands :many
-SELECT * FROM background_commands WHERE conversation_id = ? ORDER BY process_started_at DESC, rowid DESC;
+SELECT * FROM background_commands WHERE session_id = ? ORDER BY process_started_at DESC, rowid DESC;
 
 -- name: ListRunningBackgroundIDs :many
-SELECT id FROM background_commands WHERE conversation_id = ? AND state IN ('starting', 'running');
+SELECT id FROM background_commands WHERE session_id = ? AND state IN ('starting', 'running');
 
 -- name: ListRunningBackgroundIDsByAgent :many
 SELECT b.id FROM background_commands b
-JOIN conversations c ON c.id = b.conversation_id
+JOIN sessions c ON c.id = b.session_id
 WHERE c.agent_id = ? AND b.state IN ('starting', 'running');
 
 -- name: CountRunningBackgroundCommands :one
 SELECT count(*) FROM background_commands b
-JOIN conversations c ON c.id = b.conversation_id
+JOIN sessions c ON c.id = b.session_id
 WHERE c.agent_id = ? AND b.state IN ('starting', 'running');
 
 -- name: FinishBackgroundCommand :execrows
@@ -48,11 +48,11 @@ UPDATE background_commands SET state = 'unknown' WHERE state IN ('starting', 'ru
 -- background wake only wakes the child itself and never auto-escalates to its parent. The ID
 -- follows the event, so a replay does not store a second input. An archived bot takes no input: the
 -- condition is part of the insert, so an archive cannot slip between a check and the write.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
-SELECT @id, b.conversation_id, @content, 'null', @id, s.origin, 'scheduler', '', '', 'wake', 'pending', @created_at, s.channel_context
+INSERT INTO submissions (id, session_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
+SELECT @id, b.session_id, @content, 'null', @id, s.origin, 'scheduler', '', '', 'wake', 'pending', @created_at, s.channel_context
 FROM background_commands b
 JOIN submissions s ON s.id = b.source_request_id
-JOIN conversations c ON c.id = b.conversation_id
+JOIN sessions c ON c.id = b.session_id
 JOIN agents a ON a.id = c.agent_id
 WHERE b.id = @background_id AND a.archived_at IS NULL
 ON CONFLICT DO NOTHING;
@@ -61,4 +61,4 @@ ON CONFLICT DO NOTHING;
 -- Removes an un-admitted pending background wake when background_wait observes the command's
 -- terminal state in-turn, preventing a redundant post-turn wake.
 DELETE FROM submissions
-WHERE id = @id AND conversation_id = @conversation_id AND status = 'pending' AND admitted_at IS NULL;
+WHERE id = @id AND session_id = @session_id AND status = 'pending' AND admitted_at IS NULL;

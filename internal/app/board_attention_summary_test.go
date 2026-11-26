@@ -89,11 +89,11 @@ func TestUserSeesSetupBasedOnBoundSessionModel(t *testing.T) {
 	d := startDexWith(t, app.Config{DataDir: dir, AutomationCheck: time.Hour})
 	d.setModel(t, "echo")
 	session := d.newSession(t)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", session.ID),
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/settings", session.ID),
 		map[string]string{"provider": "faux", "modelId": "shout"}, nil)
 	d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{
 		"name": "Bound check", "prompt": "Check", "schedule": map[string]string{"kind": "daily", "time": "09:00"},
-		"timeZone": "UTC", "session": "session", "targetConversationId": session.ID, "enabled": true,
+		"timeZone": "UTC", "session": "session", "targetSessionId": session.ID, "enabled": true,
 	}, nil, http.StatusCreated)
 
 	assertSetup := func(want bool) {
@@ -122,7 +122,7 @@ func TestUserSeesSetupBasedOnBoundSessionModel(t *testing.T) {
 
 	// When a session override becomes unavailable, a valid Bot default does not replace it.
 	d.setModel(t, "echo")
-	if _, err := conn.ExecContext(t.Context(), "UPDATE conversations SET model_provider = 'missing', model_id = 'missing' WHERE id = ?", session.ID); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "UPDATE sessions SET model_provider = 'missing', model_id = 'missing' WHERE id = ?", session.ID); err != nil {
 		t.Fatal(err)
 	}
 	assertSetup(true)
@@ -147,35 +147,35 @@ func (d *dex) openQuestions(t *testing.T) map[int64]string {
 
 func TestUserSeesOpenQuestionOnBoardUntilAnswered(t *testing.T) {
 	t.Parallel()
-	// Given a Main session and a chat of one bot, each with an open question.
+	// Given a Main session and a session of one bot, each with an open question.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 	d.send(t, main.ID, askJSON)
-	chatID := d.newChat(t, askJSON)
+	sessionID := d.newSessionWithMessage(t, askJSON)
 	mainQ := d.awaitQuestion(t, main.ID, "open")
-	chatQ := d.awaitQuestion(t, chatID, "open")
+	sessionQ := d.awaitQuestion(t, sessionID, "open")
 	d.awaitIdle(t, main.ID)
-	d.awaitIdle(t, chatID)
+	d.awaitIdle(t, sessionID)
 
 	// Then Board lists both sessions with their open question.
 	got := d.openQuestions(t)
-	if len(got) != 2 || got[main.ID] != "default:"+mainQ.ID || got[chatID] != "default:"+chatQ.ID {
+	if len(got) != 2 || got[main.ID] != "default:"+mainQ.ID || got[sessionID] != "default:"+sessionQ.ID {
 		t.Fatalf("open questions in Board: %+v", got)
 	}
 
-	// When the user answers the Main question, then Board no longer lists it and still lists the chat.
+	// When the user answers the Main question, then Board no longer lists it and still lists the session.
 	d.setModel(t, "echo")
 	d.answer(t, main.ID, mainQ.ID, "Investigate only", http.StatusAccepted)
 	eventually(t, "Main question leaves Board", func() (bool, any) {
 		got := d.openQuestions(t)
-		return len(got) == 1 && got[chatID] == "default:"+chatQ.ID, got
+		return len(got) == 1 && got[sessionID] == "default:"+sessionQ.ID, got
 	})
 
-	// When the user answers the chat question, then Board lists no question.
-	d.answer(t, chatID, chatQ.ID, "Investigate only", http.StatusAccepted)
-	eventually(t, "chat question leaves Board", func() (bool, any) {
+	// When the user answers the session question, then Board lists no question.
+	d.answer(t, sessionID, sessionQ.ID, "Investigate only", http.StatusAccepted)
+	eventually(t, "session question leaves Board", func() (bool, any) {
 		got := d.openQuestions(t)
 		return len(got) == 0, got
 	})

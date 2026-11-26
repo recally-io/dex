@@ -81,7 +81,7 @@ func TestUserAutomationInputFailureCannotCommitARunWithoutItsMessage(t *testing.
 	// And after restart, one retry creates exactly one input and one run.
 	d = startDexWith(t, app.Config{DataDir: data, AutomationCheck: time.Hour})
 	run := d.runNow(t, a.ID)
-	d.watch(t, run.ChatID).until(t, "recovered input", answered("echo: check"))
+	d.watch(t, run.SessionID).until(t, "recovered input", answered("echo: check"))
 	settledRoutine(t, d, a.ID, run.ID)
 	if err = conn.QueryRowContext(t.Context(), "SELECT count(*) FROM automation_runs WHERE automation_id = ?", a.ID).Scan(&count); err != nil {
 		t.Fatal(err)
@@ -158,23 +158,23 @@ func TestUserAutomationAppliesItsProjectOnEveryRun(t *testing.T) {
 	var a automationInfo
 	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &a, http.StatusCreated)
 	run := d.runNow(t, a.ID)
-	d.watch(t, run.ChatID).until(t, "project cwd", answered("bash: "+first))
+	d.watch(t, run.SessionID).until(t, "project cwd", answered("bash: "+first))
 	settledRoutine(t, d, a.ID, run.ID)
 	// When the project changes before the next run.
 	body["cwd"] = second
 	d.must(t, http.MethodPut, "/api/agents/default/automations/"+a.ID, body, nil)
 	next := d.runNow(t, a.ID)
-	// Then the same chat uses the new project.
-	if next.ChatID != run.ChatID {
-		t.Fatal("routine did not reuse its chat")
+	// Then the same session uses the new project.
+	if next.SessionID != run.SessionID {
+		t.Fatal("routine did not reuse its session")
 	}
-	d.watch(t, next.ChatID).until(t, "updated project cwd", answered("bash: "+second))
+	d.watch(t, next.SessionID).until(t, "updated project cwd", answered("bash: "+second))
 	settledRoutine(t, d, a.ID, next.ID)
-	// And clearing the override restores the agent workspace on the same chat.
+	// And clearing the override restores the agent workspace on the same session.
 	body["cwd"] = ""
 	d.must(t, http.MethodPut, "/api/agents/default/automations/"+a.ID, body, nil)
 	cleared := d.runNow(t, a.ID)
-	d.watch(t, cleared.ChatID).until(t, "workspace restored", func(tr *transcript) bool {
+	d.watch(t, cleared.SessionID).until(t, "workspace restored", func(tr *transcript) bool {
 		for _, item := range tr.items {
 			if item.Kind == "assistant" && strings.HasPrefix(item.Text, "bash: ") && strings.HasSuffix(item.Text, "/agents/default/workspace") {
 				return true
@@ -241,8 +241,8 @@ func TestUserAutomationExecutionErrorOverridesItsReport(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = fmt.Fprintln(w, `data: {"id":"check","object":"chat.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"check_1","type":"function","function":{"name":"automation_report","arguments":"{\"outcome\":\"unchanged\",\"summary\":\"provisional success\"}"}}]},"finish_reason":null}]}`)
-		_, _ = fmt.Fprint(w, "\n"+`data: {"id":"check","object":"chat.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`+"\n\ndata: [DONE]\n")
+		_, _ = fmt.Fprintln(w, `data: {"id":"check","object":"session.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"check_1","type":"function","function":{"name":"automation_report","arguments":"{\"outcome\":\"unchanged\",\"summary\":\"provisional success\"}"}}]},"finish_reason":null}]}`)
+		_, _ = fmt.Fprint(w, "\n"+`data: {"id":"check","object":"session.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`+"\n\ndata: [DONE]\n")
 	}))
 	defer boundary.Close()
 	d := startDex(t, t.TempDir(), "")
@@ -256,7 +256,7 @@ func TestUserAutomationExecutionErrorOverridesItsReport(t *testing.T) {
 	if result.Outcome != "failed" || result.Status != "failed" || result.Summary == "" || result.Summary == "provisional success" {
 		t.Fatalf("execution error result=%+v", result)
 	}
-	d.watch(t, run.ChatID).until(t, "successful provisional report", func(tr *transcript) bool {
+	d.watch(t, run.SessionID).until(t, "successful provisional report", func(tr *transcript) bool {
 		for _, item := range tr.items {
 			if item.Kind == "tool" && item.Name == "automation_report" && item.Status == "done" {
 				return true

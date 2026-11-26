@@ -279,9 +279,9 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]string{"message_id": fmt.Sprint("reply-", f.next)}})
 	}
 }
-func (f *fakeFeishu) message(t *testing.T, id, user, chatType, kind, content string) {
+func (f *fakeFeishu) message(t *testing.T, id, user, sessionType, kind, content string) {
 	t.Helper()
-	body := map[string]any{"header": map[string]string{"event_type": "im.message.receive_v1"}, "event": map[string]any{"sender": map[string]any{"sender_type": "user", "sender_id": map[string]string{"open_id": user}}, "message": map[string]string{"message_id": id, "chat_type": chatType, "message_type": kind, "content": content}}}
+	body := map[string]any{"header": map[string]string{"event_type": "im.message.receive_v1"}, "event": map[string]any{"sender": map[string]any{"sender_type": "user", "sender_id": map[string]string{"open_id": user}}, "message": map[string]string{"message_id": id, "chat_type": sessionType, "message_type": kind, "content": content}}}
 	b, err := json.Marshal(body)
 	if err != nil {
 		t.Fatal(err)
@@ -293,10 +293,10 @@ func (f *fakeFeishu) message(t *testing.T, id, user, chatType, kind, content str
 		t.Fatal("platform event was not admitted")
 	}
 }
-func (f *fakeFeishu) text(t *testing.T, id, user, chatType, text string) {
+func (f *fakeFeishu) text(t *testing.T, id, user, sessionType, text string) {
 	t.Helper()
 	b, _ := json.Marshal(map[string]string{"text": text})
-	f.message(t, id, user, chatType, "text", string(b))
+	f.message(t, id, user, sessionType, "text", string(b))
 }
 func (f *fakeFeishu) waitReply(t *testing.T, text string) {
 	t.Helper()
@@ -340,8 +340,8 @@ func pairFeishu(t *testing.T, d *dex, f *fakeFeishu) {
 	f.text(t, "owner-pair", "owner", "p2p", "/pair "+result.PairingCode)
 	f.waitReply(t, "Paired.")
 	f.text(t, "owner-pair", "owner", "p2p", "/pair "+result.PairingCode)
-	if chats := d.chats(t); len(chats) != 0 {
-		t.Fatalf("pair retry reached agent: %+v", chats)
+	if sessions := d.sessions(t); len(sessions) != 0 {
+		t.Fatalf("pair retry reached agent: %+v", sessions)
 	}
 	assertNoStoredInput(t, d)
 	_, body := d.call(t, http.MethodGet, "/api/agents/default/channels/feishu", nil)
@@ -350,18 +350,18 @@ func pairFeishu(t *testing.T, d *dex, f *fakeFeishu) {
 	}
 }
 
-func TestUserChatsWithFeishuOwnerOnlyAndClearsMain(t *testing.T) {
+func TestUserSessionsWithFeishuOwnerOnlyAndClearsMain(t *testing.T) {
 	t.Parallel()
 	// Given a manually configured bot, paired by the owner in a private chat.
 	f := newFakeFeishu(t)
 	dataDir := t.TempDir()
 	d := startFeishu(t, f, dataDir)
 	pairFeishu(t, d, f)
-	// When other users and groups send input, then dex creates no chat.
+	// When other users and groups send input, then dex creates no session.
 	f.text(t, "stranger-message", "stranger", "p2p", "not allowed")
 	f.text(t, "group-message", "owner", "group", "not allowed")
-	if chats := d.chats(t); len(chats) != 0 {
-		t.Fatalf("unauthorized chats: %+v", chats)
+	if sessions := d.sessions(t); len(sessions) != 0 {
+		t.Fatalf("unauthorized sessions: %+v", sessions)
 	}
 	assertNoStoredInput(t, d)
 	// When the platform repeats an owner's input, then dex stores one message.
@@ -380,17 +380,17 @@ func TestUserChatsWithFeishuOwnerOnlyAndClearsMain(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("duplicate input stored %d submissions", count)
 	}
-	if chats := d.chats(t); len(chats) != 0 {
-		t.Fatalf("channel in Sessions: %+v", chats)
+	if sessions := d.sessions(t); len(sessions) != 0 {
+		t.Fatalf("channel in Sessions: %+v", sessions)
 	}
-	d.watch(t, d.mainChat(t)).until(t, "owner input in main", answered("echo: hello owner"))
+	d.watch(t, d.mainSession(t)).until(t, "owner input in main", answered("echo: hello owner"))
 	// When /new is repeated, main clears once and keeps the same timeline.
 	f.text(t, "new-command", "owner", "p2p", "/new")
 	f.text(t, "new-command", "owner", "p2p", "/new")
-	f.text(t, "second", "owner", "p2p", "second chat")
-	f.waitReply(t, "echo: second chat")
-	if chats := d.chats(t); len(chats) != 0 {
-		t.Fatalf("channel in Sessions: %+v", chats)
+	f.text(t, "second", "owner", "p2p", "second session")
+	f.waitReply(t, "echo: second session")
+	if sessions := d.sessions(t); len(sessions) != 0 {
+		t.Fatalf("channel in Sessions: %+v", sessions)
 	}
 	f.text(t, "help", "owner", "p2p", "/help")
 	f.waitReply(t, "/stop stops")
@@ -436,8 +436,8 @@ func TestUserReceivesFeishuFileAndReplyAfterRestart(t *testing.T) {
 	f.waitReply(t, "echo:")
 	// The owner remains authorized; the same source cannot create another submission.
 	f.message(t, "file", "owner", "p2p", "file", `{"file_key":"file-key","file_name":"notes.txt"}`)
-	if chats := d.chats(t); len(chats) != 0 {
-		t.Fatalf("channel in Sessions: %+v", chats)
+	if sessions := d.sessions(t); len(sessions) != 0 {
+		t.Fatalf("channel in Sessions: %+v", sessions)
 	}
 	f.text(t, "after-restart", "owner", "p2p", "owner survived restart")
 	f.waitReply(t, "echo: owner survived restart")
@@ -507,7 +507,7 @@ func TestUserCreatesFeishuAppAndPairsTheCreator(t *testing.T) {
 		t.Fatal("registration disclosed credentials")
 	}
 	f.text(t, "qr-stranger", "stranger", "p2p", "not the creator")
-	if chats := d.chats(t); len(chats) != 0 {
+	if sessions := d.sessions(t); len(sessions) != 0 {
 		t.Fatal("stranger was admitted")
 	}
 	assertNoStoredInput(t, d)
@@ -611,8 +611,8 @@ func TestUserInvalidFeishuMessageDoesNotBlockLaterInput(t *testing.T) {
 	f.mu.Lock()
 	f.resourceSize = 0
 	f.mu.Unlock()
-	if chats := d.chats(t); len(chats) != 0 {
-		t.Fatalf("invalid input stored: %+v", chats)
+	if sessions := d.sessions(t); len(sessions) != 0 {
+		t.Fatalf("invalid input stored: %+v", sessions)
 	}
 	assertNoStoredInput(t, d)
 	// Then valid input still gets a reply.
@@ -728,9 +728,9 @@ func TestUserFeishuDisconnectDoesNotStrandDurableAdmission(t *testing.T) {
 	pairFeishu(t, d, f)
 	d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
 	conn := controlWriteDB(t, dataDir)
-	webChat := d.newSession(t)
+	webSession := d.newSession(t)
 	webID := uuid.NewV7().String()
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", webChat.ID), map[string]string{"id": webID, "text": "web input during maintenance"}, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", webSession.ID), map[string]string{"id": webID, "text": "web input during maintenance"}, nil, http.StatusConflict)
 	var webReceipts int
 	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE id=?", webID).Scan(&webReceipts); err != nil {
 		t.Fatal(err)

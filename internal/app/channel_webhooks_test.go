@@ -224,18 +224,18 @@ func assertWebhookInputs(t *testing.T, dir, source string, want int) {
 	}
 }
 
-func feishuHookText(t *testing.T, id, user, chatType, token, text string) []byte {
+func feishuHookText(t *testing.T, id, user, sessionType, token, text string) []byte {
 	t.Helper()
-	return feishuHookTextAt(t, id, user, chatType, token, text, time.Now())
+	return feishuHookTextAt(t, id, user, sessionType, token, text, time.Now())
 }
 
-func feishuHookTextAt(t *testing.T, id, user, chatType, token, text string, created time.Time) []byte {
+func feishuHookTextAt(t *testing.T, id, user, sessionType, token, text string, created time.Time) []byte {
 	t.Helper()
 	return hookJSON(t, map[string]any{
 		"schema": "2.0", "header": map[string]string{"event_type": "im.message.receive_v1", "event_id": "event-" + id, "app_id": "app", "token": token, "create_time": strconv.FormatInt(created.UnixMilli(), 10)},
 		"event": map[string]any{
 			"sender":  map[string]any{"sender_type": "user", "sender_id": map[string]string{"open_id": user}},
-			"message": map[string]string{"message_id": id, "chat_type": chatType, "message_type": "text", "content": string(hookJSON(t, map[string]string{"text": text}))},
+			"message": map[string]string{"message_id": id, "chat_type": sessionType, "message_type": "text", "content": string(hookJSON(t, map[string]string{"text": text}))},
 		},
 	})
 }

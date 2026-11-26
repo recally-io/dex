@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/recally-io/dex/internal/background"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/session"
 	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
@@ -29,7 +29,7 @@ type DispatchResult struct {
 	ProcessID   string `json:"processId"`
 }
 
-func (s *Service) DispatchExternal(ctx context.Context, c engine.TaskContext, a DispatchArgs, rt engine.ExtensionRuntime, start func(context.Context, engine.TaskContext, chat.ProcessStartArgs) (chat.ProcessInfo, error)) (DispatchResult, error) {
+func (s *Service) DispatchExternal(ctx context.Context, c engine.TaskContext, a DispatchArgs, rt engine.ExtensionRuntime, start func(context.Context, engine.TaskContext, session.ProcessStartArgs) (session.ProcessInfo, error)) (DispatchResult, error) {
 	if c.Key == "" || !strings.HasPrefix(c.Key, c.AgentID+"/") {
 		return DispatchResult{}, invalid("a durable tool key is required")
 	}
@@ -58,7 +58,7 @@ func (s *Service) DispatchExternal(ctx context.Context, c engine.TaskContext, a 
 	e := issue.Execution
 	// Do not persist harness output. The command can print environment variables or traces.
 	cmd := `/bin/bash -c '` + strings.ReplaceAll(a.Command, `'`, `'\''`) + `' >/dev/null 2>&1`
-	p, err := start(runner.RequireEnrollment(ctx, e.RunnerEnrollment), c, chat.ProcessStartArgs{
+	p, err := start(runner.RequireEnrollment(ctx, e.RunnerEnrollment), c, session.ProcessStartArgs{
 		Command: cmd, Cwd: a.Workspace, Label: "External Task run", Wake: background.WakeNone,
 		RunnerID: runnerID, EnvKind: runner.KindRunner, Workspace: settings.Handle.Workspace(), InheritEnv: settings.Inherit, BaseEnv: settings.Vars,
 		Env:        map[string]string{"DEX_TASK_TOKEN": issue.TaskToken, "DEX_TASK_SERVER": a.Server, "DEX_TOKEN": "", "DEX_TASK_EXTERNAL_SESSION_ID": e.ExternalSessionID},

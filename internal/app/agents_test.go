@@ -76,22 +76,22 @@ func TestUserCreatesAndValidatesAgents(t *testing.T) {
 	t.Logf("artifact: created agent=%s; list=%+v", created.ID, listed.Agents)
 }
 
-func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
+func TestUserKeepsAgentSessionsAndUploadsSeparate(t *testing.T) {
 	t.Parallel()
-	// Given two agents whose first execution conversations can have the same ID.
+	// Given two agents whose first execution sessions can have the same ID.
 	dataDir := t.TempDir()
 	d := startDex(t, dataDir, "")
 	d.setModel(t, "echo")
 	var b apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "B", "provider": "faux", "modelId": "shout", "thinkingLevel": "off"}, &b, http.StatusCreated)
 	aBase, bBase := "/api/agents/default", "/api/agents/"+b.ID
-	var aMain, bMain chatInfo
-	d.must(t, http.MethodGet, aBase+"/chats/main", nil, &aMain)
-	d.must(t, http.MethodGet, bBase+"/chats/main", nil, &bMain)
-	if aMain.ID == bMain.ID || aMain.ID != d.mainChat(t) {
+	var aMain, bMain sessionListItem
+	d.must(t, http.MethodGet, aBase+"/sessions/main", nil, &aMain)
+	d.must(t, http.MethodGet, bBase+"/sessions/main", nil, &bMain)
+	if aMain.ID == bMain.ID || aMain.ID != d.mainSession(t) {
 		t.Fatalf("main A=%+v B=%+v", aMain, bMain)
 	}
-	aPath, bPath := fmt.Sprintf("%s/chats/%d", aBase, aMain.ID), fmt.Sprintf("%s/chats/%d", bBase, bMain.ID)
+	aPath, bPath := fmt.Sprintf("%s/sessions/%d", aBase, aMain.ID), fmt.Sprintf("%s/sessions/%d", bBase, bMain.ID)
 	aWatch, bWatch := d.watchPath(t, aPath+"/events"), d.watchPath(t, bPath+"/events")
 	// When each agent receives its own message.
 	d.must(t, http.MethodPost, aPath+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": "A secret"}, nil, http.StatusAccepted)
@@ -104,7 +104,7 @@ func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
 		id        int64
 		execution *int64
 	}{{aMain.ID, &aExecution}, {bMain.ID, &bExecution}} {
-		if err := conn.QueryRowContext(t.Context(), "SELECT execution_id FROM conversations WHERE id = ?", c.id).Scan(c.execution); err != nil {
+		if err := conn.QueryRowContext(t.Context(), "SELECT execution_id FROM sessions WHERE id = ?", c.id).Scan(c.execution); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -171,8 +171,8 @@ func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
 	if !slices.ContainsFunc(bWatch.tr.items, func(i item) bool { return len(i.Attachments) == 1 && i.Attachments[0].ID == uploaded.ID }) {
 		t.Fatalf("missing attachment: %+v", bWatch.tr.items)
 	}
-	// And all cross-agent chat entry points refuse A's conversation under B.
-	cross := fmt.Sprintf("%s/chats/%d", bBase, aMain.ID)
+	// And all cross-agent session entry points refuse A's conversation under B.
+	cross := fmt.Sprintf("%s/sessions/%d", bBase, aMain.ID)
 	for _, tc := range []struct {
 		method, suffix string
 		body           any
@@ -184,16 +184,16 @@ func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
 	} {
 		d.must(t, tc.method, cross+tc.suffix, tc.body, nil, http.StatusNotFound)
 	}
-	var session chatInfo
-	d.must(t, http.MethodPost, bBase+"/chats", nil, &session, http.StatusCreated)
-	sessionPath := fmt.Sprintf("%s/chats/%d", bBase, session.ID)
+	var session sessionListItem
+	d.must(t, http.MethodPost, bBase+"/sessions", nil, &session, http.StatusCreated)
+	sessionPath := fmt.Sprintf("%s/sessions/%d", bBase, session.ID)
 	d.must(t, http.MethodPost, sessionPath+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": "B session"}, nil, http.StatusAccepted)
 	d.watchPath(t, sessionPath+"/events").until(t, "B session answer", answered("shout: B session"))
-	status, list := d.call(t, http.MethodGet, bBase+"/chats", nil)
+	status, list := d.call(t, http.MethodGet, bBase+"/sessions", nil)
 	if status != http.StatusOK || !strings.Contains(list, "B session") {
 		t.Fatalf("B list: %d %s", status, list)
 	}
-	status, list = d.call(t, http.MethodGet, "/api/agents/default/chats", nil)
+	status, list = d.call(t, http.MethodGet, "/api/agents/default/sessions", nil)
 	if status != http.StatusOK || strings.Contains(list, "B session") {
 		t.Fatalf("A list: %d %s", status, list)
 	}
@@ -237,10 +237,10 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 		d.must(t, tc.method, "/api/agents/default/automations/"+auto.ID+tc.suffix, tc.body, nil, http.StatusNotFound)
 	}
 	// When the owner asks B's main conversation for a child session.
-	var main chatInfo
-	d.must(t, http.MethodGet, base+"/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, base+"/sessions/main", nil, &main)
 	text := childJSON(t, map[string]string{"title": "B child", "message": "B report", "provider": "faux", "modelId": "echo"})
-	d.must(t, http.MethodPost, fmt.Sprintf("%s/chats/%d/messages", base, main.ID), map[string]string{"id": uuid.NewV7().String(), "text": text}, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, fmt.Sprintf("%s/sessions/%d/messages", base, main.ID), map[string]string{"id": uuid.NewV7().String(), "text": text}, nil, http.StatusAccepted)
 	conn := taskResultDB(t, dir)
 	rows := waitResults(t, conn, main.ID, 1)
 	// Then only B owns the child, and the result names it.
@@ -249,14 +249,14 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 		t.Fatalf("result=%+v", rows[0])
 	}
 	var agent string
-	if err := conn.QueryRowContext(t.Context(), "SELECT agent_id FROM conversations WHERE id = ?", child).Scan(&agent); err != nil || agent != b.ID {
+	if err := conn.QueryRowContext(t.Context(), "SELECT agent_id FROM sessions WHERE id = ?", child).Scan(&agent); err != nil || agent != b.ID {
 		t.Fatalf("child agent=%q err=%v", agent, err)
 	}
 	// Reading is open across bots, but the default agent cannot write to the child.
-	if got := callSessionTool(t, d, d.mainChat(t), "session_read", map[string]any{"id": child}); !strings.Contains(got, "B report") || !strings.Contains(got, `"bot":"B"`) {
+	if got := callSessionTool(t, d, d.mainSession(t), "session_read", map[string]any{"id": child}); !strings.Contains(got, "B report") || !strings.Contains(got, `"bot":"B"`) {
 		t.Fatalf("the default agent could not read a child of B: %s", got)
 	}
-	if got := callSessionTool(t, d, d.mainChat(t), "session_send", map[string]any{"id": child, "message": "intrude"}); !strings.Contains(got, "not found") {
+	if got := callSessionTool(t, d, d.mainSession(t), "session_send", map[string]any{"id": child, "message": "intrude"}); !strings.Contains(got, "not found") {
 		t.Fatalf("the default agent wrote to a child of B: %s", got)
 	}
 	// And B can run and remove its automation without changing the default list.
@@ -265,11 +265,11 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 	d.must(t, http.MethodPut, path, input, nil)
 	var run runInfo
 	d.must(t, http.MethodPost, path+"/run", nil, &run, http.StatusAccepted)
-	if run.ChatID == 0 {
+	if run.SessionID == 0 {
 		t.Fatalf("run=%+v", run)
 	}
 	d.must(t, http.MethodGet, path+"/runs", nil, nil)
-	runPath := fmt.Sprintf("%s/chats/%d", base, run.ChatID)
+	runPath := fmt.Sprintf("%s/sessions/%d", base, run.SessionID)
 	d.watchPath(t, runPath+"/events").until(t, "B automation answer", answered("echo: no delegated work"))
 	d.must(t, http.MethodPut, runPath+"/settings", map[string]string{"provider": "faux", "modelId": "shout", "thinkingLevel": "high"}, nil)
 	d.must(t, http.MethodGet, base+"/integrations", nil, nil)
@@ -289,11 +289,11 @@ func TestUserGetsNotFoundForUnknownAgents(t *testing.T) {
 		body         any
 	}{
 		{http.MethodGet, "", nil}, {http.MethodPut, "", map[string]string{"name": "Unknown", "thinkingLevel": "off"}},
-		{http.MethodGet, "/chats/main", nil}, {http.MethodGet, "/chats", nil}, {http.MethodPost, "/chats", nil},
-		{http.MethodGet, "/chats/1", nil}, {http.MethodGet, "/chats/1/events", nil},
-		{http.MethodGet, "/chats/1/history?before=1", nil}, {http.MethodPut, "/chats/1/settings", map[string]string{}},
-		{http.MethodPost, "/chats/1/messages", map[string]string{"id": uuid.NewV7().String(), "text": "unknown"}},
-		{http.MethodPost, "/chats/1/clear", map[string]string{"id": uuid.NewV7().String()}}, {http.MethodPost, "/chats/1/abort", nil},
+		{http.MethodGet, "/sessions/main", nil}, {http.MethodGet, "/sessions", nil}, {http.MethodPost, "/sessions", nil},
+		{http.MethodGet, "/sessions/1", nil}, {http.MethodGet, "/sessions/1/events", nil},
+		{http.MethodGet, "/sessions/1/history?before=1", nil}, {http.MethodPut, "/sessions/1/settings", map[string]string{}},
+		{http.MethodPost, "/sessions/1/messages", map[string]string{"id": uuid.NewV7().String(), "text": "unknown"}},
+		{http.MethodPost, "/sessions/1/clear", map[string]string{"id": uuid.NewV7().String()}}, {http.MethodPost, "/sessions/1/abort", nil},
 		{http.MethodGet, "/tasks/missing", nil}, {http.MethodGet, "/uploads/" + uuid.NewV7().String(), nil},
 		{http.MethodPost, "/uploads", nil}, {http.MethodGet, "/integrations", nil}, {http.MethodPost, "/integrations/reload", nil},
 		{http.MethodGet, "/automations", nil}, {http.MethodPost, "/automations", map[string]string{}},

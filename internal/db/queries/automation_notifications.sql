@@ -27,9 +27,9 @@ JOIN configured_channel_addresses b ON b.agent_id = t.agent_id AND b.platform = 
     AND b.account_id = t.account_id AND b.peer = t.peer
 WHERE r.id = ? AND agent.archived_at IS NULL;
 
--- name: GetAutomationOutboxConversation :one
+-- name: GetAutomationOutboxSession :one
 -- An owner for the Outbox FK only. This is not a source input or delivery route.
-SELECT id FROM conversations
+SELECT id FROM sessions
 WHERE agent_id = ? AND archived_at IS NULL AND parent_id IS NULL
 ORDER BY (channel_key = 'main') DESC, id
 LIMIT 1;

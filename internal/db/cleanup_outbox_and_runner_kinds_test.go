@@ -79,12 +79,16 @@ VALUES ('telegram', '123', 'event', 'bot', 4, X'0102');`); err != nil {
 		})
 	}
 
+	// Run the current queries against the current schema.
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
 	// Then the delivery wake and superseding still find the pending message from before the upgrade.
 	q := sqlc.New(conn)
 	if peer, err := q.GetPendingAutomationOutboxPeer(ctx, "remind:result"); err != nil || peer != "telegram:42" {
 		t.Fatalf("pending Automation peer = %q: %v", peer, err)
 	}
-	if n, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{ConversationID: 1, Peer: "telegram:42", TopicKey: "automation:watch"}); err != nil || n != 1 {
+	if n, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{SessionID: 1, Peer: "telegram:42", TopicKey: "automation:watch"}); err != nil || n != 1 {
 		t.Fatalf("superseded pending messages = %d, want 1: %v", n, err)
 	}
 }

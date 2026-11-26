@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 )
 
-func (m *message) inbound(content string, edited bool, attachments []engine.Attachment, identity chat.ChannelContext) chat.Message {
+func (m *message) inbound(content string, edited bool, attachments []engine.Attachment, identity session.ChannelContext) session.Message {
 	if m.ForwardOrigin != nil {
 		content = "Forwarded message:\n" + content
 	}
@@ -18,7 +18,7 @@ func (m *message) inbound(content string, edited bool, attachments []engine.Atta
 		identity.Edited = true
 		content = fmt.Sprintf("Correction to Telegram message %d (earlier actions are not undone):\n%s", m.ID, content)
 	}
-	msg := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
+	msg := session.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
 	if m.ReplyTo != nil {
 		msg.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
 	}

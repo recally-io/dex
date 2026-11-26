@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AddTaskDependencyData, AddTaskDependencyErrors, AddTaskDependencyResponses, ArchiveChatData, ArchiveChatErrors, ArchiveChatResponses, AttachHeldEventData, AttachHeldEventErrors, AttachHeldEventResponses, AttachTaskExecutionData, AttachTaskExecutionErrors, AttachTaskExecutionResponses, BackupSystemDatabaseData, BackupSystemDatabaseErrors, BackupSystemDatabaseResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginTelegramManagedSetupData, BeginTelegramManagedSetupErrors, BeginTelegramManagedSetupResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, BindTaskGitHubPullData, BindTaskGitHubPullErrors, BindTaskGitHubPullResponses, CancelChatMonitorData, CancelChatMonitorErrors, CancelChatMonitorResponses, CancelSystemOperationData, CancelSystemOperationErrors, CancelSystemOperationResponses, CancelTelegramManagedSetupData, CancelTelegramManagedSetupErrors, CancelTelegramManagedSetupResponses, CheckSystemUpdateData, CheckSystemUpdateErrors, CheckSystemUpdateResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactChatData, CompactChatErrors, CompactChatResponses, ContinueChatData, ContinueChatErrors, ContinueChatResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateRunnerData, CreateRunnerErrors, CreateRunnerResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTaskData, CreateTaskEntryData, CreateTaskEntryErrors, CreateTaskEntryResponses, CreateTaskErrors, CreateTaskResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteEmailImapPullData, DeleteEmailImapPullErrors, DeleteEmailImapPullResponses, DeleteEmailSourceData, DeleteEmailSourceErrors, DeleteEmailSourceResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteGitHubReviewPullData, DeleteGitHubReviewPullErrors, DeleteGitHubReviewPullResponses, DeleteGitHubWebhookData, DeleteGitHubWebhookErrors, DeleteGitHubWebhookResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteRunnerData, DeleteRunnerErrors, DeleteRunnerResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteVaultData, DeleteVaultErrors, DeleteVaultResponses, DeleteWebhookSourceData, DeleteWebhookSourceErrors, DeleteWebhookSourceResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DiscoverSshConfigData, DiscoverSshConfigErrors, DiscoverSshConfigResponses, DismissAutomationResultData, DismissAutomationResultErrors, DismissAutomationResultResponses, DismissHeldEventData, DismissHeldEventErrors, DismissHeldEventResponses, FinishTaskExecutionData, FinishTaskExecutionErrors, FinishTaskExecutionResponses, ForgetRunnerHostKeyData, ForgetRunnerHostKeyErrors, ForgetRunnerHostKeyResponses, ForkChatData, ForkChatErrors, ForkChatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetBoardAttentionData, GetBoardAttentionErrors, GetBoardAttentionResponses, GetBotIntegrationsData, GetBotIntegrationsErrors, GetBotIntegrationsResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatItemData, GetChatItemErrors, GetChatItemResponses, GetChatResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSystemLogsData, GetSystemLogsErrors, GetSystemLogsResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetTelegramManagedSetupData, GetTelegramManagedSetupErrors, GetTelegramManagedSetupResponses, GetUploadData, GetUploadErrors, GetUploadResponses, HeartbeatTaskExecutionData, HeartbeatTaskExecutionErrors, HeartbeatTaskExecutionResponses, IssueRunnerCodeData, IssueRunnerCodeErrors, IssueRunnerCodeResponses, ListAgentRunnersData, ListAgentRunnersErrors, ListAgentRunnersResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationResultsData, ListAutomationResultsErrors, ListAutomationResultsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListAutomationTargetsData, ListAutomationTargetsResponses, ListChatMonitorsData, ListChatMonitorsErrors, ListChatMonitorsResponses, ListChatOutboxData, ListChatOutboxErrors, ListChatOutboxResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListHeldEventsData, ListHeldEventsErrors, ListHeldEventsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, ListRunnersData, ListRunnersErrors, ListRunnersResponses, ListSourcesData, ListSourcesErrors, ListSourcesResponses, ListTaskExecutionsData, ListTaskExecutionsErrors, ListTaskExecutionsResponses, ListTasksData, ListTasksErrors, ListTasksResponses, ListVaultData, ListVaultErrors, ListVaultResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PostTaskExternalEntryData, PostTaskExternalEntryErrors, PostTaskExternalEntryResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ProbeRunnerData, ProbeRunnerErrors, ProbeRunnerResponses, PutVaultData, PutVaultErrors, PutVaultResponses, ReadAutomationResultData, ReadAutomationResultErrors, ReadAutomationResultResponses, ReadTaskExternalTaskData, ReadTaskExternalTaskErrors, ReadTaskExternalTaskResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadBotIntegrationsData, ReloadBotIntegrationsErrors, ReloadBotIntegrationsResponses, RemoveTaskDependencyData, RemoveTaskDependencyErrors, RemoveTaskDependencyResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, ResetAgentRunnerData, ResetAgentRunnerErrors, ResetAgentRunnerResponses, RestartSystemData, RestartSystemErrors, RestartSystemResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, ResumeTaskExecutionData, ResumeTaskExecutionErrors, ResumeTaskExecutionResponses, ReviewTaskData, ReviewTaskErrors, ReviewTaskResponses, RevokeRunnerData, RevokeRunnerErrors, RevokeRunnerResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SaveEmailImapPullData, SaveEmailImapPullErrors, SaveEmailImapPullResponses, SaveEmailSourceData, SaveEmailSourceErrors, SaveEmailSourceResponses, SaveGitHubReviewPullData, SaveGitHubReviewPullErrors, SaveGitHubReviewPullResponses, SaveGitHubWebhookData, SaveGitHubWebhookErrors, SaveGitHubWebhookResponses, SaveWebhookSourceData, SaveWebhookSourceErrors, SaveWebhookSourceResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatProjectData, SetChatProjectErrors, SetChatProjectResponses, SetChatRunnerData, SetChatRunnerErrors, SetChatRunnerResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetSourceEnabledData, SetSourceEnabledErrors, SetSourceEnabledResponses, SetTelegramData, SetTelegramErrors, SetTelegramManagerData, SetTelegramManagerErrors, SetTelegramManagerResponses, SetTelegramResponses, SplitTaskData, SplitTaskErrors, SplitTaskResponses, StartMcpOAuthData, StartMcpOAuthErrors, StartMcpOAuthResponses, StreamTaskEventsData, StreamTaskEventsErrors, StreamTaskEventsResponse, StreamTaskEventsResponses, TestRunnerData, TestRunnerErrors, TestRunnerResponses, UnarchiveChatData, UnarchiveChatErrors, UnarchiveChatResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, UpdateRunnerData, UpdateRunnerErrors, UpdateRunnerResponses, UpdateSystemSettingsData, UpdateSystemSettingsErrors, UpdateSystemSettingsResponses, UpdateTaskData, UpdateTaskErrors, UpdateTaskResponses, UpgradeSystemData, UpgradeSystemErrors, UpgradeSystemResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
+import type { AbortSessionData, AbortSessionErrors, AbortSessionResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AddTaskDependencyData, AddTaskDependencyErrors, AddTaskDependencyResponses, ArchiveSessionData, ArchiveSessionErrors, ArchiveSessionResponses, AttachHeldEventData, AttachHeldEventErrors, AttachHeldEventResponses, AttachTaskExecutionData, AttachTaskExecutionErrors, AttachTaskExecutionResponses, BackupSystemDatabaseData, BackupSystemDatabaseErrors, BackupSystemDatabaseResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginTelegramManagedSetupData, BeginTelegramManagedSetupErrors, BeginTelegramManagedSetupResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, BindTaskGitHubPullData, BindTaskGitHubPullErrors, BindTaskGitHubPullResponses, CancelSessionMonitorData, CancelSessionMonitorErrors, CancelSessionMonitorResponses, CancelSystemOperationData, CancelSystemOperationErrors, CancelSystemOperationResponses, CancelTelegramManagedSetupData, CancelTelegramManagedSetupErrors, CancelTelegramManagedSetupResponses, CheckSystemUpdateData, CheckSystemUpdateErrors, CheckSystemUpdateResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactSessionData, CompactSessionErrors, CompactSessionResponses, ContinueSessionData, ContinueSessionErrors, ContinueSessionResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAgentSessionData, CreateAgentSessionErrors, CreateAgentSessionResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateRunnerData, CreateRunnerErrors, CreateRunnerResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTaskData, CreateTaskEntryData, CreateTaskEntryErrors, CreateTaskEntryResponses, CreateTaskErrors, CreateTaskResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteEmailImapPullData, DeleteEmailImapPullErrors, DeleteEmailImapPullResponses, DeleteEmailSourceData, DeleteEmailSourceErrors, DeleteEmailSourceResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteGitHubReviewPullData, DeleteGitHubReviewPullErrors, DeleteGitHubReviewPullResponses, DeleteGitHubWebhookData, DeleteGitHubWebhookErrors, DeleteGitHubWebhookResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteRunnerData, DeleteRunnerErrors, DeleteRunnerResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteVaultData, DeleteVaultErrors, DeleteVaultResponses, DeleteWebhookSourceData, DeleteWebhookSourceErrors, DeleteWebhookSourceResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DiscoverSshConfigData, DiscoverSshConfigErrors, DiscoverSshConfigResponses, DismissAutomationResultData, DismissAutomationResultErrors, DismissAutomationResultResponses, DismissHeldEventData, DismissHeldEventErrors, DismissHeldEventResponses, FinishTaskExecutionData, FinishTaskExecutionErrors, FinishTaskExecutionResponses, ForgetRunnerHostKeyData, ForgetRunnerHostKeyErrors, ForgetRunnerHostKeyResponses, ForkSessionData, ForkSessionErrors, ForkSessionResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetBoardAttentionData, GetBoardAttentionErrors, GetBoardAttentionResponses, GetBotIntegrationsData, GetBotIntegrationsErrors, GetBotIntegrationsResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainSessionData, GetMainSessionErrors, GetMainSessionResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSessionData, GetSessionErrors, GetSessionHistoryData, GetSessionHistoryErrors, GetSessionHistoryResponses, GetSessionItemData, GetSessionItemErrors, GetSessionItemResponses, GetSessionResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSystemLogsData, GetSystemLogsErrors, GetSystemLogsResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetTelegramManagedSetupData, GetTelegramManagedSetupErrors, GetTelegramManagedSetupResponses, GetUploadData, GetUploadErrors, GetUploadResponses, HeartbeatTaskExecutionData, HeartbeatTaskExecutionErrors, HeartbeatTaskExecutionResponses, IssueRunnerCodeData, IssueRunnerCodeErrors, IssueRunnerCodeResponses, ListAgentRunnersData, ListAgentRunnersErrors, ListAgentRunnersResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationResultsData, ListAutomationResultsErrors, ListAutomationResultsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListAutomationTargetsData, ListAutomationTargetsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListHeldEventsData, ListHeldEventsErrors, ListHeldEventsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, ListRunnersData, ListRunnersErrors, ListRunnersResponses, ListSessionMonitorsData, ListSessionMonitorsErrors, ListSessionMonitorsResponses, ListSessionOutboxData, ListSessionOutboxErrors, ListSessionOutboxResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListSourcesData, ListSourcesErrors, ListSourcesResponses, ListTaskExecutionsData, ListTaskExecutionsErrors, ListTaskExecutionsResponses, ListTasksData, ListTasksErrors, ListTasksResponses, ListVaultData, ListVaultErrors, ListVaultResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PostTaskExternalEntryData, PostTaskExternalEntryErrors, PostTaskExternalEntryResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ProbeRunnerData, ProbeRunnerErrors, ProbeRunnerResponses, PutVaultData, PutVaultErrors, PutVaultResponses, ReadAutomationResultData, ReadAutomationResultErrors, ReadAutomationResultResponses, ReadTaskExternalTaskData, ReadTaskExternalTaskErrors, ReadTaskExternalTaskResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadBotIntegrationsData, ReloadBotIntegrationsErrors, ReloadBotIntegrationsResponses, RemoveTaskDependencyData, RemoveTaskDependencyErrors, RemoveTaskDependencyResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, ResetAgentRunnerData, ResetAgentRunnerErrors, ResetAgentRunnerResponses, RestartSystemData, RestartSystemErrors, RestartSystemResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, ResumeTaskExecutionData, ResumeTaskExecutionErrors, ResumeTaskExecutionResponses, ReviewTaskData, ReviewTaskErrors, ReviewTaskResponses, RevokeRunnerData, RevokeRunnerErrors, RevokeRunnerResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SaveEmailImapPullData, SaveEmailImapPullErrors, SaveEmailImapPullResponses, SaveEmailSourceData, SaveEmailSourceErrors, SaveEmailSourceResponses, SaveGitHubReviewPullData, SaveGitHubReviewPullErrors, SaveGitHubReviewPullResponses, SaveGitHubWebhookData, SaveGitHubWebhookErrors, SaveGitHubWebhookResponses, SaveWebhookSourceData, SaveWebhookSourceErrors, SaveWebhookSourceResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetSessionProjectData, SetSessionProjectErrors, SetSessionProjectResponses, SetSessionRunnerData, SetSessionRunnerErrors, SetSessionRunnerResponses, SetSessionSettingsData, SetSessionSettingsErrors, SetSessionSettingsResponses, SetSourceEnabledData, SetSourceEnabledErrors, SetSourceEnabledResponses, SetTelegramData, SetTelegramErrors, SetTelegramManagerData, SetTelegramManagerErrors, SetTelegramManagerResponses, SetTelegramResponses, SplitTaskData, SplitTaskErrors, SplitTaskResponses, StartMcpOAuthData, StartMcpOAuthErrors, StartMcpOAuthResponses, StreamTaskEventsData, StreamTaskEventsErrors, StreamTaskEventsResponse, StreamTaskEventsResponses, TestRunnerData, TestRunnerErrors, TestRunnerResponses, UnarchiveSessionData, UnarchiveSessionErrors, UnarchiveSessionResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, UpdateRunnerData, UpdateRunnerErrors, UpdateRunnerResponses, UpdateSystemSettingsData, UpdateSystemSettingsErrors, UpdateSystemSettingsResponses, UpdateTaskData, UpdateTaskErrors, UpdateTaskResponses, UpgradeSystemData, UpgradeSystemErrors, UpgradeSystemResponses, WatchSessionData, WatchSessionErrors, WatchSessionResponse, WatchSessionResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -1350,7 +1350,7 @@ export const pollWechatLogin = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Stops WeChat and forgets its credentials. Past chats stay read-only.
+ * Stops WeChat and forgets its credentials. Past sessions stay read-only.
  */
 export const deleteWechat = <ThrowOnError extends boolean = false>(options: Options<DeleteWechatData, ThrowOnError>): RequestResult<DeleteWechatResponses, DeleteWechatErrors, ThrowOnError> => (options.client ?? client).delete<DeleteWechatResponses, DeleteWechatErrors, ThrowOnError>({
     security: [{
@@ -1654,7 +1654,7 @@ export const resetAgentRunner = <ThrowOnError extends boolean = false>(options: 
 /**
  * Find or create the requested agent's main timeline.
  */
-export const getMainChat = <ThrowOnError extends boolean = false>(options: Options<GetMainChatData, ThrowOnError>): RequestResult<GetMainChatResponses, GetMainChatErrors, ThrowOnError> => (options.client ?? client).get<GetMainChatResponses, GetMainChatErrors, ThrowOnError>({
+export const getMainSession = <ThrowOnError extends boolean = false>(options: Options<GetMainSessionData, ThrowOnError>): RequestResult<GetMainSessionResponses, GetMainSessionErrors, ThrowOnError> => (options.client ?? client).get<GetMainSessionResponses, GetMainSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1664,15 +1664,15 @@ export const getMainChat = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/main',
+    url: '/api/agents/{agentId}/sessions/main',
     ...options
 });
 
 /**
- * Session summaries of the requested agent, newest activity first, then highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no message. Transcripts are not included.
+ * Session summaries of the requested agent, newest activity first, then highest ID first. Excludes main, channel sessions, dreams and web sessions with no message. Transcripts are not included.
  *
  */
-export const listChats = <ThrowOnError extends boolean = false>(options: Options<ListChatsData, ThrowOnError>): RequestResult<ListChatsResponses, ListChatsErrors, ThrowOnError> => (options.client ?? client).get<ListChatsResponses, ListChatsErrors, ThrowOnError>({
+export const listSessions = <ThrowOnError extends boolean = false>(options: Options<ListSessionsData, ThrowOnError>): RequestResult<ListSessionsResponses, ListSessionsErrors, ThrowOnError> => (options.client ?? client).get<ListSessionsResponses, ListSessionsErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1682,15 +1682,15 @@ export const listChats = <ThrowOnError extends boolean = false>(options: Options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats',
+    url: '/api/agents/{agentId}/sessions',
     ...options
 });
 
 /**
- * Opens a separate writable Chat session. Reuses the newest Chat session with no message that is not archived, or creates one. No request body or model is needed. The first message sets its title. The session uses the bot's settings.
+ * Opens a separate writable session. Reuses the newest session with no message that is not archived, or creates one. No request body or model is needed. The first message sets its title. The session uses the bot's settings.
  *
  */
-export const createChat = <ThrowOnError extends boolean = false>(options: Options<CreateChatData, ThrowOnError>): RequestResult<CreateChatResponses, CreateChatErrors, ThrowOnError> => (options.client ?? client).post<CreateChatResponses, CreateChatErrors, ThrowOnError>({
+export const createAgentSession = <ThrowOnError extends boolean = false>(options: Options<CreateAgentSessionData, ThrowOnError>): RequestResult<CreateAgentSessionResponses, CreateAgentSessionErrors, ThrowOnError> => (options.client ?? client).post<CreateAgentSessionResponses, CreateAgentSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1700,11 +1700,11 @@ export const createChat = <ThrowOnError extends boolean = false>(options: Option
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats',
+    url: '/api/agents/{agentId}/sessions',
     ...options
 });
 
-export const getChat = <ThrowOnError extends boolean = false>(options: Options<GetChatData, ThrowOnError>): RequestResult<GetChatResponses, GetChatErrors, ThrowOnError> => (options.client ?? client).get<GetChatResponses, GetChatErrors, ThrowOnError>({
+export const getSession = <ThrowOnError extends boolean = false>(options: Options<GetSessionData, ThrowOnError>): RequestResult<GetSessionResponses, GetSessionErrors, ThrowOnError> => (options.client ?? client).get<GetSessionResponses, GetSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1714,14 +1714,14 @@ export const getChat = <ThrowOnError extends boolean = false>(options: Options<G
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}',
+    url: '/api/agents/{agentId}/sessions/{sessionId}',
     ...options
 });
 
 /**
- * Restores an archived Chat session. A session that is not archived stays as it is.
+ * Restores an archived session. A session that is not archived stays as it is.
  */
-export const unarchiveChat = <ThrowOnError extends boolean = false>(options: Options<UnarchiveChatData, ThrowOnError>): RequestResult<UnarchiveChatResponses, UnarchiveChatErrors, ThrowOnError> => (options.client ?? client).delete<UnarchiveChatResponses, UnarchiveChatErrors, ThrowOnError>({
+export const unarchiveSession = <ThrowOnError extends boolean = false>(options: Options<UnarchiveSessionData, ThrowOnError>): RequestResult<UnarchiveSessionResponses, UnarchiveSessionErrors, ThrowOnError> => (options.client ?? client).delete<UnarchiveSessionResponses, UnarchiveSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1731,15 +1731,15 @@ export const unarchiveChat = <ThrowOnError extends boolean = false>(options: Opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/archive',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/archive',
     ...options
 });
 
 /**
- * Archives a Chat session. The session keeps its messages, records and files, and stays in the session list with archivedAt. Archiving an archived session keeps the first time. Main and the read-only kinds cannot be archived.
+ * Archives a session. The session keeps its messages, records and files, and stays in the session list with archivedAt. Archiving an archived session keeps the first time. Main and the read-only kinds cannot be archived.
  *
  */
-export const archiveChat = <ThrowOnError extends boolean = false>(options: Options<ArchiveChatData, ThrowOnError>): RequestResult<ArchiveChatResponses, ArchiveChatErrors, ThrowOnError> => (options.client ?? client).put<ArchiveChatResponses, ArchiveChatErrors, ThrowOnError>({
+export const archiveSession = <ThrowOnError extends boolean = false>(options: Options<ArchiveSessionData, ThrowOnError>): RequestResult<ArchiveSessionResponses, ArchiveSessionErrors, ThrowOnError> => (options.client ?? client).put<ArchiveSessionResponses, ArchiveSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1749,7 +1749,7 @@ export const archiveChat = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/archive',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/archive',
     ...options
 });
 
@@ -1790,10 +1790,10 @@ export const listRecentProjects = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Selects the Runner of a Chat session before its first message. Its command and file tools use that Runner. An empty runnerId follows the agent's default. The selection clears the project directory. Specify Local or a registered Machine or Sandbox. An invalid selection returns 400. A started Chat returns 409. A read-only Chat returns 403.
+ * Selects the Runner of a session before its first message. Its command and file tools use that Runner. An empty runnerId follows the agent's default. The selection clears the project directory. Specify Local or a registered Machine or Sandbox. An invalid selection returns 400. A started Session returns 409. A read-only Session returns 403.
  *
  */
-export const setChatRunner = <ThrowOnError extends boolean = false>(options: Options<SetChatRunnerData, ThrowOnError>): RequestResult<SetChatRunnerResponses, SetChatRunnerErrors, ThrowOnError> => (options.client ?? client).put<SetChatRunnerResponses, SetChatRunnerErrors, ThrowOnError>({
+export const setSessionRunner = <ThrowOnError extends boolean = false>(options: Options<SetSessionRunnerData, ThrowOnError>): RequestResult<SetSessionRunnerResponses, SetSessionRunnerErrors, ThrowOnError> => (options.client ?? client).put<SetSessionRunnerResponses, SetSessionRunnerErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1803,7 +1803,7 @@ export const setChatRunner = <ThrowOnError extends boolean = false>(options: Opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/runner',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/runner',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1812,10 +1812,10 @@ export const setChatRunner = <ThrowOnError extends boolean = false>(options: Opt
 });
 
 /**
- * Sets the project directory of a conversation from the next message. It applies to every conversation that accepts messages: Main, Chat sessions, and child sessions (child sessions too). Read-only conversations return 403. Empty cwd restores the agent workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
+ * Sets the project directory of a session from the next message. Main, separate Web sessions, and child sessions accept the change. Read-only sessions return 403. Empty cwd restores the agent workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
  *
  */
-export const setChatProject = <ThrowOnError extends boolean = false>(options: Options<SetChatProjectData, ThrowOnError>): RequestResult<SetChatProjectResponses, SetChatProjectErrors, ThrowOnError> => (options.client ?? client).put<SetChatProjectResponses, SetChatProjectErrors, ThrowOnError>({
+export const setSessionProject = <ThrowOnError extends boolean = false>(options: Options<SetSessionProjectData, ThrowOnError>): RequestResult<SetSessionProjectResponses, SetSessionProjectErrors, ThrowOnError> => (options.client ?? client).put<SetSessionProjectResponses, SetSessionProjectErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1825,7 +1825,7 @@ export const setChatProject = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/project',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/project',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1834,10 +1834,10 @@ export const setChatProject = <ThrowOnError extends boolean = false>(options: Op
 });
 
 /**
- * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message, including channel input on Main. Conversations that accept messages (Main, Chat sessions, child sessions) and automation chats accept overrides. Other read-only conversations return 403.
+ * Sets the model and the thinking level of one session. An absent field follows the agent's setting. They apply from the next message, including channel input on Main. Main, separate Web sessions, child sessions, and Automation sessions accept overrides. Other read-only sessions return 403.
  *
  */
-export const setChatSettings = <ThrowOnError extends boolean = false>(options: Options<SetChatSettingsData, ThrowOnError>): RequestResult<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError> => (options.client ?? client).put<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError>({
+export const setSessionSettings = <ThrowOnError extends boolean = false>(options: Options<SetSessionSettingsData, ThrowOnError>): RequestResult<SetSessionSettingsResponses, SetSessionSettingsErrors, ThrowOnError> => (options.client ?? client).put<SetSessionSettingsResponses, SetSessionSettingsErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1847,7 +1847,7 @@ export const setChatSettings = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/settings',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/settings',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1856,7 +1856,7 @@ export const setChatSettings = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Stores a message in a web chat and returns. An identical retry of an accepted message returns 202 with the same submissionId. A retry with the same ID and different text, attachments, mode, or chat returns 409. The answer comes through the event stream. 409 when the agent has no model, or when the mode is reject and the agent is working in the chat. Main and Chat sessions take web messages. Automation and channel sessions return 403.
+ * Stores a message in a web session and returns. An identical retry of an accepted message returns 202 with the same submissionId. A retry with the same ID and different text, attachments, mode, or session returns 409. The answer comes through the event stream. 409 when the agent has no model, or when the mode is reject and the agent is working in the session. Main and writable sessions take web messages. Automation and channel sessions return 403.
  *
  */
 export const sendMessage = <ThrowOnError extends boolean = false>(options: Options<SendMessageData, ThrowOnError>): RequestResult<SendMessageResponses, SendMessageErrors, ThrowOnError> => (options.client ?? client).post<SendMessageResponses, SendMessageErrors, ThrowOnError>({
@@ -1869,7 +1869,7 @@ export const sendMessage = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/messages',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/messages',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1878,7 +1878,7 @@ export const sendMessage = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Withdraws one message that waits in the queue and returns its text and attachments. The native queue decides whether the message is still queued. The receipt and the source key stay, so a channel redelivery does not run the message. A repeated request returns the same result. 409 when the message has started or finished. A withdrawn answer to a question opens the question again. Main and Chat sessions take this request. Automation and channel sessions return 403.
+ * Withdraws one message that waits in the queue and returns its text and attachments. The native queue decides whether the message is still queued. The receipt and the source key stay, so a channel redelivery does not run the message. A repeated request returns the same result. 409 when the message has started or finished. A withdrawn answer to a question opens the question again. Main and writable sessions take this request. Automation and channel sessions return 403.
  *
  */
 export const withdrawMessage = <ThrowOnError extends boolean = false>(options: Options<WithdrawMessageData, ThrowOnError>): RequestResult<WithdrawMessageResponses, WithdrawMessageErrors, ThrowOnError> => (options.client ?? client).post<WithdrawMessageResponses, WithdrawMessageErrors, ThrowOnError>({
@@ -1891,12 +1891,12 @@ export const withdrawMessage = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/messages/{messageId}/withdraw',
     ...options
 });
 
 /**
- * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again; the same UUID with another handoff or chat returns 409. Refuses a busy session without a change. Automation and channel sessions return 403.
+ * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again; the same UUID with another handoff or session returns 409. Refuses a busy session without a change. Automation and channel sessions return 403.
  *
  */
 export const clearContext = <ThrowOnError extends boolean = false>(options: Options<ClearContextData, ThrowOnError>): RequestResult<ClearContextResponses, ClearContextErrors, ThrowOnError> => (options.client ?? client).post<ClearContextResponses, ClearContextErrors, ThrowOnError>({
@@ -1909,7 +1909,7 @@ export const clearContext = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/clear',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/clear',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1921,7 +1921,7 @@ export const clearContext = <ThrowOnError extends boolean = false>(options: Opti
  * Runs this writable session again on its current context, for example after a failed or stopped run. It sends no new message. A repeated UUID starts nothing new. When the context ends in a complete answer, the run ends at once and the timeline shows "Nothing to continue". 409 while the session runs or when it never ran. Automation and channel sessions return 403.
  *
  */
-export const continueChat = <ThrowOnError extends boolean = false>(options: Options<ContinueChatData, ThrowOnError>): RequestResult<ContinueChatResponses, ContinueChatErrors, ThrowOnError> => (options.client ?? client).post<ContinueChatResponses, ContinueChatErrors, ThrowOnError>({
+export const continueSession = <ThrowOnError extends boolean = false>(options: Options<ContinueSessionData, ThrowOnError>): RequestResult<ContinueSessionResponses, ContinueSessionErrors, ThrowOnError> => (options.client ?? client).post<ContinueSessionResponses, ContinueSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1931,7 +1931,7 @@ export const continueChat = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/continue',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/continue',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1940,10 +1940,10 @@ export const continueChat = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With runnerId (local or a registered Runner ID), the new Chat runs on that Runner. When that moves the Chat to another Runner, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without runnerId, the new Chat keeps the Runner selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the Runner does not exist or is not Local or an SSH Machine. A scoped session with runnerId, and automation and channel sessions, return 403.
+ * Starts a new Session from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Session is empty. The new Session takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With runnerId (local or a registered Runner ID), the new Session runs on that Runner. When that moves the Session to another Runner, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Session with no history gets no notice. Without runnerId, the new Session keeps the Runner selection of this session. Without an id, each call creates another Session. A retry with the same id and parameters returns the same Session. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the Runner does not exist or is not Local or an SSH Machine. A scoped session with runnerId, and automation and channel sessions, return 403.
  *
  */
-export const forkChat = <ThrowOnError extends boolean = false>(options: Options<ForkChatData, ThrowOnError>): RequestResult<ForkChatResponses, ForkChatErrors, ThrowOnError> => (options.client ?? client).post<ForkChatResponses, ForkChatErrors, ThrowOnError>({
+export const forkSession = <ThrowOnError extends boolean = false>(options: Options<ForkSessionData, ThrowOnError>): RequestResult<ForkSessionResponses, ForkSessionErrors, ThrowOnError> => (options.client ?? client).post<ForkSessionResponses, ForkSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1953,7 +1953,7 @@ export const forkChat = <ThrowOnError extends boolean = false>(options: Options<
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/fork',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/fork',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1962,10 +1962,10 @@ export const forkChat = <ThrowOnError extends boolean = false>(options: Options<
 });
 
 /**
- * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary. Session cancellation drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Without an id each call starts a new compaction. A retry with the same id starts at most one compaction. Different instructions or chat return 409. 409 when the session never ran. Automation and channel sessions return 403.
+ * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary. Session cancellation drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Without an id each call starts a new compaction. A retry with the same id starts at most one compaction. Different instructions or session return 409. 409 when the session never ran. Automation and channel sessions return 403.
  *
  */
-export const compactChat = <ThrowOnError extends boolean = false>(options: Options<CompactChatData, ThrowOnError>): RequestResult<CompactChatResponses, CompactChatErrors, ThrowOnError> => (options.client ?? client).post<CompactChatResponses, CompactChatErrors, ThrowOnError>({
+export const compactSession = <ThrowOnError extends boolean = false>(options: Options<CompactSessionData, ThrowOnError>): RequestResult<CompactSessionResponses, CompactSessionErrors, ThrowOnError> => (options.client ?? client).post<CompactSessionResponses, CompactSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1975,7 +1975,7 @@ export const compactChat = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/compact',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/compact',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1987,7 +1987,7 @@ export const compactChat = <ThrowOnError extends boolean = false>(options: Optio
  * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call. Notifications use a separate cursor and are newest first. Supply at least one cursor.
  *
  */
-export const getChatHistory = <ThrowOnError extends boolean = false>(options: Options<GetChatHistoryData, ThrowOnError>): RequestResult<GetChatHistoryResponses, GetChatHistoryErrors, ThrowOnError> => (options.client ?? client).get<GetChatHistoryResponses, GetChatHistoryErrors, ThrowOnError>({
+export const getSessionHistory = <ThrowOnError extends boolean = false>(options: Options<GetSessionHistoryData, ThrowOnError>): RequestResult<GetSessionHistoryResponses, GetSessionHistoryErrors, ThrowOnError> => (options.client ?? client).get<GetSessionHistoryResponses, GetSessionHistoryErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1997,7 +1997,7 @@ export const getChatHistory = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/history',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/history',
     ...options
 });
 
@@ -2005,7 +2005,7 @@ export const getChatHistory = <ThrowOnError extends boolean = false>(options: Op
  * Reads one committed item with all of its tool output or thought. Use it for an item with truncated set.
  *
  */
-export const getChatItem = <ThrowOnError extends boolean = false>(options: Options<GetChatItemData, ThrowOnError>): RequestResult<GetChatItemResponses, GetChatItemErrors, ThrowOnError> => (options.client ?? client).get<GetChatItemResponses, GetChatItemErrors, ThrowOnError>({
+export const getSessionItem = <ThrowOnError extends boolean = false>(options: Options<GetSessionItemData, ThrowOnError>): RequestResult<GetSessionItemResponses, GetSessionItemErrors, ThrowOnError> => (options.client ?? client).get<GetSessionItemResponses, GetSessionItemErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -2015,7 +2015,7 @@ export const getChatItem = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/items/{itemId}',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/items/{itemId}',
     ...options
 });
 
@@ -2023,7 +2023,7 @@ export const getChatItem = <ThrowOnError extends boolean = false>(options: Optio
  * On Main, Stop cancels only the native foreground task identified by runTarget. An ended or foreign target returns 409. Stop cannot cancel a successor task. It keeps queued input, child sessions, background commands and Monitors. On other writable sessions, omit runTarget to cancel the session. Session cancellation withdraws pending input and can stop child work. Processes and remote work may continue. Cancellation does not undo prior actions. Automation and channel sessions return 403.
  *
  */
-export const abortChat = <ThrowOnError extends boolean = false>(options: Options<AbortChatData, ThrowOnError>): RequestResult<AbortChatResponses, AbortChatErrors, ThrowOnError> => (options.client ?? client).post<AbortChatResponses, AbortChatErrors, ThrowOnError>({
+export const abortSession = <ThrowOnError extends boolean = false>(options: Options<AbortSessionData, ThrowOnError>): RequestResult<AbortSessionResponses, AbortSessionErrors, ThrowOnError> => (options.client ?? client).post<AbortSessionResponses, AbortSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -2033,14 +2033,14 @@ export const abortChat = <ThrowOnError extends boolean = false>(options: Options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/abort',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/abort',
     ...options
 });
 
 /**
  * Returns scheduled and recent follow-up monitors for this session.
  */
-export const listChatMonitors = <ThrowOnError extends boolean = false>(options: Options<ListChatMonitorsData, ThrowOnError>): RequestResult<ListChatMonitorsResponses, ListChatMonitorsErrors, ThrowOnError> => (options.client ?? client).get<ListChatMonitorsResponses, ListChatMonitorsErrors, ThrowOnError>({
+export const listSessionMonitors = <ThrowOnError extends boolean = false>(options: Options<ListSessionMonitorsData, ThrowOnError>): RequestResult<ListSessionMonitorsResponses, ListSessionMonitorsErrors, ThrowOnError> => (options.client ?? client).get<ListSessionMonitorsResponses, ListSessionMonitorsErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -2050,14 +2050,14 @@ export const listChatMonitors = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/monitors',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/monitors',
     ...options
 });
 
 /**
  * Cancels a scheduled follow-up monitor of this session.
  */
-export const cancelChatMonitor = <ThrowOnError extends boolean = false>(options: Options<CancelChatMonitorData, ThrowOnError>): RequestResult<CancelChatMonitorResponses, CancelChatMonitorErrors, ThrowOnError> => (options.client ?? client).delete<CancelChatMonitorResponses, CancelChatMonitorErrors, ThrowOnError>({
+export const cancelSessionMonitor = <ThrowOnError extends boolean = false>(options: Options<CancelSessionMonitorData, ThrowOnError>): RequestResult<CancelSessionMonitorResponses, CancelSessionMonitorErrors, ThrowOnError> => (options.client ?? client).delete<CancelSessionMonitorResponses, CancelSessionMonitorErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -2067,14 +2067,14 @@ export const cancelChatMonitor = <ThrowOnError extends boolean = false>(options:
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/monitors/{monitorId}',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/monitors/{monitorId}',
     ...options
 });
 
 /**
  * Returns recent outbound messages and delivery states for this session.
  */
-export const listChatOutbox = <ThrowOnError extends boolean = false>(options: Options<ListChatOutboxData, ThrowOnError>): RequestResult<ListChatOutboxResponses, ListChatOutboxErrors, ThrowOnError> => (options.client ?? client).get<ListChatOutboxResponses, ListChatOutboxErrors, ThrowOnError>({
+export const listSessionOutbox = <ThrowOnError extends boolean = false>(options: Options<ListSessionOutboxData, ThrowOnError>): RequestResult<ListSessionOutboxResponses, ListSessionOutboxErrors, ThrowOnError> => (options.client ?? client).get<ListSessionOutboxResponses, ListSessionOutboxErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -2084,15 +2084,15 @@ export const listChatOutbox = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/outbox',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/outbox',
     ...options
 });
 
 /**
- * Server-sent events. Each event has `event: <type>` and one `data:` line with a ChatEvent as JSON. The first event is a native snapshot. An eligible Web conversation also gets an initial notifications page and later notification updates. Merge notifications by Outbox ID; a native snapshot does not replace them. A comment line comes every 15 s. The server closes the stream when the agent reloads, the engine closes, or the client is too slow. The client reconnects and gets a new snapshot.
+ * Server-sent events. Each event has `event: <type>` and one `data:` line with a SessionEvent as JSON. The first event is a native snapshot. An eligible Web session also gets an initial notifications page and later notification updates. Merge notifications by Outbox ID; a native snapshot does not replace them. A comment line comes every 15 s. The server closes the stream when the agent reloads, the engine closes, or the client is too slow. The client reconnects and gets a new snapshot.
  *
  */
-export const watchChat = <ThrowOnError extends boolean = false>(options: Options<WatchChatData, ThrowOnError, WatchChatResponse>): Promise<ServerSentEventsResult<WatchChatResponses>> => (options.client ?? client).sse.get<WatchChatResponses, WatchChatErrors, ThrowOnError>({
+export const watchSession = <ThrowOnError extends boolean = false>(options: Options<WatchSessionData, ThrowOnError, WatchSessionResponse>): Promise<ServerSentEventsResult<WatchSessionResponses>> => (options.client ?? client).sse.get<WatchSessionResponses, WatchSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -2102,7 +2102,7 @@ export const watchChat = <ThrowOnError extends boolean = false>(options: Options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/events',
+    url: '/api/agents/{agentId}/sessions/{sessionId}/events',
     ...options
 });
 
@@ -2381,7 +2381,7 @@ export const listAutomationTargets = <ThrowOnError extends boolean = false>(opti
 });
 
 /**
- * Removes the automation and its run history. Its chats stay.
+ * Removes the automation and its run history. Its sessions stay.
  */
 export const deleteAutomation = <ThrowOnError extends boolean = false>(options: Options<DeleteAutomationData, ThrowOnError>): RequestResult<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError>({
     security: [{

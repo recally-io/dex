@@ -19,7 +19,7 @@ func TestUserBlockedControlReplyDoesNotBlockOwner(t *testing.T) {
 		t.Run(fmt.Sprintf("attachment=%v", attachment), func(t *testing.T) {
 			// Given an owner and a peer that rejects control replies.
 			f := newFakeTelegram(t)
-			f.permanentChat.Store(8)
+			f.permanentSession.Store(8)
 			startTelegram(t, f, t.TempDir(), 42)
 			// When an invalid pairing request or attachment rejection precedes an owner message.
 			if attachment {

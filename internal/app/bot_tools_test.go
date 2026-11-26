@@ -44,24 +44,24 @@ func (d *dex) botNames(t *testing.T, path string) []string {
 	return names
 }
 
-// askArchive makes the default bot call bot_delete in a new Chat, and returns the open question.
+// askArchive makes the default bot call bot_delete in a new Session, and returns the open question.
 func askArchive(t *testing.T, d *dex, bot string) (int64, botQuestion) {
 	t.Helper()
 	d.setModel(t, "tool")
-	chatID := d.newChat(t, "bot_delete "+taskJSON(t, map[string]string{"bot": bot, "reason": "Not used any more"}))
+	sessionID := d.newSessionWithMessage(t, "bot_delete "+taskJSON(t, map[string]string{"bot": bot, "reason": "Not used any more"}))
 	var q botQuestion
 	eventually(t, "archive question", func() (bool, any) {
 		var c struct {
 			Question *botQuestion `json:"question"`
 		}
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", chatID), nil, &c)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &c)
 		if c.Question != nil {
 			q = *c.Question
 		}
 		return c.Question != nil && c.Question.Status == "open", c.Question
 	})
-	d.awaitIdle(t, chatID)
-	return chatID, q
+	d.awaitIdle(t, sessionID)
+	return sessionID, q
 }
 
 func waitSignal(t *testing.T, c <-chan struct{}, what string) {
@@ -77,10 +77,10 @@ func waitSignal(t *testing.T, c <-chan struct{}, what string) {
 // bot_delete, and the owner approves in the web card.
 func archiveCoder(t *testing.T, d *dex) {
 	t.Helper()
-	chatID, q := askArchive(t, d, "Coder")
+	sessionID, q := askArchive(t, d, "Coder")
 	d.setModel(t, "echo")
-	d.answer(t, chatID, q.ID, "Archive Coder", http.StatusAccepted)
-	d.watch(t, chatID).until(t, "approval reaches the model", answeredWith(`Approved. Bot "Coder" is archived.`))
+	d.answer(t, sessionID, q.ID, "Archive Coder", http.StatusAccepted)
+	d.watch(t, sessionID).until(t, "approval reaches the model", answeredWith(`Approved. Bot "Coder" is archived.`))
 }
 
 func questionOutcome(t *testing.T, conn *sql.DB, id string) string {
@@ -103,7 +103,7 @@ func count(t *testing.T, conn *sql.DB, query string, args ...any) int {
 
 func TestOwnerArchivesAndRestoresBotWithApproval(t *testing.T) {
 	t.Parallel()
-	// Given a bot with a Telegram channel, a chat history, and an automation that is due later.
+	// Given a bot with a Telegram channel, a session history, and an automation that is due later.
 	f := newFakeTelegram(t)
 	f.pollStarted = make(chan struct{}, 4)
 	f.pollCanceled = make(chan struct{}, 4)
@@ -117,19 +117,19 @@ func TestOwnerArchivesAndRestoresBotWithApproval(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/agents/"+bot.ID+"/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	waitSignal(t, f.pollStarted, "Telegram polling starts")
 	var history sessionInfo
-	d.must(t, http.MethodPost, "/api/agents/"+bot.ID+"/chats", nil, &history, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/agents/"+bot.ID+"/sessions", nil, &history, http.StatusCreated)
 	var auto automationInfo
 	d.must(t, http.MethodPost, "/api/agents/"+bot.ID+"/automations", map[string]any{
 		"name": "Nightly", "prompt": "summarize", "timeZone": "UTC", "session": "new", "enabled": true,
 		"schedule": map[string]any{"kind": "once", "at": time.Now().Add(time.Hour).UnixMilli()},
 	}, &auto, http.StatusCreated)
-	historyBefore := count(t, conn, "SELECT count(*) FROM conversations WHERE agent_id = ?", bot.ID)
+	historyBefore := count(t, conn, "SELECT count(*) FROM sessions WHERE agent_id = ?", bot.ID)
 	if historyBefore == 0 {
 		t.Fatal("the bot has no conversation")
 	}
 
 	// When the default bot asks to archive it, the card shows the action and nothing is archived.
-	chatID, q := askArchive(t, d, "coder")
+	sessionID, q := askArchive(t, d, "coder")
 	if q.Action != "archive" || len(q.Options) != 2 || q.Options[0] != "Archive Coder" || !strings.Contains(q.Text, "Not used any more") {
 		t.Fatalf("question: %+v", q)
 	}
@@ -139,8 +139,8 @@ func TestOwnerArchivesAndRestoresBotWithApproval(t *testing.T) {
 
 	// And the owner approves in the web card.
 	d.setModel(t, "echo")
-	d.answer(t, chatID, q.ID, "Archive Coder", http.StatusAccepted)
-	d.watch(t, chatID).until(t, "approval reaches the model", answeredWith(`Approved. Bot "Coder" is archived.`))
+	d.answer(t, sessionID, q.ID, "Archive Coder", http.StatusAccepted)
+	d.watch(t, sessionID).until(t, "approval reaches the model", answeredWith(`Approved. Bot "Coder" is archived.`))
 
 	// Then the bot leaves the list, appears in the archived list, and its channel stops.
 	if got := d.botNames(t, "/api/agents"); !slices.Equal(got, []string{"Dex"}) {
@@ -193,18 +193,18 @@ func TestOwnerArchivesAndRestoresBotWithApproval(t *testing.T) {
 		n := count(t, conn, "SELECT count(*) FROM automation_runs WHERE automation_id = ?", auto.ID)
 		return n == 1, n
 	})
-	if n := count(t, conn, "SELECT count(*) FROM conversations WHERE agent_id = ?", bot.ID); n < historyBefore {
+	if n := count(t, conn, "SELECT count(*) FROM sessions WHERE agent_id = ?", bot.ID); n < historyBefore {
 		t.Fatalf("history: %d before, %d after", historyBefore, n)
 	}
 }
 
-func TestOwnerManagesBotsThroughChat(t *testing.T) {
+func TestOwnerManagesBotsThroughSession(t *testing.T) {
 	t.Parallel()
-	// Given a Chat with the default bot.
+	// Given a Session with the default bot.
 	d := startDex(t, t.TempDir(), "")
-	chat := d.newSession(t).ID
+	session := d.newSession(t).ID
 	// When the owner asks the bot to create and change a bot, then the changes follow the web checks.
-	got := taskTool(t, d, chat, "bot_create", map[string]string{"name": "Writer", "provider": "faux", "modelId": "echo", "instructions": "Write.\nBe short."})
+	got := taskTool(t, d, session, "bot_create", map[string]string{"name": "Writer", "provider": "faux", "modelId": "echo", "instructions": "Write.\nBe short."})
 	if !strings.Contains(got, `"name":"Writer"`) {
 		t.Fatalf("create: %s", got)
 	}
@@ -214,26 +214,26 @@ func TestOwnerManagesBotsThroughChat(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimPrefix(got, "tool: ")), &created); err != nil || created.ID == "" {
 		t.Fatalf("parse bot_create: %v %s", err, got)
 	}
-	if got := taskTool(t, d, chat, "bot_create", map[string]string{"name": "Bad", "provider": "missing", "modelId": "echo"}); strings.Contains(got, `"name":"Bad"`) {
+	if got := taskTool(t, d, session, "bot_create", map[string]string{"name": "Bad", "provider": "missing", "modelId": "echo"}); strings.Contains(got, `"name":"Bad"`) {
 		t.Fatalf("an invalid provider was accepted: %s", got)
 	}
-	if got := taskTool(t, d, chat, "bot_update", map[string]string{"bot": "writer", "thinkingLevel": "high"}); !strings.Contains(got, `"thinkingLevel":"high"`) || !strings.Contains(got, `"name":"Writer"`) {
+	if got := taskTool(t, d, session, "bot_update", map[string]string{"bot": "writer", "thinkingLevel": "high"}); !strings.Contains(got, `"thinkingLevel":"high"`) || !strings.Contains(got, `"name":"Writer"`) {
 		t.Fatalf("update: %s", got)
 	}
-	if got := taskTool(t, d, chat, "bot_get", map[string]string{"bot": "Writer"}); !strings.Contains(got, "Be short.") {
+	if got := taskTool(t, d, session, "bot_get", map[string]string{"bot": "Writer"}); !strings.Contains(got, "Be short.") {
 		t.Fatalf("get: %s", got)
 	}
 	// A bot whose Main runs bash counts one runningSession in bot_list.
-	if update := taskTool(t, d, chat, "bot_update", map[string]string{"bot": created.ID, "provider": "faux", "modelId": "bash"}); !strings.Contains(update, `"modelId":"bash"`) {
+	if update := taskTool(t, d, session, "bot_update", map[string]string{"bot": created.ID, "provider": "faux", "modelId": "bash"}); !strings.Contains(update, `"modelId":"bash"`) {
 		t.Fatalf("update model: %s", update)
 	}
 	var writerMain sessionInfo
-	d.must(t, http.MethodGet, "/api/agents/"+created.ID+"/chats/main", nil, &writerMain)
+	d.must(t, http.MethodGet, "/api/agents/"+created.ID+"/sessions/main", nil, &writerMain)
 	gate := t.TempDir()
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/messages", created.ID, writerMain.ID),
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", created.ID, writerMain.ID),
 		map[string]string{"id": uuid.NewString(), "text": taskGate(t, gate, "main")}, nil, http.StatusAccepted)
 	waitTaskFile(t, filepath.Join(gate, "main.output"))
-	got = taskTool(t, d, chat, "bot_list", map[string]string{})
+	got = taskTool(t, d, session, "bot_list", map[string]string{})
 	if err := os.WriteFile(filepath.Join(gate, "main.gate"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestOwnerManagesBotsThroughChat(t *testing.T) {
 	// The tools accept a registered Runner and report its ID on the saved bot.
 	var runner apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]string{"name": "Machine", "kind": "runner"}, &runner, http.StatusCreated)
-	got = taskTool(t, d, chat, "bot_create", map[string]string{"name": "Remote writer", "runnerId": runner.ID})
+	got = taskTool(t, d, session, "bot_create", map[string]string{"name": "Remote writer", "runnerId": runner.ID})
 	var remote struct {
 		RunnerID string `json:"runnerId"`
 	}

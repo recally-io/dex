@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/speech"
 	"github.com/recally-io/dex/internal/upload"
 )
@@ -73,20 +73,20 @@ func (c Config) botID() string {
 
 type inbound interface {
 	channel.WebhookInbox
-	Receive(ctx context.Context, peer, source string, msg chat.Message) error
-	QueueChannelNotice(ctx context.Context, peer, source string, identity chat.ChannelContext, body string) error
+	Receive(ctx context.Context, peer, source string, msg session.Message) error
+	QueueChannelNotice(ctx context.Context, peer, source string, identity session.ChannelContext, body string) error
 	ReceivedSource(ctx context.Context, source string) (bool, error)
-	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
+	Source(ctx context.Context, source string) (session.SourceReceipt, error)
 	Report(name string, status channel.Status)
-	TelegramInputAllowed(ctx context.Context, peer string, source chat.ChannelContext) (bool, error)
-	ClaimTelegramCallback(ctx context.Context, id, peer, remote string, identity chat.ChannelContext) (bool, error)
+	TelegramInputAllowed(ctx context.Context, peer string, source session.ChannelContext) (bool, error)
+	ClaimTelegramCallback(ctx context.Context, id, peer, remote string, identity session.ChannelContext) (bool, error)
 	SetTelegramRetryAt(ctx context.Context, token string, until int64) error
-	SpeechInput(ctx context.Context, source string) (*chat.Message, bool, error)
-	Transcribe(ctx context.Context, peer, source string, msg chat.Message, duration int, options speech.Options, resolve speech.Resolve, store *upload.Store) (chat.Message, error)
+	SpeechInput(ctx context.Context, source string) (*session.Message, bool, error)
+	Transcribe(ctx context.Context, peer, source string, msg session.Message, duration int, options speech.Options, resolve speech.Resolve, store *upload.Store) (session.Message, error)
 	FinishSpeechInput(ctx context.Context, source string, album bool) error
-	KnownTelegramAlbum(ctx context.Context, peer string, identity chat.ChannelContext) (bool, error)
-	StoreTelegramAlbum(ctx context.Context, peer, source string, msg chat.Message) error
-	ReadyTelegramAlbums(ctx context.Context) ([]chat.TelegramAlbum, time.Duration, error)
+	KnownTelegramAlbum(ctx context.Context, peer string, identity session.ChannelContext) (bool, error)
+	StoreTelegramAlbum(ctx context.Context, peer, source string, msg session.Message) error
+	ReadyTelegramAlbums(ctx context.Context) ([]session.TelegramAlbum, time.Duration, error)
 	FinishTelegramAlbum(ctx context.Context, source string) error
 	CleanupTelegramAlbums(ctx context.Context, store *upload.Store) error
 }
@@ -212,7 +212,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		return nil
 	}
 	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
-	identity := chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}
+	identity := session.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}
 	if code, ok := strings.CutPrefix(m.Text, "/start "); ok && b.cfg.Pair != nil {
 		if slices.Contains(b.cfg.AllowedUsers, m.From.ID) {
 			return b.chats.QueueChannelNotice(ctx, peer, source, identity, "Telegram is already paired. Send a message to talk to dex.")
@@ -253,7 +253,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 			input += " " + rest
 		}
 		identity.MediaGroup = ""
-		return b.chats.Receive(ctx, peer, source, chat.Message{Content: input, ChannelContext: identity})
+		return b.chats.Receive(ctx, peer, source, session.Message{Content: input, ChannelContext: identity})
 	}
 	if selected, _ := m.selectedMedia(); selected != nil {
 		received, err := b.chats.ReceivedSource(ctx, source)

@@ -191,8 +191,8 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 	}
 
 	// When the agent reads its skills section
-	chatID := d.newChat(t, "skills")
-	w := d.watch(t, chatID)
+	sessionID := d.newSessionWithMessage(t, "skills")
+	w := d.watch(t, sessionID)
 
 	// Then it lists the agent review and notes with their files, and not the global review or broken
 	w.until(t, "answer", answeredWith("section: "))
@@ -208,7 +208,7 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 
 	// When the user changes the agent review, and the agent reads its skills again
 	writeSkill(t, agentDir, "review", "description: New review steps")
-	d.send(t, chatID, "skills")
+	d.send(t, sessionID, "skills")
 
 	// Then the agent has the change without a reload
 	w.until(t, "second answer", answeredWith("- review: New review steps"))
@@ -243,15 +243,15 @@ func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 	}
 
 	// When the agent calls a tool of each server
-	chatID := d.newChat(t, `mcp__files__append {"text":"one"}`)
-	w := d.watch(t, chatID)
+	sessionID := d.newSessionWithMessage(t, `mcp__files__append {"text":"one"}`)
+	w := d.watch(t, sessionID)
 	w.until(t, "files answer", answered("tool: appended 1"))
-	d.waitSettled(t, chatID)
-	d.send(t, chatID, `mcp__web__append {"text":"two"}`)
-	d.waitSettled(t, chatID)
-	d.send(t, chatID, `mcp__shared__append {"text":"three"}`)
-	d.waitSettled(t, chatID)
-	d.send(t, chatID, `mcp__files__fail {}`)
+	d.waitSettled(t, sessionID)
+	d.send(t, sessionID, `mcp__web__append {"text":"two"}`)
+	d.waitSettled(t, sessionID)
+	d.send(t, sessionID, `mcp__shared__append {"text":"three"}`)
+	d.waitSettled(t, sessionID)
+	d.send(t, sessionID, `mcp__files__fail {}`)
 	w.until(t, "error answer", answered("tool error: failed on purpose"))
 
 	// Then each call reached its server, and the agent server replaced the global one
@@ -283,12 +283,12 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	seedMCP(t, dataDir, app.DefaultAgentID, map[string]any{"files": stdioServer(t, filesDir)})
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "tool")
-	chatID := d.newChat(t, `mcp__files__append {"text":"one"}`)
-	w := d.watch(t, chatID)
+	sessionID := d.newSessionWithMessage(t, `mcp__files__append {"text":"one"}`)
+	w := d.watch(t, sessionID)
 	w.until(t, "answer", answered("tool: appended 1"))
 
 	// When a call is still running, the user reloads
-	d.send(t, chatID, `mcp__files__wait {"name":"slow"}`)
+	d.send(t, sessionID, `mcp__files__wait {"name":"slow"}`)
 	eventually(t, "started call", func() (bool, any) {
 		return strings.Contains(readNotes(t, filesDir), "started slow"), readNotes(t, filesDir)
 	})
@@ -323,12 +323,12 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	}
 
 	// Then the new server is connected, and the next run uses it. The restart of the worker ends
-	// the chat stream, as the browser sees it.
+	// the session stream, as the browser sees it.
 	if got.server("more").State != "connected" {
 		t.Fatalf("after reload: %+v", got)
 	}
-	w = d.watch(t, chatID)
-	d.send(t, chatID, `mcp__more__append {"text":"new"}`)
+	w = d.watch(t, sessionID)
+	d.send(t, sessionID, `mcp__more__append {"text":"new"}`)
 	w.until(t, "new server answer", answered("tool: appended 1"))
 
 	// When the tool environment is not valid, reload leaves the working connections intact.
@@ -338,7 +338,7 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	if status != http.StatusBadRequest || !strings.Contains(body, "vault") {
 		t.Fatalf("reload of a file that is not valid: %d %s", status, body)
 	}
-	d.send(t, chatID, `mcp__files__read {}`)
+	d.send(t, sessionID, `mcp__files__read {}`)
 	w.until(t, "read answer", answered("tool: one\nstarted slow"))
 }
 
@@ -349,7 +349,7 @@ func TestInterruptedMCPCallIsNotRepeatedAfterRestart(t *testing.T) {
 	seedMCP(t, dataDir, "", map[string]any{"files": stdioServer(t, filesDir)})
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "tool")
-	chatID := d.newChat(t, `mcp__files__wait {"name":"crash"}`)
+	sessionID := d.newSessionWithMessage(t, `mcp__files__wait {"name":"crash"}`)
 	eventually(t, "started call", func() (bool, any) {
 		return strings.Contains(readNotes(t, filesDir), "started crash"), readNotes(t, filesDir)
 	})
@@ -357,9 +357,9 @@ func TestInterruptedMCPCallIsNotRepeatedAfterRestart(t *testing.T) {
 	// A call that runs again finishes at once.
 	writeFile(t, filepath.Join(filesDir, "crash.release"), "")
 
-	// When dex starts again and the user opens the chat
+	// When dex starts again and the user opens the session
 	d = startDexHome(t, app.Config{DataDir: dataDir}, home)
-	w := d.watch(t, chatID)
+	w := d.watch(t, sessionID)
 
 	// Then the agent gets an error for the call, and the server did not get it again
 	w.until(t, "answer", answeredWith("tool error: "))

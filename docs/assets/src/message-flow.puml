@@ -18,46 +18,46 @@ title dex: native admission and business receipt projection
 
 actor "Browser" as user
 participant "Business services
-HTTP + chat + live" as chat
+HTTP + session + live" as session
 database "control.sqlite" as cdb
 participant "Native engine
 PiG Harness + projection" as engine
 database "agent state.sqlite" as adb
 participant "Model provider" as model
 
-user -> chat : POST message (client UUID)
-chat -> cdb : Store input intent + origin
-opt first input of the chat
-  chat -> engine : Create(agent, options)
+user -> session : POST message (client UUID)
+session -> cdb : Store input intent + origin
+opt first input of the session
+  session -> engine : Create(agent, options)
   engine -> adb : Commit execution conversation
-  engine --> chat : Ref{AgentID, ID}
-  chat -> cdb : Store execution_id
+  engine --> session : Ref{AgentID, ID}
+  session -> cdb : Store execution_id
 end
-chat -> engine : Submit(ref, request ID, metadata)
+session -> engine : Submit(ref, request ID, metadata)
 engine -> adb : Commit admission + input or native Inbox
-engine --> chat : Native Submission handle
-chat -> cdb : Mark receipt admitted
-chat --> user : 202 Accepted
-user -> chat : Open SSE
-chat -> engine : Watch(ctx, ref)
-engine --> chat : Typed snapshot + independent Events channel
-chat --> user : snapshot (includes native queued input)
+engine --> session : Native Submission handle
+session -> cdb : Mark receipt admitted
+session --> user : 202 Accepted
+user -> session : Open SSE
+session -> engine : Watch(ctx, ref)
+engine --> session : Typed snapshot + independent Events channel
+session --> user : snapshot (includes native queued input)
 engine -> model : Generate (tools use the Session Runner)
 model --> engine : Text and tool changes
-engine --> chat : Typed item / append / run events
-chat --> user : Encode events as SSE
+engine --> session : Typed item / append / run events
+session --> user : Encode events as SSE
 engine -> adb : Commit answer + outcome
-chat -> engine : Submission.Wait(ctx)
-engine --> chat : Outcome
-chat -> cdb : Settle receipt + wake channel outbox
+session -> engine : Submission.Wait(ctx)
+engine --> session : Outcome
+session -> cdb : Settle receipt + wake channel outbox
 
 group admission or receipt write interrupted
-  chat -> engine : Submit same stable request ID
+  session -> engine : Submit same stable request ID
   engine -> adb : Reacquire admitted input or admit missing input
-  engine --> chat : Same native submission
-  chat -> cdb : Reconcile admission and outcome receipt
+  engine --> session : Same native submission
+  session -> cdb : Reconcile admission and outcome receipt
 end
-note over chat,engine
+note over session,engine
   One Go process. Separate store commits.
   A business receipt alone does not prove native admission.
 end note

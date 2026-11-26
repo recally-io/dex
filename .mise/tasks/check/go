@@ -12,7 +12,7 @@ esac
 packages=()
 while IFS= read -r package; do
   if [[ "$package" == github.com/recally-io/dex/internal/app ]]; then continue; fi
-  if [[ "$mode" == without-integration && "$package" == github.com/recally-io/dex/internal/chat ]]; then continue; fi
+  if [[ "$mode" == without-integration && "$package" == github.com/recally-io/dex/internal/session ]]; then continue; fi
   packages+=("$package")
 done <<< "$(go list ./...)"
 

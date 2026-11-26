@@ -48,10 +48,10 @@ func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 		quick.FallbackProvider != "faux" || quick.FallbackModelID != "shout" || quick.RunnerID != env.ID {
 		t.Fatalf("quick bot did not copy the default bot: %+v", quick)
 	}
-	var quickMain chatInfo
-	d.must(t, http.MethodGet, "/api/agents/"+quick.ID+"/chats/main", nil, &quickMain)
-	quickWatch := d.watchPath(t, fmt.Sprintf("/api/agents/%s/chats/%d/events", quick.ID, quickMain.ID))
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/messages", quick.ID, quickMain.ID),
+	var quickMain sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/"+quick.ID+"/sessions/main", nil, &quickMain)
+	quickWatch := d.watchPath(t, fmt.Sprintf("/api/agents/%s/sessions/%d/events", quick.ID, quickMain.ID))
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", quick.ID, quickMain.ID),
 		map[string]string{"id": uuid.NewV7().String(), "text": "ready out of the box"}, nil, http.StatusAccepted)
 	quickWatch.until(t, "quick bot answers with the copied model", answered("echo: ready out of the box"))
 
@@ -66,8 +66,8 @@ func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 
 	// bot_create without model fields copies the default bot too. The tool session sets its own
 	// model on the default bot, so compare with the default bot as it is now.
-	toolChat := d.newSession(t)
-	_ = taskTool(t, d, toolChat.ID, "bot_create", map[string]string{"name": "Tool Bot"})
+	toolSession := d.newSession(t)
+	_ = taskTool(t, d, toolSession.ID, "bot_create", map[string]string{"name": "Tool Bot"})
 	var listed struct {
 		Agents []api.Agent `json:"agents"`
 	}
@@ -147,15 +147,15 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 	}, nil, http.StatusCreated)
 
 	// When the primary model returns 503 before emitting content, the engine fails over to fallback.
-	failoverChat := d.newChat(t, "failover check")
-	w := d.watch(t, failoverChat)
+	failoverSession := d.newSessionWithMessage(t, "failover check")
+	w := d.watch(t, failoverSession)
 	w.until(t, "fallback answer after HTTP 503", answered("echo: failover check"))
 	last := w.tr.items[len(w.tr.items)-1]
 	if last.Model != "faux/echo" {
 		t.Fatalf("assistant model = %q, want faux/echo", last.Model)
 	}
 
-	// When the primary provider is deleted, work remains usable and chats still answer via fallback.
+	// When the primary provider is deleted, work remains usable and sessions still answer via fallback.
 	d.must(t, http.MethodDelete, "/api/settings/providers/flaky", nil, nil)
 
 	var work struct {
@@ -169,8 +169,8 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 		t.Fatalf("expected automation setup=false while fallback is available, got %+v", work.Automations)
 	}
 
-	missingChat := d.newChat(t, "missing provider check")
-	d.watch(t, missingChat).until(t, "fallback answer when primary missing", answered("echo: missing provider check"))
+	missingSession := d.newSessionWithMessage(t, "missing provider check")
+	d.watch(t, missingSession).until(t, "fallback answer when primary missing", answered("echo: missing provider check"))
 
 	// A new bot does not copy the default bot's removed model, and so no fallback model either.
 	var fresh api.Agent

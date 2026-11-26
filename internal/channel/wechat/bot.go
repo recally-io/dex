@@ -15,16 +15,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/upload"
 )
 
 type inbound interface {
-	Receive(ctx context.Context, peer, source string, msg chat.Message) error
+	Receive(ctx context.Context, peer, source string, msg session.Message) error
 	ReceivedSource(ctx context.Context, source string) (bool, error)
 	CommandReceived(ctx context.Context, source string) (bool, error)
-	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
+	Source(ctx context.Context, source string) (session.SourceReceipt, error)
 	Report(name string, status channel.Status)
 	Pending(ctx context.Context, peer string) (bool, error)
 }
@@ -165,7 +165,7 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 	}
 	source := "wechat:" + b.cfg.BotID + ":" + strconv.FormatUint(msg.ID, 10)
 	peer := "wechat:" + b.cfg.Owner
-	actor := chat.ChannelContext{AccountID: b.cfg.BotID, SenderID: b.cfg.Owner}
+	actor := session.ChannelContext{AccountID: b.cfg.BotID, SenderID: b.cfg.Owner}
 	if received, err := b.channels.ReceivedSource(ctx, source); err != nil {
 		return err
 	} else if received {
@@ -175,12 +175,12 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 		return err
 	} else if received {
 		// Receive completes interrupted commands without repeating attachment side effects.
-		return b.channels.Receive(ctx, peer, source, chat.Message{ChannelContext: actor})
+		return b.channels.Receive(ctx, peer, source, session.Message{ChannelContext: actor})
 	}
 	// Only an explicit text item can request feedback. Do not include quoted text or media.
 	for _, item := range msg.Items {
 		if item.Type == 1 && channel.IsFeedbackCommand(itemText(item)) {
-			return b.channels.Receive(ctx, peer, source, chat.Message{Content: itemText(item), ChannelContext: actor})
+			return b.channels.Receive(ctx, peer, source, session.Message{Content: itemText(item), ChannelContext: actor})
 		}
 	}
 	input, err := b.convert(ctx, msg.Items)

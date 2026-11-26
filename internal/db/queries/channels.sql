@@ -41,7 +41,7 @@ UPDATE channel_commands SET delivered_at = @delivered_at,
 WHERE source_key = @source_key;
 
 -- name: CountChannelPending :one
-SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+SELECT count(*) FROM submissions s JOIN sessions c ON c.id = s.session_id
 WHERE s.status = 'pending' AND c.agent_id = @agent_id AND s.origin = @peer;
 
 -- name: TelegramCredentialOwner :one
@@ -58,13 +58,13 @@ SELECT a.id, a.name FROM agents a JOIN feishu_settings s ON s.agent_id = a.id WH
 -- name: ListAgentActivity :many
 WITH active AS (
     SELECT c.agent_id, count(*) AS sessions
-    FROM conversations c
+    FROM sessions c
     WHERE (c.channel_key LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.channel_key LIKE 'automation:%')
       AND c.channel_key NOT LIKE 'retired-telegram:%'
       AND (c.channel_key NOT LIKE 'chat:%' OR c.parent_id IS NOT NULL OR EXISTS (
-          SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
+          SELECT 1 FROM submissions m WHERE m.session_id = c.id AND m.kind = 'message'
       ))
-      AND EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending')
+      AND EXISTS (SELECT 1 FROM submissions s WHERE s.session_id = c.id AND s.status = 'pending')
     GROUP BY c.agent_id
 ), enabled AS (
     SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id

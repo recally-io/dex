@@ -156,7 +156,7 @@ func (h *handler) ResetAgentRunner(ctx context.Context, _ api.ResetAgentRunnerRe
 	if !canReset {
 		return nil, fmt.Errorf("%w: environment reset applies only to disposable sandboxes", settings.ErrInvalid)
 	}
-	if err := h.Chats.ResetRunner(ctx, id, func(rctx context.Context) error {
+	if err := h.Sessions.ResetRunner(ctx, id, func(rctx context.Context) error {
 		return h.Envs.ResetAgent(rctx, id)
 	}); err != nil {
 		return nil, err

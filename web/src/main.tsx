@@ -16,7 +16,7 @@ import { BoardPage } from "./routes/board";
 import { TaskDetailPage } from "./routes/task-detail";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
-import { ChatPage } from "./routes/chat";
+import { SessionPage } from "./routes/session";
 import { AutomationPage, AutomationsPage } from "./routes/automations";
 import { SessionsPage } from "./routes/sessions";
 import { AgentPage } from "./routes/agent";
@@ -56,14 +56,19 @@ const root = createRootRoute({
 const agentPages = createRoute({ getParentRoute: () => root, path: "/a/$agentId", component: AgentLayout });
 
 const home = createRoute({ getParentRoute: () => agentPages, path: "/", component: () => null });
-const chat = createRoute({ getParentRoute: () => agentPages, path: "/c/$chatId", component: ChatRoute });
 
-function ChatRoute() {
-  const { chatId } = chat.useParams();
-  const id = Number(chatId);
+const session = createRoute({
+  getParentRoute: () => agentPages,
+  path: "/s/$sessionId",
+  component: SessionRoute,
+});
+
+function SessionRoute() {
+  const { sessionId } = session.useParams();
+  const id = Number(sessionId);
 
   return Number.isSafeInteger(id) && id > 0 ? (
-    <ChatPage chatId={id} />
+    <SessionPage sessionId={id} />
   ) : (
     <Missing title="Session not found" description="The session ID in the address is not valid." />
   );
@@ -177,7 +182,7 @@ const router = createRouter({
   routeTree: root.addChildren([
     agentPages.addChildren([
       home,
-      chat,
+      session,
       sessions,
       channel,
       automations,

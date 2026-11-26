@@ -46,7 +46,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   const [at, setAt] = useState(existing?.schedule.at ? localDateTime(existing.schedule.at) : "");
   const [timeZone, setTimeZone] = useState(existing?.timeZone ?? browserZone);
   const [session, setSession] = useState<AutomationInput["session"]>(existing?.session ?? "new");
-  const [targetId, setTargetId] = useState(existing?.targetConversationId ?? 0);
+  const [targetId, setTargetId] = useState(existing?.targetSessionId ?? 0);
   const [enabled, setEnabled] = useState(existing?.enabled ?? true);
 
   const [notification, setNotification] = useState(
@@ -180,7 +180,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             prompt: prompt.trim(),
             cwd: bound ? undefined : cwd.trim(),
             runnerId: bound ? undefined : runnerId,
-            targetConversationId: bound ? targetId : undefined,
+            targetSessionId: bound ? targetId : undefined,
             schedule,
             timeZone,
             session,

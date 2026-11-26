@@ -26,10 +26,10 @@ type resultSubmissionState struct {
 	status, content, answer, reason string
 }
 
-func taskTurn(t *testing.T, d *dex, chatID int64, text string) string {
+func taskTurn(t *testing.T, d *dex, sessionID int64, text string) string {
 	t.Helper()
-	id := d.send(t, chatID, text)
-	w := d.watch(t, chatID)
+	id := d.send(t, sessionID, text)
+	w := d.watch(t, sessionID)
 	w.until(t, "answer to "+id, func(tr *transcript) bool {
 		for i, entry := range tr.items {
 			if entry.ID == id && entry.Kind == "user" {
@@ -41,10 +41,10 @@ func taskTurn(t *testing.T, d *dex, chatID int64, text string) string {
 	return w.tr.items[len(w.tr.items)-1].Text
 }
 
-func taskTool(t *testing.T, d *dex, chatID int64, name string, args any) string {
+func taskTool(t *testing.T, d *dex, sessionID int64, name string, args any) string {
 	t.Helper()
 	d.setModel(t, "tool")
-	return taskTurn(t, d, chatID, name+" "+taskJSON(t, args))
+	return taskTurn(t, d, sessionID, name+" "+taskJSON(t, args))
 }
 
 func taskGate(t *testing.T, dir, name string) string {
@@ -161,7 +161,7 @@ func waitExecution(t *testing.T, conn *sql.DB, parent int64, title, status strin
 	eventually(t, title+" "+status, func() (bool, any) {
 		var state string
 		err := conn.QueryRowContext(t.Context(), `SELECT CAST(c.id AS TEXT), c.title, s.status, coalesce(s.answer, ''), s.id
-FROM conversations c JOIN submissions s ON s.conversation_id = c.id AND s.kind = 'message'
+FROM sessions c JOIN submissions s ON s.session_id = c.id AND s.kind = 'message'
 WHERE c.parent_id = ? AND c.title = ? ORDER BY c.id DESC, s.rowid DESC LIMIT 1`, parent, title).Scan(&e.ID, &e.Title, &state, &e.Report, &e.Turn)
 		e.Status, e.ResultID = state, "result:"+e.Turn
 		return err == nil && state == want, fmt.Sprintf("execution=%+v err=%v", e, err)

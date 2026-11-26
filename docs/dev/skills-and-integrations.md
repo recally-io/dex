@@ -6,12 +6,12 @@ This document describes how dex loads skills, MCP servers, vault secrets, and
 Skills come from two file levels: dex (`<data dir>/.agents/`) and agent
 (`<data dir>/agents/<id>/.agents/`). dex does not read the user home for skills.
 Narrower levels win. Equal real paths are read once as the narrower level.
-The engine reads `AGENTS.md` only from the conversation's cwd on its
+The engine reads `AGENTS.md` only from the session's cwd on its
 Runner and adds it after the bot's saved instructions at each admission.
 
 Skills have a third, narrowest level: `.agents/skills` under the
-conversation's cwd. The skills prompt section reads that cwd from the request's
-Runner, so it follows the conversation. Chat sessions store
+session's cwd. The skills prompt section reads that cwd from the request's
+Runner. Sessions store
 their `cwd` in `control.sqlite`. Empty uses the workspace of the Session's
 Runner. Every submit sets or clears the native cwd from that row.
 Child sessions copy the parent's cwd when they are created, but only when the
@@ -22,19 +22,19 @@ states the current execution directory.
 as project changes. It follows directory symlinks, marks Git repositories, sorts
 names without case, and returns at most 500 entries. It requires the same API
 authentication and never returns file contents. `GET /api/agents/{agentId}/projects`
-reads distinct conversation paths in activity order with one control query.
+reads distinct session paths in activity order with one control query.
 It checks each path and returns up to eight existing directories.
-The Chat picker uses these routes because a remote browser cannot select host paths.
+The Session picker uses these routes because a remote browser cannot select host paths.
 
-`PUT /api/agents/{agentId}/chats/{chatId}/project` changes the cwd for the
-next message. Main, Chat, and child sessions can set it. The API and `set_project`
+`PUT /api/agents/{agentId}/sessions/{sessionId}/project` changes the cwd for the
+next message. Main, separate Web sessions, and child sessions can set it. The API and `set_project`
 tool share one path validator: trim, expand `~` or `~/`, require an existing
 absolute directory, and clean the path. Empty clears the override.
 The foreground tool writes control state before it commits native
 `harness.Configure`, so later tools in the same run use the new directory.
-Replay writes the same value. Main and Chat can use the tool; automation calls
+Replay writes the same value. Main and top-level Web sessions can use the tool; automation calls
 return an error. Child sessions and dreams do not have it. Channel input
-uses Main's saved project. The Chat header refetches on tool
+uses Main's saved project. The Session header refetches on tool
 completion and run completion. For a project cwd, native input uses absolute
 upload paths. The transcript keeps workspace-relative upload paths.
 
@@ -246,9 +246,9 @@ resource work and cannot leave replacement resources open. Recovery isolation
 must be registered before a Harness resumes.
 
 The session extension adds the session tools and the `session-rules` section to
-foreground conversations, including main, Chat and automation sessions.
+foreground sessions, including Main, Web sessions, and Automation sessions.
 Main input replaces the `work-loop` section with the `front-desk` section.
-Chat and automation sessions keep `work-loop`.
+Web and Automation sessions keep `work-loop`.
 Child sessions and dreams have no session tools and neither section. A child gets
 the `child-rules` section.
 The engine has no built-in coding skill. The usage of the session tools is in

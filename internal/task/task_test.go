@@ -23,7 +23,7 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 
 	// Given a user-authorized Task with a reviewer, a linked Session and an external run.
 	task := createBoardTestTask(t, svc, "Review the patch", "in_progress", "reviewer")
-	boardExec(t, conn, `INSERT INTO task_sessions (id, task_id, bot_id, conversation_id, started_at)
+	boardExec(t, conn, `INSERT INTO task_sessions (id, task_id, bot_id, session_id, started_at)
 		VALUES ('session-run', ?, 'linked', 4, 1)`, task.ID)
 	boardExec(t, conn, `INSERT INTO task_external_runs (id, task_id, bot_id, harness, started_at)
 		VALUES ('external-run', ?, 'linked', 'codex', 1)`, task.ID)
@@ -33,7 +33,7 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 	unrelated = storedTask(t, q, unrelated.ID)
 	actorAt := func(id int64) tasksvc.Actor {
 		t.Helper()
-		conv, err := q.GetConversation(t.Context(), id)
+		conv, err := q.GetSession(t.Context(), id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,8 +77,8 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 		{"reviewer-main", tasksvc.Bot("reviewer"), true, "prc", "pr", "p", ""},
 		{"unrelated-main", actorAt(2), false, "c", "", "", ""},
 		{"linked-main", actorAt(7), false, "c", "", "", ""},
-		{"assignee-chat", actorAt(6), true, "pknc", "p", "p", ""},
-		{"linked-bot-chat", actorAt(8), false, "c", "", "", ""},
+		{"assignee-session", actorAt(6), true, "pknc", "p", "p", ""},
+		{"linked-bot-session", actorAt(8), false, "c", "", "", ""},
 		{"unlinked-assignee-child", actorAt(3), false, "", "", "", ""},
 		{"linked-session", actorAt(4), true, "p", "p", "p", ""},
 		{"unlinked-session-same-bot", actorAt(5), false, "", "", "", ""},
@@ -141,7 +141,7 @@ func TestUserTaskBoardLinksOnlyDirectChildrenAcrossBots(t *testing.T) {
 		want    error
 	}{
 		{"link direct child from another Bot", assignee, 4, false, nil},
-		{"link standalone Chat", assignee, 6, false, tasksvc.ErrForbidden},
+		{"link standalone Session", assignee, 6, false, tasksvc.ErrForbidden},
 		{"link child of another parent", assignee, 5, false, tasksvc.ErrForbidden},
 		{"Owner links child of another parent", tasksvc.Owner, 5, false, nil},
 		{"promote child of another parent", assignee, 5, true, tasksvc.ErrForbidden},
@@ -164,7 +164,7 @@ func TestUserTaskBoardLinksOnlyDirectChildrenAcrossBots(t *testing.T) {
 		}
 	}
 	links, err := q.ListTaskSessions(ctx, task.ID)
-	if err != nil || len(links) != 3 || links[0].ConversationID != 4 || links[0].IsPrimary != 1 {
+	if err != nil || len(links) != 3 || links[0].SessionID != 4 || links[0].IsPrimary != 1 {
 		t.Fatalf("links = %+v, %v; want direct child 4 primary of three links", links, err)
 	}
 }
@@ -379,16 +379,16 @@ func TestUserTaskBoardDerivesBlockersAndMainQueuePosition(t *testing.T) {
 		       (11, ?, 'github', 'pull', '11', 'merged', 'r1', 1, 'merged'),
 		       (12, ?, 'github', 'pull', '12', 'merged', 'r1', 1, NULL)`, task.ID, task.ID, other.ID)
 
-	seedQuestion := func(id, taskID, botID, status, submissionStatus string, conversationID, queued int64) {
+	seedQuestion := func(id, taskID, botID, status, submissionStatus string, sessionID, queued int64) {
 		t.Helper()
-		boardExec(t, conn, `INSERT INTO submissions (id, conversation_id, kind, content, status, created_at)
-			VALUES (?, ?, 'session_result', '', ?, 1)`, id, conversationID, submissionStatus)
+		boardExec(t, conn, `INSERT INTO submissions (id, session_id, kind, content, status, created_at)
+			VALUES (?, ?, 'session_result', '', ?, 1)`, id, sessionID, submissionStatus)
 		if taskID != "" {
 			boardExec(t, conn, `INSERT INTO task_inputs (submission_id, task_id) VALUES (?, ?)`, id, taskID)
 		}
-		boardExec(t, conn, `INSERT INTO questions (id, agent_id, conversation_id, source_submission_id, tool_operation_key,
+		boardExec(t, conn, `INSERT INTO questions (id, agent_id, session_id, source_submission_id, tool_operation_key,
 			text, options_json, status, queued, created_at) VALUES (?, ?, ?, ?, ?, 'Proceed?', '[]', ?, ?, 1)`,
-			id, botID, conversationID, id, id, status, queued)
+			id, botID, sessionID, id, id, status, queued)
 	}
 	seedQuestion("answered", task.ID, "assignee", "answered", "done", 1, 1)
 	seedQuestion("not-a-task", "", "assignee", "open", "done", 1, 0)
@@ -457,7 +457,7 @@ func openBoardTest(t *testing.T) (*sql.DB, *sqlc.Queries, *tasksvc.Service) {
 	boardExec(t, conn, `INSERT INTO agents (id, name, model_provider, model_id, created_at) VALUES
 		('assignee', 'Assignee', 'faux', 'echo', 1), ('reviewer', 'Reviewer', 'faux', 'echo', 1),
 		('linked', 'Linked', 'faux', 'echo', 1), ('other', 'Other', 'faux', 'echo', 1)`)
-	boardExec(t, conn, `INSERT INTO conversations (id, agent_id, channel_key, created_at, parent_id) VALUES
+	boardExec(t, conn, `INSERT INTO sessions (id, agent_id, channel_key, created_at, parent_id) VALUES
 		(1, 'assignee', 'main', 1, NULL), (2, 'other', 'main', 1, NULL), (3, 'assignee', 'chat:child', 1, 1),
 		(4, 'linked', 'chat:linked', 1, 1), (5, 'linked', 'chat:other-child', 1, 2),
 		(6, 'assignee', 'chat:standalone', 1, NULL), (7, 'linked', 'main', 1, NULL),

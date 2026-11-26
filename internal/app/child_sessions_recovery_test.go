@@ -44,7 +44,7 @@ func TestUserRestartInterruptsARunWhoseAdmissionReceiptWasLost(t *testing.T) {
 	child := spawnChild(t, d, parent, "Admission gap", taskGate(t, dir, "admission"), "bash")
 	waitTaskFile(t, filepath.Join(dir, "admission.pid"))
 	var admitted sql.NullInt64
-	if err := write.QueryRowContext(t.Context(), `SELECT admitted_at FROM submissions WHERE conversation_id = ?`, child.conversation(t)).Scan(&admitted); err != nil || admitted.Valid {
+	if err := write.QueryRowContext(t.Context(), `SELECT admitted_at FROM submissions WHERE session_id = ?`, child.conversation(t)).Scan(&admitted); err != nil || admitted.Valid {
 		t.Fatalf("the receipt must be missing: %v %v", admitted, err)
 	}
 	// When dex restarts with the database working again.
@@ -79,7 +79,7 @@ func TestUserRestartWithdrawsQueuedInputsWhoseAdmissionReceiptsWereLost(t *testi
 	d.stop()
 	execSQL(t, write, `DROP TRIGGER block_admit`)
 	d = startDex(t, dir, "")
-	d.mainChat(t)
+	d.mainSession(t)
 	// Then every queued input is withdrawn and counted, and none of them runs.
 	turns := waitChildTurnsEnded(t, write, child.conversation(t), 3)
 	rows := resultRows(t, write, parent)
@@ -205,7 +205,7 @@ func TestUserRestartAfterASharedAnswerSendsOneResult(t *testing.T) {
 	d.stop()
 	execSQL(t, write, `DROP TRIGGER block_settle`)
 	d = startDex(t, dir, "")
-	d.mainChat(t)
+	d.mainSession(t)
 	// Then the receipts settle and the parent gets the result of the starter only.
 	turns := waitChildTurnsEnded(t, write, child.conversation(t), 2)
 	rows := resultRows(t, write, parent)

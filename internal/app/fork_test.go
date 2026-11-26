@@ -25,15 +25,15 @@ type forkInfo struct {
 	} `json:"forkedFrom"`
 }
 
-// fork forks chatID at entryID and returns the new chat.
-func (d *dex) fork(t *testing.T, chatID, entryID int64, before bool) forkInfo {
+// fork forks sessionID at entryID and returns the new session.
+func (d *dex) fork(t *testing.T, sessionID, entryID int64, before bool) forkInfo {
 	t.Helper()
 	var out struct {
-		ChatID int64 `json:"chatId"`
+		SessionID int64 `json:"sessionId"`
 	}
-	d.must(t, http.MethodPost, chatPath(chatID, "fork"), map[string]any{"entryId": entryID, "before": before}, &out, http.StatusCreated)
+	d.must(t, http.MethodPost, sessionPath(sessionID, "fork"), map[string]any{"entryId": entryID, "before": before}, &out, http.StatusCreated)
 	var c forkInfo
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", out.ChatID), nil, &c)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", out.SessionID), nil, &c)
 	return c
 }
 
@@ -46,7 +46,7 @@ func findItem(t *testing.T, tr *transcript, kind, text string) item {
 	return tr.items[i]
 }
 
-func TestUserForkReplayCreatesOneChat(t *testing.T) {
+func TestUserForkReplayCreatesOneSession(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
@@ -65,7 +65,7 @@ func TestUserForkReplayCreatesOneChat(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	for i := range count {
-		wg.Go(func() { results[i].status, results[i].raw = d.call(t, http.MethodPost, chatPath(src, "fork"), body) })
+		wg.Go(func() { results[i].status, results[i].raw = d.call(t, http.MethodPost, sessionPath(src, "fork"), body) })
 	}
 	wg.Wait()
 	for _, result := range results {
@@ -73,21 +73,21 @@ func TestUserForkReplayCreatesOneChat(t *testing.T) {
 			t.Fatalf("fork replay results: %+v", results)
 		}
 	}
-	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"id": id, "entryId": entry, "before": true}, nil, http.StatusConflict)
-	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"id": id, "entryId": entry + 1}, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, sessionPath(src, "fork"), map[string]any{"id": id, "entryId": entry, "before": true}, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, sessionPath(src, "fork"), map[string]any{"id": id, "entryId": entry + 1}, nil, http.StatusConflict)
 	other := d.newSession(t).ID
-	d.must(t, http.MethodPost, chatPath(other, "fork"), body, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, sessionPath(other, "fork"), body, nil, http.StatusConflict)
 }
 
-func TestUserForksChat(t *testing.T) {
+func TestUserForksSession(t *testing.T) {
 	t.Parallel()
-	// Given a chat with its own model, thinking level and project, and two answers.
+	// Given a session with its own model, thinking level and project, and two answers.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
 	src := d.newSession(t).ID
 	project := t.TempDir()
 	d.must(t, http.MethodPut, projectURL(src), map[string]string{"cwd": project}, nil)
-	d.must(t, http.MethodPut, chatPath(src, "settings"), map[string]string{"provider": "faux", "modelId": "context", "thinkingLevel": "high"}, nil)
+	d.must(t, http.MethodPut, sessionPath(src, "settings"), map[string]string{"provider": "faux", "modelId": "context", "thinkingLevel": "high"}, nil)
 	w := d.watch(t, src)
 	d.send(t, src, "one")
 	w.until(t, "first answer", answered(`context: ["one"]`))
@@ -101,13 +101,13 @@ func TestUserForksChat(t *testing.T) {
 	// When the user forks from the first answer.
 	fork := d.fork(t, src, first.EntryID, false)
 
-	// Then the fork is a new listed Chat with the source's settings, and it does not run.
+	// Then the fork is a new listed Session with the source's settings, and it does not run.
 	if fork.ForkedFrom == nil || fork.ForkedFrom.ID != src || fork.ForkedFrom.Main || fork.Cwd != project ||
 		fork.Settings.ModelID != "context" || fork.Settings.ThinkingLevel != "high" || fork.Busy {
 		t.Fatalf("fork = %+v", fork)
 	}
-	if !slices.ContainsFunc(d.chats(t), func(c chatInfo) bool { return c.ID == fork.ID }) {
-		t.Fatal("the fork is not in the chat list")
+	if !slices.ContainsFunc(d.sessions(t), func(c sessionListItem) bool { return c.ID == fork.ID }) {
+		t.Fatal("the fork is not in the session list")
 	}
 	if fresh := d.newSession(t).ID; fresh == fork.ID {
 		t.Fatal("a new session reused the fork")
@@ -126,32 +126,32 @@ func TestUserForksChat(t *testing.T) {
 		t.Fatalf("the fork changed the source: %+v", w.tr.items)
 	}
 
-	// When the user edits the second message in a new chat, then that chat ends before the message.
+	// When the user edits the second message in a new session, then that session ends before the message.
 	edit := d.fork(t, src, second.EntryID, true)
 	d.send(t, edit.ID, "two again")
 	d.watch(t, edit.ID).until(t, "edited answer", answered(`context: ["one","two again"]`))
 
-	// When the user edits the first message in a new chat, then the chat is empty but keeps the settings.
+	// When the user edits the first message in a new session, then the session is empty but keeps the settings.
 	empty := d.fork(t, src, opening.EntryID, true)
 	if empty.ForkedFrom == nil || empty.Cwd != project || empty.Settings.ModelID != "context" {
 		t.Fatalf("empty fork = %+v", empty)
 	}
-	if !slices.ContainsFunc(d.chats(t), func(c chatInfo) bool { return c.ID == empty.ID }) {
-		t.Fatal("the empty fork is not in the chat list")
+	if !slices.ContainsFunc(d.sessions(t), func(c sessionListItem) bool { return c.ID == empty.ID }) {
+		t.Fatal("the empty fork is not in the session list")
 	}
 	d.send(t, empty.ID, "fresh")
 	d.watch(t, empty.ID).until(t, "empty fork answer", answered(`context: ["fresh"]`))
 
-	// A fork must start from an answer that is in the chat.
+	// A fork must start from an answer that is in the session.
 	for _, body := range []map[string]any{{"entryId": second.EntryID}, {"entryId": 999999}, {"entryId": 0}} {
-		d.must(t, http.MethodPost, chatPath(src, "fork"), body, nil, http.StatusBadRequest)
+		d.must(t, http.MethodPost, sessionPath(src, "fork"), body, nil, http.StatusBadRequest)
 	}
-	d.must(t, http.MethodPost, chatPath(fork.ID, "fork"), map[string]any{"entryId": second.EntryID}, nil, http.StatusBadRequest)
+	d.must(t, http.MethodPost, sessionPath(fork.ID, "fork"), map[string]any{"entryId": second.EntryID}, nil, http.StatusBadRequest)
 }
 
-func TestUserForksRunningChat(t *testing.T) {
+func TestUserForksRunningSession(t *testing.T) {
 	t.Parallel()
-	// Given a chat with one answer that now runs a command which waits for a gate.
+	// Given a session with one answer that now runs a command which waits for a gate.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "echo")
@@ -196,10 +196,10 @@ func TestUserForksRunningChat(t *testing.T) {
 		t.Fatalf("the fork took the queued message: %+v", fw.tr.items)
 	}
 	// A call that waits for its result cannot start a fork.
-	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"entryId": call.EntryID}, nil, http.StatusBadRequest)
+	d.must(t, http.MethodPost, sessionPath(src, "fork"), map[string]any{"entryId": call.EntryID}, nil, http.StatusBadRequest)
 
 	// When the user stops the source, then a fork from the earlier answer has no stopped run.
-	d.must(t, http.MethodPost, chatPath(src, "abort"), nil, nil)
+	d.must(t, http.MethodPost, sessionPath(src, "abort"), nil, nil)
 	w.until(t, "stopped", func(tr *transcript) bool { return !tr.running && countKind(tr, "error") > 0 })
 	after := d.fork(t, src, answer.EntryID, false)
 	d.watch(t, after.ID).until(t, "fork after stop", func(tr *transcript) bool {
@@ -216,19 +216,19 @@ func TestUserForksMain(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "context")
 	var main sessionInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 	w := d.watch(t, main.ID)
 	d.send(t, main.ID, "from main")
 	w.until(t, "main answer", answered(`context: ["from main"]`))
 	d.waitSettled(t, main.ID)
 
-	// When the user forks from it, then the fork is a writable, listed Chat that names Main.
+	// When the user forks from it, then the fork is a writable, listed Session that names Main.
 	fork := d.fork(t, main.ID, findItem(t, &w.tr, "assistant", `context: ["from main"]`).EntryID, false)
 	if fork.Main || fork.ReadOnly || fork.ForkedFrom == nil || !fork.ForkedFrom.Main || fork.ForkedFrom.ID != main.ID || fork.Title != "Main (fork)" {
 		t.Fatalf("fork = %+v", fork)
 	}
-	if !slices.ContainsFunc(d.chats(t), func(c chatInfo) bool { return c.ID == fork.ID }) {
-		t.Fatal("the fork of Main is not in the chat list")
+	if !slices.ContainsFunc(d.sessions(t), func(c sessionListItem) bool { return c.ID == fork.ID }) {
+		t.Fatal("the fork of Main is not in the session list")
 	}
 	d.send(t, fork.ID, "in the fork")
 	d.watch(t, fork.ID).until(t, "fork answer", answered(`context: ["from main","in the fork"]`))

@@ -10,22 +10,22 @@ import (
 	"uuid"
 )
 
-func projectURL(id int64) string { return fmt.Sprintf("/api/agents/default/chats/%d/project", id) }
+func projectURL(id int64) string { return fmt.Sprintf("/api/agents/default/sessions/%d/project", id) }
 
 func assertProject(t *testing.T, d *dex, id int64, want string) {
 	t.Helper()
 	var got struct {
 		Cwd *string `json:"cwd"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", id), nil, &got)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", id), nil, &got)
 	if got.Cwd == nil || *got.Cwd != want {
-		t.Fatalf("Chat cwd = %v, want %q", got.Cwd, want)
+		t.Fatalf("Session cwd = %v, want %q", got.Cwd, want)
 	}
 }
 
-func TestUserChatProjectRunsAndClearsToWorkspace(t *testing.T) {
+func TestUserSessionProjectRunsAndClearsToWorkspace(t *testing.T) {
 	t.Parallel()
-	// Given a Chat session and an existing project directory.
+	// Given a session and an existing project directory.
 	data, project := t.TempDir(), t.TempDir()
 	project, err := filepath.EvalSymlinks(project)
 	if err != nil {
@@ -52,7 +52,7 @@ func TestUserChatProjectRunsAndClearsToWorkspace(t *testing.T) {
 	}
 }
 
-func TestUserChatProjectRejectsInvalidPathsAndReadOnlySessions(t *testing.T) {
+func TestUserSessionProjectRejectsInvalidPathsAndReadOnlySessions(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
 	id := d.newSession(t).ID
@@ -66,7 +66,7 @@ func TestUserChatProjectRejectsInvalidPathsAndReadOnlySessions(t *testing.T) {
 				path = filepath.Join(t.TempDir(), "file")
 				writeFile(t, path, "file")
 			}
-			// When the user sets an invalid path, the API refuses it without changing the Chat.
+			// When the user sets an invalid path, the API refuses it without changing the Session.
 			d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": path}, nil, http.StatusBadRequest)
 			assertProject(t, d, id, "")
 		})
@@ -82,9 +82,9 @@ func TestUserChatProjectRejectsInvalidPathsAndReadOnlySessions(t *testing.T) {
 	}
 }
 
-func TestUserChatToolSetsProjectForLaterMessages(t *testing.T) {
+func TestUserSessionToolSetsProjectForLaterMessages(t *testing.T) {
 	t.Parallel()
-	// Given a Chat using the real tool boundary.
+	// Given a Session using the real tool boundary.
 	project, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -109,9 +109,9 @@ func TestUserChatToolSetsProjectForLaterMessages(t *testing.T) {
 	assertProject(t, d, id, "")
 }
 
-func TestUserChatProjectExpandsHomeAndSurvivesRestart(t *testing.T) {
+func TestUserSessionProjectExpandsHomeAndSurvivesRestart(t *testing.T) {
 	t.Parallel()
-	// Given a Chat with a project expressed relative to the server's home.
+	// Given a Session with a project expressed relative to the server's home.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
@@ -130,9 +130,9 @@ func TestUserChatProjectExpandsHomeAndSurvivesRestart(t *testing.T) {
 	assertProject(t, d, id, filepath.Clean(home))
 }
 
-func TestUserChatProjectKeepsUploadedFilesAccessible(t *testing.T) {
+func TestUserSessionProjectKeepsUploadedFilesAccessible(t *testing.T) {
 	t.Parallel()
-	// Given an upload in the workspace and a Chat in a different project directory.
+	// Given an upload in the workspace and a Session in a different project directory.
 	data := t.TempDir()
 	d := startDex(t, data, "")
 	d.setModel(t, "echo")
@@ -140,7 +140,7 @@ func TestUserChatProjectKeepsUploadedFilesAccessible(t *testing.T) {
 	id := d.newSession(t).ID
 	d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": t.TempDir()}, nil)
 	// When the message has an attachment, the model gets its absolute workspace path.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", id), map[string]any{
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", id), map[string]any{
 		"id": uuid.NewV7().String(), "text": "read notes", "attachments": []string{file.ID},
 	}, nil, http.StatusAccepted)
 	path := filepath.Join(data, "agents", "default", "workspace", file.Path)

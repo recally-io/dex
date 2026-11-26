@@ -62,12 +62,12 @@ func TestUserRunnerEditReloadsOnlyItsIdleBot(t *testing.T) {
 	useMachine(t, d, m, "tool")
 	var other apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Local", "provider": "faux", "modelId": "echo", "runnerId": ""}, &other, http.StatusCreated)
-	otherChat := (&bots{t: t, d: d}).echoChat(other.ID, "before the edit")
-	otherWatch := otherChat.watch()
+	otherSession := (&bots{t: t, d: d}).echoSession(other.ID, "before the edit")
+	otherWatch := otherSession.watch()
 
 	// The edit must wait for the active MCP call before replacing the bot's resources.
-	chat := d.newChat(t, `mcp__files__wait {"name":"edit"}`)
-	w := d.watch(t, chat)
+	session := d.newSessionWithMessage(t, `mcp__files__wait {"name":"edit"}`)
+	w := d.watch(t, session)
 	eventually(t, "active MCP call", func() (bool, any) {
 		got := readNotes(t, files)
 		return strings.Contains(got, "started edit"), got
@@ -84,7 +84,7 @@ func TestUserRunnerEditReloadsOnlyItsIdleBot(t *testing.T) {
 	waitReloadStream(t, w)
 
 	// A reload closes the bot's old streams. The other bot keeps its stream.
-	otherChat.send("after the edit")
+	otherSession.send("after the edit")
 	otherWatch.until(t, "other bot keeps its connection", answered("echo: after the edit"))
 }
 
@@ -100,10 +100,10 @@ func TestUserIdleBotRestoresMachineWithoutNewInput(t *testing.T) {
 	first.stop()
 
 	d := startDexWith(t, cfg)
-	chat := d.newSession(t).ID
-	d.must(t, http.MethodPut, chatPath(chat, "runner"), map[string]string{"runnerId": "local"}, nil)
-	d.send(t, chat, "open without the default")
-	w := d.watch(t, chat)
+	session := d.newSession(t).ID
+	d.must(t, http.MethodPut, sessionPath(session, "runner"), map[string]string{"runnerId": "local"}, nil)
+	d.send(t, session, "open without the default")
+	w := d.watch(t, session)
 	w.until(t, "the local turn ends", answered("echo: open without the default"))
 
 	m.connect(d)
@@ -143,13 +143,13 @@ func TestUserKeepsWorkingIntegrationsUntilRefusedConfigChanges(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(old) })
 	d := startDexWith(t, app.Config{DataDir: data, Logs: logs})
 	d.setModel(t, "tool")
-	chat := d.newSession(t).ID
-	if got := taskTool(t, d, chat, "mcp_server_list", map[string]string{}); got != "tool: []" {
+	session := d.newSession(t).ID
+	if got := taskTool(t, d, session, "mcp_server_list", map[string]string{}); got != "tool: []" {
 		t.Fatalf("open agent: %q", got)
 	}
 	writeSkill := func(content string) {
 		t.Helper()
-		got := taskTool(t, d, chat, "skill_write", map[string]string{"path": "agent/demo/note.txt", "content": content})
+		got := taskTool(t, d, session, "skill_write", map[string]string{"path": "agent/demo/note.txt", "content": content})
 		if !strings.Contains(got, "note.txt") {
 			t.Fatalf("skill write: %q", got)
 		}
@@ -196,7 +196,7 @@ wait:
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	w := d.watch(t, chat)
+	w := d.watch(t, session)
 	writeSkill("after the fix")
 	waitReloadStream(t, w)
 }

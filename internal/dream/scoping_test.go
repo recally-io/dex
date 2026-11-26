@@ -15,11 +15,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/MichaelKinsy/PiG/ai"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 )
 
 func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
@@ -72,7 +72,7 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 	}
 	faux.SetResponses(responses)
 	agents.Catalog.Models.SetProvider(faux.Provider())
-	chats := chat.New(conn, agents, clock, nil, nil)
+	chats := session.New(conn, agents, clock, nil, nil)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { defer close(done); chats.Run(ctx) }()
@@ -109,11 +109,11 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 		if err := q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: id, Name: id, ModelProvider: "dream-fixture", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
 			t.Fatal(err)
 		}
-		chatID, err := chats.Post(t.Context(), id, "chat:first", "", id+"-first", id+" evidence")
+		sessionID, err := chats.Post(t.Context(), id, "chat:first", "", id+"-first", id+" evidence")
 		if err != nil {
 			t.Fatal(err)
 		}
-		ids[id] = chatID
+		ids[id] = sessionID
 		waitDone(id + "-first")
 	}
 	now.Add((25 * time.Hour).Milliseconds())
@@ -187,7 +187,7 @@ func TestUserDreamClipsLongMessageAndCapsBatchBytes(t *testing.T) {
 	if err := q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "default", Name: "Dex", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
-	conv, err := q.EnsureConversation(t.Context(), sqlc.EnsureConversationParams{AgentID: "default", ChannelKey: "chat:clip", Title: "Clip", CreatedAt: 1})
+	conv, err := q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{AgentID: "default", ChannelKey: "chat:clip", Title: "Clip", CreatedAt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestUserDreamClipsLongMessageAndCapsBatchBytes(t *testing.T) {
 		id := fmt.Sprintf("msg-%02d", i)
 		createdAt := int64(100 + i)
 		if _, err := q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-			ID: id, ConversationID: conv.ID, Content: content, Attachments: "null", Origin: "web", Producer: "user", Kind: "message", CreatedAt: createdAt,
+			ID: id, SessionID: conv.ID, Content: content, Attachments: "null", Origin: "web", Producer: "user", Kind: "message", CreatedAt: createdAt,
 		}); err != nil {
 			t.Fatal(err)
 		}

@@ -187,20 +187,20 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		t.Fatal("a wrong token connected")
 	}
 	m.connect(d)
-	// Both bots remain local by default and explicitly select the same runner for a chat.
+	// Both bots remain local by default and explicitly select the same runner for a session.
 	d.setModel(t, "bash")
 	var second apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{
 		"name": "Second bot", "provider": "faux", "modelId": "bash", "thinkingLevel": "off",
 	}, &second, http.StatusCreated)
-	newChat := func(agentID, runnerID string) botChat {
+	newSession := func(agentID, runnerID string) botSession {
 		var session sessionInfo
-		d.must(t, http.MethodPost, "/api/agents/"+agentID+"/chats", nil, &session, http.StatusCreated)
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/%s/chats/%d/runner", agentID, session.ID),
+		d.must(t, http.MethodPost, "/api/agents/"+agentID+"/sessions", nil, &session, http.StatusCreated)
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/%s/sessions/%d/runner", agentID, session.ID),
 			map[string]string{"runnerId": runnerID}, nil)
-		return botChat{bots: &bots{t: t, d: d}, agent: agentID, id: session.ID}
+		return botSession{bots: &bots{t: t, d: d}, agent: agentID, id: session.ID}
 	}
-	first, other := newChat("default", m.envID), newChat(second.ID, m.envID)
+	first, other := newSession("default", m.envID), newSession(second.ID, m.envID)
 	first.send(`printf 'first' > note.txt; cat note.txt`)
 	first.watch().until(t, "first bot writes its own file", answeredWith("bash: first"))
 	other.send(`test ! -e note.txt && printf 'second' > note.txt && cat note.txt`)
@@ -220,14 +220,14 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	for range 2 {
 		reloadBot(t, d)
 	}
-	chat := d.newSession(t).ID
-	if got := taskTurn(t, d, chat, `cat note.txt`); got != "bash: first" {
+	session := d.newSession(t).ID
+	if got := taskTurn(t, d, session, `cat note.txt`); got != "bash: first" {
 		t.Fatalf("default runner after reloading the bot: %q", got)
 	}
 
 	saveVault(t, d, "default", "agent", "GITHUB_TOKEN", "github-test-vault-value")
 	d.applied(t)
-	assertVaultCommand(t, d, chat)
+	assertVaultCommand(t, d, session)
 	d.setModel(t, "bash")
 
 	d.must(t, http.MethodDelete, settingsPath+"/pairing", nil, nil)
@@ -254,9 +254,9 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		last := lastItem(tr)
 		return !tr.running && last.Kind == "assistant" && (strings.Contains(last.Text, "offline") || strings.Contains(last.Text, "selected environment changed"))
 	})
-	// The unavailable default does not prevent an explicit local chat in that bot.
+	// The unavailable default does not prevent an explicit local session in that bot.
 	reloadBot(t, d)
-	local := newChat("default", "local")
+	local := newSession("default", "local")
 	local.send(`test ! -e note.txt && printf 'local-ok'`)
 	local.watch().until(t, "explicit local when its bot runner is offline", answeredWith("bash: local-ok"))
 
@@ -268,7 +268,7 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	}
 	m.connect(d)
 	d.applied(t)
-	if got := taskTurn(t, d, chat, `printf 'machine-again'`); !strings.Contains(got, "machine-again") {
+	if got := taskTurn(t, d, session, `printf 'machine-again'`); !strings.Contains(got, "machine-again") {
 		t.Fatalf("remote command after a new enrollment returned %q", got)
 	}
 }
@@ -303,26 +303,26 @@ func TestUserBotKeepsItsMachineAcrossAReconnect(t *testing.T) {
 	m := enrollMachine(t, d)
 	m.connect(d)
 	useMachine(t, d, m, "bash")
-	chat := d.newSession(t).ID
-	if got := taskTurn(t, d, chat, `printf before > note.txt; cat note.txt`); got != "bash: before" {
+	session := d.newSession(t).ID
+	if got := taskTurn(t, d, session, `printf before > note.txt; cat note.txt`); got != "bash: before" {
 		t.Fatalf("turn before the reconnect: %q", got)
 	}
 	var other apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Busy", "provider": "faux", "modelId": "bash", "thinkingLevel": "off", "runnerId": "local"}, &other, http.StatusCreated)
-	var session sessionInfo
-	d.must(t, http.MethodPost, "/api/agents/"+other.ID+"/chats", nil, &session, http.StatusCreated)
-	busy := botChat{bots: &bots{t: t, d: d}, agent: other.ID, id: session.ID}
+	var opened sessionInfo
+	d.must(t, http.MethodPost, "/api/agents/"+other.ID+"/sessions", nil, &opened, http.StatusCreated)
+	busy := botSession{bots: &bots{t: t, d: d}, agent: other.ID, id: opened.ID}
 	busy.send(`while :; do sleep 1; done`)
 	busy.watch().until(t, "the other bot runs", func(tr *transcript) bool { return tr.running })
 
 	// When the machine loses its session, a message arrives, and the machine connects again.
 	m.disconnect()
 	m.waitOnline(d, false)
-	id := d.send(t, chat, `cat note.txt; printf ' after'`)
+	id := d.send(t, session, `cat note.txt; printf ' after'`)
 	m.connect(d)
 
 	// Then the message runs on the machine while the other bot still works, with no reload pending.
-	d.watch(t, chat).until(t, "answer to "+id+" after the reconnect", answeredWith("bash: before after"))
+	d.watch(t, session).until(t, "answer to "+id+" after the reconnect", answeredWith("bash: before after"))
 	busy.watch().until(t, "the other bot still runs", func(tr *transcript) bool { return tr.running })
 	var ext apiExtensionsPending
 	d.must(t, http.MethodGet, "/api/agents/default/integrations", nil, &ext)
@@ -344,8 +344,8 @@ func TestUserBotRecoversItsMachineAfterAnOfflineStart(t *testing.T) {
 	m.disconnect()
 	first.stop()
 	d := startDexWith(t, app.Config{DataDir: dataDir})
-	chat := d.newSession(t).ID
-	id := d.send(t, chat, "skills")
+	session := d.newSession(t).ID
+	id := d.send(t, session, "skills")
 	// The extensions of a bot that is not open need its machine, so success means the bot opened.
 	eventually(t, "the bot opens without its machine", func() (bool, any) {
 		status, body := d.call(t, http.MethodGet, "/api/agents/default/integrations", nil)
@@ -358,5 +358,5 @@ func TestUserBotRecoversItsMachineAfterAnOfflineStart(t *testing.T) {
 	// Then the bot reloads on its own, and the waiting message answers with the skill from the
 	// machine. A reload ends the event streams of the bot, so watch after it.
 	d.applied(t)
-	d.watch(t, chat).until(t, "answer to "+id, answeredWith("laptop-only"))
+	d.watch(t, session).until(t, "answer to "+id, answeredWith("laptop-only"))
 }

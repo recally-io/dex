@@ -11,7 +11,7 @@ func TestUserReceivesOneTelegramSummaryWithoutPreview(t *testing.T) {
 	// Given a paired bot and an answer longer than a platform message.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
-	w := d.watch(t, d.mainChat(t))
+	w := d.watch(t, d.mainSession(t))
 	// When the owner sends a message.
 	f.message(1, 42, 7, strings.Repeat("stream ", 700)+"END OF ANSWER")
 	// Then typing has no text, and the only body is a summary of the final answer.

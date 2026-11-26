@@ -29,12 +29,12 @@ func openTools(t *testing.T) (*Service, *sql.DB) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := conn.ExecContext(ctx, `INSERT INTO conversations (id, agent_id, channel_key, execution_id, created_at, parent_id) VALUES
+	if _, err := conn.ExecContext(ctx, `INSERT INTO sessions (id, agent_id, channel_key, execution_id, created_at, parent_id) VALUES
 		(1, 'assignee', 'main', 1, 1, NULL), (2, 'reviewer', 'main', 2, 1, NULL), (3, 'other', 'main', 3, 1, NULL),
 		(4, 'other', 'chat:child', 4, 1, 1), (5, 'assignee', 'chat:top', 5, 1, NULL), (6, 'reviewer', 'chat:top', 6, 1, NULL)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := conn.ExecContext(ctx, `INSERT INTO submissions (id, conversation_id, content, status, created_at, kind, origin, producer) VALUES
+	if _, err := conn.ExecContext(ctx, `INSERT INTO submissions (id, session_id, content, status, created_at, kind, origin, producer) VALUES
 		('user', 1, 'x', 'done', 1, 'message', 'web', 'user'),
 		('result', 1, 'x', 'done', 1, 'session_result', 'task', 'sub_session'),
 		('alert', 1, 'x', 'done', 1, 'session_result', 'web', 'plugin'),
@@ -44,8 +44,8 @@ func openTools(t *testing.T) (*Service, *sql.DB) {
 		('reviewer-wake', 2, 'x', 'done', 1, 'task_wake', 'web', 'plugin'),
 		('other-user', 3, 'x', 'done', 1, 'message', 'web', 'user'),
 		('child-user', 4, 'x', 'done', 1, 'message', 'web', 'user'),
-		('chat-user', 5, 'x', 'done', 1, 'message', 'web', 'user'),
-		('reviewer-chat-user', 6, 'x', 'done', 1, 'message', 'web', 'user')`); err != nil {
+		('session-user', 5, 'x', 'done', 1, 'message', 'web', 'user'),
+		('reviewer-session-user', 6, 'x', 'done', 1, 'message', 'web', 'user')`); err != nil {
 		t.Fatal(err)
 	}
 	s := New(conn)
@@ -70,7 +70,7 @@ func TestUserTaskToolsEnforceActorAndOrigin(t *testing.T) {
 		t.Fatalf("missing root authorization: %+v, %v", row, err)
 	}
 	child := toolCall("other", 4, "child-user", "child")
-	chat := toolCall("assignee", 5, "chat-user", "chat")
+	session := toolCall("assignee", 5, "session-user", "chat")
 	link := tasksvc.Link{Namespace: "fixture", Name: "PR", Object: tasksvc.Object{Type: "pull", Key: "9"}, WaitEvent: "review"}
 	if _, err := s.Read(ctx, child, TaskReadArgs{ID: task.Key}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("unlinked child read: %v", err)
@@ -96,8 +96,8 @@ func TestUserTaskToolsEnforceActorAndOrigin(t *testing.T) {
 			_, err := s.Update(ctx, main("result", "status-result"), TaskUpdateArgs{ID: task.Key, Status: "in_progress"})
 			return err
 		}},
-		{"transition from top-level Chat", tasksvc.ErrForbidden, func() error {
-			_, err := s.Update(ctx, chat, TaskUpdateArgs{ID: task.Key, Status: "in_progress"})
+		{"transition from top-level Session", tasksvc.ErrForbidden, func() error {
+			_, err := s.Update(ctx, session, TaskUpdateArgs{ID: task.Key, Status: "in_progress"})
 			return err
 		}},
 		{"cancel on user turn", tasksvc.ErrForbidden, func() error {
@@ -294,7 +294,7 @@ func TestUserTaskReviewerWakesAssigneeAndRejectsStaleApproval(t *testing.T) {
 	}{
 		{assignee, approve, ErrInvalid}, // The submit key cannot be replayed as a review.
 		{toolCall("assignee", 1, "user", "self-review"), approve, tasksvc.ErrForbidden},
-		{toolCall("reviewer", 6, "reviewer-chat-user", "chat-review"), approve, tasksvc.ErrForbidden},
+		{toolCall("reviewer", 6, "reviewer-session-user", "session-review"), approve, tasksvc.ErrForbidden},
 		{reviewer, TaskReviewArgs{ID: key, Decision: "approve", ReviewSeq: submitted.ReviewSeq - 1}, tasksvc.ErrConflict},
 		{reviewer, TaskReviewArgs{ID: key, Decision: "request_changes", Note: "  "}, tasksvc.ErrInvalid},
 	} {

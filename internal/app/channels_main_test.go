@@ -109,20 +109,20 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 	t.Parallel()
 	for _, platform := range []string{"telegram", "wechat", "feishu"} {
 		t.Run(platform, func(t *testing.T) {
-			// Given a separate Chat and an old peer conversation with a model override.
+			// Given a separate Session and an old peer conversation with a model override.
 			e := newMainEntry(t, platform)
 			d := e.d
 			conn := sessionDB(t, d)
-			main := d.mainChat(t)
+			main := d.mainSession(t)
 			old := sessionFixture(t, d, e.peer+"/old", 1)
-			if _, err := conn.ExecContext(t.Context(), "UPDATE conversations SET model_provider='faux', model_id='shout' WHERE id=?", old); err != nil {
+			if _, err := conn.ExecContext(t.Context(), "UPDATE sessions SET model_provider='faux', model_id='shout' WHERE id=?", old); err != nil {
 				t.Fatal(err)
 			}
-			var chat chatInfo
-			d.must(t, http.MethodPost, "/api/agents/default/chats", nil, &chat, http.StatusCreated)
+			var session sessionListItem
+			d.must(t, http.MethodPost, "/api/agents/default/sessions", nil, &session, http.StatusCreated)
 			d.setModel(t, "context")
-			d.send(t, chat.ID, "Chat secret")
-			d.watch(t, chat.ID).until(t, "separate Chat", answered(`context: ["Chat secret"]`))
+			d.send(t, session.ID, "Session secret")
+			d.watch(t, session.ID).until(t, "separate Session", answered(`context: ["Session secret"]`))
 			web := d.send(t, main, "web context")
 			waitResultSubmission(t, conn, web, "done")
 			w := d.watch(t, main)
@@ -133,7 +133,7 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 			e.wait(t, `context: ["web context","channel context"]`)
 			var id string
 			var conversation int64
-			if err := conn.QueryRowContext(t.Context(), "SELECT id, conversation_id FROM submissions WHERE origin=? AND kind='message'", e.peer).Scan(&id, &conversation); err != nil {
+			if err := conn.QueryRowContext(t.Context(), "SELECT id, session_id FROM submissions WHERE origin=? AND kind='message'", e.peer).Scan(&id, &conversation); err != nil {
 				t.Fatal(err)
 			}
 			if conversation != main {
@@ -153,18 +153,18 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 					t.Fatalf("web reply reached channel: %+v", sent)
 				}
 			}
-			for _, c := range d.chats(t) {
+			for _, c := range d.sessions(t) {
 				if c.Channel == platform || c.ID == old {
 					t.Fatalf("old channel in Sessions: %+v", c)
 				}
 			}
 			var n int
-			if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE conversation_id=?", old).Scan(&n); err != nil || n != 0 {
+			if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE session_id=?", old).Scan(&n); err != nil || n != 0 {
 				t.Fatalf("old context got input: %d %v", n, err)
 			}
 			// A reply can be a preview. Clear needs the preceding turn to be idle.
 			d.awaitIdle(t, main)
-			// A channel clear does not reach the separate Chat. Earlier input keeps its entry mark.
+			// A channel clear does not reach the separate Session. Earlier input keeps its entry mark.
 			e.send("/new")
 			e.wait(t, "Context cleared.")
 			d.setModel(t, "context")
@@ -175,16 +175,16 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 					t.Fatalf("Clear sent a model reply: %+v", sent)
 				}
 			}
-			d.send(t, chat.ID, "still separate")
-			d.watch(t, chat.ID).until(t, "Chat survives main clear", answered(`context: ["Chat secret","still separate"]`))
+			d.send(t, session.ID, "still separate")
+			d.watch(t, session.ID).until(t, "Session survives main clear", answered(`context: ["Session secret","still separate"]`))
 			var page struct {
 				Items []item `json:"items"`
 			}
-			d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991", main), nil, &page)
+			d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/history?before=9007199254740991", main), nil, &page)
 			if !slices.ContainsFunc(page.Items, func(it item) bool { return it.ID == id && it.Origin == e.peer }) {
 				t.Fatalf("history lost channel entry: %+v", page.Items)
 			}
-			t.Logf("artifact: main=%d old=%d Chat=%d origin=%s sends=%+v", main, old, chat.ID, e.peer, e.sends())
+			t.Logf("artifact: main=%d old=%d Session=%d origin=%s sends=%+v", main, old, session.ID, e.peer, e.sends())
 		})
 	}
 }
@@ -197,12 +197,12 @@ func TestUserChannelMainTaskResultsFollowTheirSource(t *testing.T) {
 			e := newMainEntry(t, platform)
 			d := e.d
 			conn := sessionDB(t, d)
-			main := d.mainChat(t)
+			main := d.mainSession(t)
 			d.setModel(t, "spawn")
 			e.send(childJSON(t, map[string]string{"title": "Channel result", "message": taskGate(t, e.dir, "channel-result"), "provider": "faux", "modelId": "bash"}))
 			waitTaskFile(t, filepath.Join(e.dir, "channel-result.pid"))
 			var parent int64
-			if err := conn.QueryRowContext(t.Context(), "SELECT parent_id FROM conversations WHERE title='Channel result'").Scan(&parent); err != nil {
+			if err := conn.QueryRowContext(t.Context(), "SELECT parent_id FROM sessions WHERE title='Channel result'").Scan(&parent); err != nil {
 				t.Fatal(err)
 			}
 			if parent != main {
@@ -249,7 +249,7 @@ func TestUserChannelMainBusyInputsKeepAdmissionOrder(t *testing.T) {
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
 	d := startTelegram(t, f, dir, 42)
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	conn := sessionDB(t, d)
 	d.setModel(t, "bash")
 	d.send(t, main, taskGate(t, dir, "main-busy"))
@@ -285,7 +285,7 @@ func TestUserChannelMainBusyInputsKeepAdmissionOrder(t *testing.T) {
 		t.Fatal(got)
 	}
 	var rows []string
-	query, err := conn.QueryContext(t.Context(), "SELECT origin, answer FROM submissions WHERE conversation_id=? ORDER BY rowid", main)
+	query, err := conn.QueryContext(t.Context(), "SELECT origin, answer FROM submissions WHERE session_id=? ORDER BY rowid", main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func TestUserChannelMainFeishuReplyDoesNotIncludeQueuedWebInput(t *testing.T) {
 	d := startFeishu(t, f, dir)
 	pairFeishu(t, d, f)
 	d.setModel(t, "bash")
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	gate := taskGate(t, dir, "feishu-preview")
 	text := strings.TrimSpace(strings.Repeat("channel-answer ", 400))
 	f.text(t, "channel-preview", "owner", "p2p", gate+"; printf '%s' '"+text+"'")
@@ -354,7 +354,7 @@ func TestUserChannelMainClearRefusesBusyAndDeduplicates(t *testing.T) {
 	dir := t.TempDir()
 	d := startTelegram(t, f, dir, 42)
 	conn := sessionDB(t, d)
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	d.setModel(t, "bash")
 	d.send(t, main, taskGate(t, dir, "channel-clear"))
 	waitTaskFile(t, filepath.Join(dir, "channel-clear.pid"))
@@ -372,7 +372,7 @@ func TestUserChannelMainClearRefusesBusyAndDeduplicates(t *testing.T) {
 	f.message(3, 42, 7, "printf after-clear")
 	waitTaskChannelText(t, f, "bash: after-clear")
 	var count int
-	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE kind='context_reset' AND conversation_id=?", main).Scan(&count); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE kind='context_reset' AND session_id=?", main).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
@@ -385,7 +385,7 @@ func TestUserChannelMainClearRefusesBusyAndDeduplicates(t *testing.T) {
 	}
 	startDex(t, dir, f.srv.URL)
 	waitTaskChannelText(t, f, "Context cleared.")
-	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE kind='context_reset' AND conversation_id=?", main).Scan(&count); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE kind='context_reset' AND session_id=?", main).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
@@ -394,27 +394,27 @@ func TestUserChannelMainClearRefusesBusyAndDeduplicates(t *testing.T) {
 	t.Logf("artifact: channel clear resets=%d; refused and successful receipts survive replay", count)
 }
 
-func TestUserChannelMainStopKeepsChatAndAutomationWork(t *testing.T) {
+func TestUserChannelMainStopKeepsSessionAndAutomationWork(t *testing.T) {
 	t.Parallel()
-	// Given work started from two main entries, a separate Chat, and an automation.
+	// Given work started from two main entries, a separate Session, and an automation.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
 	d := startTelegram(t, f, dir, 42)
 	conn := sessionDB(t, d)
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	d.setModel(t, "spawn")
 	f.message(1, 42, 7, childJSON(t, map[string]string{"title": "main task", "message": taskGate(t, dir, "main-task"), "provider": "faux", "modelId": "bash"}))
 	waitTaskFile(t, filepath.Join(dir, "main-task.pid"))
 	var parent int64
-	if err := conn.QueryRowContext(t.Context(), "SELECT parent_id FROM conversations WHERE title='main task'").Scan(&parent); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT parent_id FROM sessions WHERE title='main task'").Scan(&parent); err != nil {
 		t.Fatal(err)
 	}
 	if parent != main {
 		t.Fatalf("channel task outside main: %d != %d", parent, main)
 	}
 	d.setModel(t, "bash")
-	chat := d.newChat(t, taskGate(t, dir, "separate-chat"))
-	waitTaskFile(t, filepath.Join(dir, "separate-chat.pid"))
+	session := d.newSessionWithMessage(t, taskGate(t, dir, "separate-session"))
+	waitTaskFile(t, filepath.Join(dir, "separate-session.pid"))
 	auto := d.createAutomation(t, "Separate automation", taskGate(t, dir, "separate-auto"), "new", map[string]any{"kind": "every", "minutes": 60})
 	d.runNow(t, auto.ID)
 	waitTaskFile(t, filepath.Join(dir, "separate-auto.pid"))
@@ -428,18 +428,18 @@ func TestUserChannelMainStopKeepsChatAndAutomationWork(t *testing.T) {
 	waitExecution(t, conn, main, "main task", "cancelled")
 	waitTaskPIDGone(t, filepath.Join(dir, "main-task.pid"))
 	waitTaskPIDGone(t, filepath.Join(dir, "main-turn.pid"))
-	for _, name := range []string{"separate-chat", "separate-auto"} {
+	for _, name := range []string{"separate-session", "separate-auto"} {
 		if taskPIDGone(t, filepath.Join(dir, name+".pid")) {
 			t.Fatalf("main Stop crossed into %s", name)
 		}
 		releaseResultGate(t, dir, name)
 	}
-	d.watch(t, chat).until(t, "Chat work preserved", answered("bash: gate released"))
+	d.watch(t, session).until(t, "Session work preserved", answered("bash: gate released"))
 	var pending int
-	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE conversation_id=? AND status='pending'", main).Scan(&pending); err != nil || pending != 0 {
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE session_id=? AND status='pending'", main).Scan(&pending); err != nil || pending != 0 {
 		t.Fatalf("main has pending input: %d %v", pending, err)
 	}
-	t.Logf("artifact: stopped main=%d; preserved Chat=%d and automation=%s", main, chat, auto.ID)
+	t.Logf("artifact: stopped main=%d; preserved Session=%d and automation=%s", main, session, auto.ID)
 }
 
 func assertSubmissionOrigin(t *testing.T, conn *sql.DB, id, want string) {
@@ -460,7 +460,7 @@ func TestUserRevokedChannelStopDoesNotReplyOrAffectLaterWork(t *testing.T) {
 	dir := t.TempDir()
 	d := startTelegram(t, f, dir, 42)
 	conn := sessionDB(t, d)
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	d.setModel(t, "bash")
 	first := d.send(t, main, taskGate(t, dir, "first-stop"))
 	waitTaskFile(t, filepath.Join(dir, "first-stop.pid"))

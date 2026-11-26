@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/session"
 )
 
 // TelegramHooks provides optional Telegram operations used by the durable sender.
@@ -39,7 +39,7 @@ type Manager struct {
 	ctx      context.Context
 	q        *sqlc.Queries
 	db       *sql.DB
-	chats    *chat.Service
+	sessions *session.Service
 	agentID  string
 	setMu    sync.Mutex
 	intakeMu sync.Mutex // Orders callback commits with runtime removal.
@@ -49,8 +49,8 @@ type Manager struct {
 }
 
 // New creates a manager. Close it before closing the database.
-func New(ctx context.Context, db *sql.DB, chats *chat.Service, agentID string) *Manager {
-	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), chats: chats, agentID: agentID, commands: make(map[string]chan struct{}), bots: make(map[string]*runtime)}
+func New(ctx context.Context, db *sql.DB, sessions *session.Service, agentID string) *Manager {
+	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), sessions: sessions, agentID: agentID, commands: make(map[string]chan struct{}), bots: make(map[string]*runtime)}
 }
 
 // Set stops the old bot and waits for it before starting its replacement.
@@ -134,7 +134,7 @@ func (m *Manager) Notify(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for platform, r := range m.bots {
-		if key != chat.MainKey && platform != name {
+		if key != session.MainKey && platform != name {
 			continue
 		}
 		if media, ok := r.bot.(TelegramHooks); ok {
@@ -154,12 +154,12 @@ func (m *Manager) SetTelegramRetryAt(ctx context.Context, token string, until in
 
 // ReceivedSource reports stored platform input, including input received by a previous agent.
 func (m *Manager) ReceivedSource(ctx context.Context, source string) (bool, error) {
-	return m.chats.ReceivedSource(ctx, source)
+	return m.sessions.ReceivedSource(ctx, source)
 }
 
 // Source returns the stored input and typing state for this manager's agent.
-func (m *Manager) Source(ctx context.Context, source string) (chat.SourceReceipt, error) {
-	return m.chats.LookupSource(ctx, m.agentID, source)
+func (m *Manager) Source(ctx context.Context, source string) (session.SourceReceipt, error) {
+	return m.sessions.LookupSource(ctx, m.agentID, source)
 }
 
 // Pending reports input whose answer returns to this peer.

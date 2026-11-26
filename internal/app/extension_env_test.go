@@ -42,10 +42,10 @@ func TestUserManagesWriteOnlyVaultAtBothLevels(t *testing.T) {
 		t.Fatalf("vault metadata: %d %s", status, body)
 	}
 	call := func(agentID string) string {
-		var chat chatInfo
-		base := "/api/agents/" + agentID + "/chats"
-		d.must(t, http.MethodGet, base+"/main", nil, &chat)
-		path := fmt.Sprintf("%s/%d", base, chat.ID)
+		var session sessionListItem
+		base := "/api/agents/" + agentID + "/sessions"
+		d.must(t, http.MethodGet, base+"/main", nil, &session)
+		path := fmt.Sprintf("%s/%d", base, session.ID)
 		w := d.watchPath(t, path+"/events")
 		d.must(t, http.MethodPost, path+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": `bash {"command":"case $TOKEN in agent-*) printf agent;; shared-*) printf shared;; esac","env":{"TOKEN":"vault:TOKEN"}}`}, nil, http.StatusAccepted)
 		w.until(t, "bot secret", answeredWith("tool: "))
@@ -60,6 +60,6 @@ func TestUserManagesWriteOnlyVaultAtBothLevels(t *testing.T) {
 	d.must(t, http.MethodDelete, endpoint+"?scope=agent&name=TOKEN", nil, nil)
 	d.applied(t)
 	// The next call uses the shared value again.
-	w := d.watch(t, d.newChat(t, `bash {"command":"case $TOKEN in shared-*) printf shared;; esac","env":{"TOKEN":"vault:TOKEN"}}`))
+	w := d.watch(t, d.newSessionWithMessage(t, `bash {"command":"case $TOKEN in shared-*) printf shared;; esac","env":{"TOKEN":"vault:TOKEN"}}`))
 	w.until(t, "shared fallback", answered("tool: shared"))
 }

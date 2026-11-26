@@ -10,13 +10,13 @@ import (
 	"database/sql"
 )
 
-const createChildConversation = `-- name: CreateChildConversation :one
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, parent_id, created_at)
+const createChildSession = `-- name: CreateChildSession :one
+INSERT INTO sessions (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
 `
 
-type CreateChildConversationParams struct {
+type CreateChildSessionParams struct {
 	AgentID       string        `json:"agent_id"`
 	ChannelKey    string        `json:"channel_key"`
 	Title         string        `json:"title"`
@@ -29,9 +29,9 @@ type CreateChildConversationParams struct {
 	CreatedAt     int64         `json:"created_at"`
 }
 
-// A child session is a Chat with a parent. Its first turn is stored in the same transaction.
-func (q *Queries) CreateChildConversation(ctx context.Context, arg CreateChildConversationParams) (Conversation, error) {
-	row := q.db.QueryRowContext(ctx, createChildConversation,
+// A child session is a Session with a parent. Its first turn is stored in the same transaction.
+func (q *Queries) CreateChildSession(ctx context.Context, arg CreateChildSessionParams) (Session, error) {
+	row := q.db.QueryRowContext(ctx, createChildSession,
 		arg.AgentID,
 		arg.ChannelKey,
 		arg.Title,
@@ -43,7 +43,7 @@ func (q *Queries) CreateChildConversation(ctx context.Context, arg CreateChildCo
 		arg.ParentID,
 		arg.CreatedAt,
 	)
-	var i Conversation
+	var i Session
 	err := row.Scan(
 		&i.ID,
 		&i.AgentID,
@@ -65,14 +65,14 @@ func (q *Queries) CreateChildConversation(ctx context.Context, arg CreateChildCo
 }
 
 const createParentTurn = `-- name: CreateParentTurn :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, origin, producer, reply_channel, reply_peer, kind, when_busy, parent_request_id, status, created_at)
+INSERT INTO submissions (id, session_id, content, attachments, origin, producer, reply_channel, reply_peer, kind, when_busy, parent_request_id, status, created_at)
 VALUES (?1, ?2, ?3, 'null', 'task', 'sub_session', '', '', 'message', ?4, ?5, 'pending', ?6)
 ON CONFLICT DO NOTHING
 `
 
 type CreateParentTurnParams struct {
 	ID              string         `json:"id"`
-	ConversationID  int64          `json:"conversation_id"`
+	SessionID       int64          `json:"session_id"`
 	Content         string         `json:"content"`
 	WhenBusy        string         `json:"when_busy"`
 	ParentRequestID sql.NullString `json:"parent_request_id"`
@@ -84,7 +84,7 @@ type CreateParentTurnParams struct {
 func (q *Queries) CreateParentTurn(ctx context.Context, arg CreateParentTurnParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, createParentTurn,
 		arg.ID,
-		arg.ConversationID,
+		arg.SessionID,
 		arg.Content,
 		arg.WhenBusy,
 		arg.ParentRequestID,
@@ -97,10 +97,10 @@ func (q *Queries) CreateParentTurn(ctx context.Context, arg CreateParentTurnPara
 }
 
 const createTurnResult = `-- name: CreateTurnResult :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
+INSERT INTO submissions (id, session_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
 SELECT ?1, c.parent_id, ?2, 'null', ?1, 'task', 'sub_session', '', '', 'session_result', 'pending', ?3, c.id, ?4, '{}', 0
 FROM submissions turn
-JOIN conversations c ON c.id = turn.conversation_id
+JOIN sessions c ON c.id = turn.session_id
 WHERE turn.id = ?5 AND c.parent_id IS NOT NULL
 ON CONFLICT (result_child_id, native_answer_id) DO NOTHING
 `
@@ -139,21 +139,21 @@ func (q *Queries) FinishParentInputStop(ctx context.Context, id string) error {
 }
 
 const getTurn = `-- name: GetTurn :one
-SELECT s.id, s.conversation_id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
+SELECT s.id, s.session_id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
 WHERE s.id = ? AND (s.kind = 'message' OR (s.kind = 'wake' AND s.id LIKE 'background:%'))
 `
 
 type GetTurnRow struct {
-	ID             string         `json:"id"`
-	ConversationID int64          `json:"conversation_id"`
-	Content        string         `json:"content"`
-	Origin         string         `json:"origin"`
-	Status         string         `json:"status"`
-	Reason         sql.NullString `json:"reason"`
-	Answer         sql.NullString `json:"answer"`
-	CreatedAt      int64          `json:"created_at"`
-	SettledAt      sql.NullInt64  `json:"settled_at"`
+	ID        string         `json:"id"`
+	SessionID int64          `json:"session_id"`
+	Content   string         `json:"content"`
+	Origin    string         `json:"origin"`
+	Status    string         `json:"status"`
+	Reason    sql.NullString `json:"reason"`
+	Answer    sql.NullString `json:"answer"`
+	CreatedAt int64          `json:"created_at"`
+	SettledAt sql.NullInt64  `json:"settled_at"`
 }
 
 // A turn is an input of a person or a session. The wake-up of a background command is a turn too: a
@@ -164,7 +164,7 @@ func (q *Queries) GetTurn(ctx context.Context, id string) (GetTurnRow, error) {
 	var i GetTurnRow
 	err := row.Scan(
 		&i.ID,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.Content,
 		&i.Origin,
 		&i.Status,
@@ -179,7 +179,7 @@ func (q *Queries) GetTurn(ctx context.Context, id string) (GetTurnRow, error) {
 const getTurnParent = `-- name: GetTurnParent :one
 SELECT s.parent_request_id, s.created_at, c.id AS child_id, c.title, c.parent_id
 FROM submissions s
-JOIN conversations c ON c.id = s.conversation_id
+JOIN sessions c ON c.id = s.session_id
 WHERE s.id = ? AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL
 `
 
@@ -209,7 +209,7 @@ func (q *Queries) GetTurnParent(ctx context.Context, id string) (GetTurnParentRo
 const latestTurn = `-- name: LatestTurn :one
 SELECT s.id, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
-WHERE s.conversation_id = ? AND s.kind = 'message'
+WHERE s.session_id = ? AND s.kind = 'message'
 ORDER BY s.rowid DESC LIMIT 1
 `
 
@@ -223,8 +223,8 @@ type LatestTurnRow struct {
 	SettledAt sql.NullInt64  `json:"settled_at"`
 }
 
-func (q *Queries) LatestTurn(ctx context.Context, conversationID int64) (LatestTurnRow, error) {
-	row := q.db.QueryRowContext(ctx, latestTurn, conversationID)
+func (q *Queries) LatestTurn(ctx context.Context, sessionID int64) (LatestTurnRow, error) {
+	row := q.db.QueryRowContext(ctx, latestTurn, sessionID)
 	var i LatestTurnRow
 	err := row.Scan(
 		&i.ID,
@@ -239,7 +239,7 @@ func (q *Queries) LatestTurn(ctx context.Context, conversationID int64) (LatestT
 }
 
 const listChannelChildren = `-- name: ListChannelChildren :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM conversations
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions
 WHERE parent_id = ?1 AND agent_id = ?2
     AND channel_key NOT LIKE 'retired-telegram:%'
 ORDER BY id DESC
@@ -251,15 +251,15 @@ type ListChannelChildrenParams struct {
 	AgentID  string        `json:"agent_id"`
 }
 
-func (q *Queries) ListChannelChildren(ctx context.Context, arg ListChannelChildrenParams) ([]Conversation, error) {
+func (q *Queries) ListChannelChildren(ctx context.Context, arg ListChannelChildrenParams) ([]Session, error) {
 	rows, err := q.db.QueryContext(ctx, listChannelChildren, arg.ParentID, arg.AgentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Conversation{}
+	items := []Session{}
 	for rows.Next() {
-		var i Conversation
+		var i Session
 		if err := rows.Scan(
 			&i.ID,
 			&i.AgentID,
@@ -293,7 +293,7 @@ func (q *Queries) ListChannelChildren(ctx context.Context, arg ListChannelChildr
 const listChildPending = `-- name: ListChildPending :many
 SELECT id, parent_request_id IS NOT NULL AS from_parent, stop_requested
 FROM submissions
-WHERE conversation_id = ? AND status = 'pending'
+WHERE session_id = ? AND status = 'pending'
 ORDER BY rowid
 `
 
@@ -303,8 +303,8 @@ type ListChildPendingRow struct {
 	StopRequested int64  `json:"stop_requested"`
 }
 
-func (q *Queries) ListChildPending(ctx context.Context, conversationID int64) ([]ListChildPendingRow, error) {
-	rows, err := q.db.QueryContext(ctx, listChildPending, conversationID)
+func (q *Queries) ListChildPending(ctx context.Context, sessionID int64) ([]ListChildPendingRow, error) {
+	rows, err := q.db.QueryContext(ctx, listChildPending, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -327,11 +327,11 @@ func (q *Queries) ListChildPending(ctx context.Context, conversationID int64) ([
 }
 
 const listParentInputStops = `-- name: ListParentInputStops :many
-SELECT id FROM submissions WHERE conversation_id = ? AND stop_requested = 1 AND status = 'pending' ORDER BY rowid
+SELECT id FROM submissions WHERE session_id = ? AND stop_requested = 1 AND status = 'pending' ORDER BY rowid
 `
 
-func (q *Queries) ListParentInputStops(ctx context.Context, conversationID int64) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listParentInputStops, conversationID)
+func (q *Queries) ListParentInputStops(ctx context.Context, sessionID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listParentInputStops, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +356,7 @@ func (q *Queries) ListParentInputStops(ctx context.Context, conversationID int64
 const listRecoveryChildren = `-- name: ListRecoveryChildren :many
 SELECT DISTINCT c.id, c.agent_id, c.execution_id
 FROM submissions s
-JOIN conversations c ON c.id = s.conversation_id
+JOIN sessions c ON c.id = s.session_id
 WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
     AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL AND c.channel_key NOT LIKE 'retired-telegram:%'
 ORDER BY c.id
@@ -395,7 +395,7 @@ func (q *Queries) ListRecoveryChildren(ctx context.Context) ([]ListRecoveryChild
 
 const listRecoveryParentInputStops = `-- name: ListRecoveryParentInputStops :many
 SELECT s.id, c.agent_id, c.execution_id
-FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+FROM submissions s JOIN sessions c ON c.id = s.session_id
 WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.channel_key NOT LIKE 'retired-telegram:%'
 `
 
@@ -439,11 +439,11 @@ SELECT
     c.parent_id,
     CAST(max(
         c.created_at,
-        coalesce((SELECT max(s.created_at) FROM submissions s WHERE s.conversation_id = c.id), c.created_at),
-        coalesce((SELECT max(s.settled_at) FROM submissions s WHERE s.conversation_id = c.id), c.created_at)
+        coalesce((SELECT max(s.created_at) FROM submissions s WHERE s.session_id = c.id), c.created_at),
+        coalesce((SELECT max(s.settled_at) FROM submissions s WHERE s.session_id = c.id), c.created_at)
     ) AS INTEGER) AS updated_at,
-    CAST((SELECT count(*) FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
-FROM conversations c
+    CAST((SELECT count(*) FROM submissions s WHERE s.session_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
+FROM sessions c
 JOIN agents a ON a.id = c.agent_id
 WHERE c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND (c.parent_id = ?1 OR (
@@ -516,8 +516,8 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]L
 }
 
 const listStopPendingSessions = `-- name: ListStopPendingSessions :many
-SELECT DISTINCT conversation_id FROM submissions WHERE stop_requested = 1 AND status = 'pending'
-UNION SELECT conversation_id FROM main_turn_stops
+SELECT DISTINCT session_id FROM submissions WHERE stop_requested = 1 AND status = 'pending'
+UNION SELECT session_id FROM main_turn_stops
 `
 
 func (q *Queries) ListStopPendingSessions(ctx context.Context) ([]int64, error) {
@@ -528,11 +528,11 @@ func (q *Queries) ListStopPendingSessions(ctx context.Context) ([]int64, error) 
 	defer rows.Close()
 	items := []int64{}
 	for rows.Next() {
-		var conversation_id int64
-		if err := rows.Scan(&conversation_id); err != nil {
+		var session_id int64
+		if err := rows.Scan(&session_id); err != nil {
 			return nil, err
 		}
-		items = append(items, conversation_id)
+		items = append(items, session_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -546,16 +546,16 @@ func (q *Queries) ListStopPendingSessions(ctx context.Context) ([]int64, error) 
 const listTurns = `-- name: ListTurns :many
 SELECT s.id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
-WHERE s.conversation_id = ?1 AND s.kind = 'message'
+WHERE s.session_id = ?1 AND s.kind = 'message'
     AND (CAST(?2 AS TEXT) = '' OR s.rowid < (SELECT x.rowid FROM submissions x WHERE x.id = ?2))
 ORDER BY s.rowid DESC
 LIMIT ?3
 `
 
 type ListTurnsParams struct {
-	ConversationID int64  `json:"conversation_id"`
-	Before         string `json:"before"`
-	MaxRows        int64  `json:"max_rows"`
+	SessionID int64  `json:"session_id"`
+	Before    string `json:"before"`
+	MaxRows   int64  `json:"max_rows"`
 }
 
 type ListTurnsRow struct {
@@ -571,7 +571,7 @@ type ListTurnsRow struct {
 
 // The turns of a session, newest first. A non-empty before is the turn ID that the page follows.
 func (q *Queries) ListTurns(ctx context.Context, arg ListTurnsParams) ([]ListTurnsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTurns, arg.ConversationID, arg.Before, arg.MaxRows)
+	rows, err := q.db.QueryContext(ctx, listTurns, arg.SessionID, arg.Before, arg.MaxRows)
 	if err != nil {
 		return nil, err
 	}
@@ -603,11 +603,11 @@ func (q *Queries) ListTurns(ctx context.Context, arg ListTurnsParams) ([]ListTur
 }
 
 const pendingCount = `-- name: PendingCount :one
-SELECT CAST(count(*) AS INTEGER) FROM submissions WHERE conversation_id = ? AND status = 'pending'
+SELECT CAST(count(*) AS INTEGER) FROM submissions WHERE session_id = ? AND status = 'pending'
 `
 
-func (q *Queries) PendingCount(ctx context.Context, conversationID int64) (int64, error) {
-	row := q.db.QueryRowContext(ctx, pendingCount, conversationID)
+func (q *Queries) PendingCount(ctx context.Context, sessionID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, pendingCount, sessionID)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -615,18 +615,18 @@ func (q *Queries) PendingCount(ctx context.Context, conversationID int64) (int64
 
 const requestParentInputStop = `-- name: RequestParentInputStop :exec
 UPDATE submissions SET stop_requested = 1
-WHERE conversation_id = ? AND status = 'pending' AND parent_request_id IS NOT NULL
+WHERE session_id = ? AND status = 'pending' AND parent_request_id IS NOT NULL
 `
 
-func (q *Queries) RequestParentInputStop(ctx context.Context, conversationID int64) error {
-	_, err := q.db.ExecContext(ctx, requestParentInputStop, conversationID)
+func (q *Queries) RequestParentInputStop(ctx context.Context, sessionID int64) error {
+	_, err := q.db.ExecContext(ctx, requestParentInputStop, sessionID)
 	return err
 }
 
 const searchTurns = `-- name: SearchTurns :many
-SELECT s.id, s.conversation_id, c.agent_id, a.name AS agent_name, c.title, s.content, s.answer, s.created_at
+SELECT s.id, s.session_id, c.agent_id, a.name AS agent_name, c.title, s.content, s.answer, s.created_at
 FROM submissions s
-JOIN conversations c ON c.id = s.conversation_id
+JOIN sessions c ON c.id = s.session_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND s.id <> ?1
@@ -659,14 +659,14 @@ type SearchTurnsParams struct {
 }
 
 type SearchTurnsRow struct {
-	ID             string         `json:"id"`
-	ConversationID int64          `json:"conversation_id"`
-	AgentID        string         `json:"agent_id"`
-	AgentName      string         `json:"agent_name"`
-	Title          string         `json:"title"`
-	Content        string         `json:"content"`
-	Answer         sql.NullString `json:"answer"`
-	CreatedAt      int64          `json:"created_at"`
+	ID        string         `json:"id"`
+	SessionID int64          `json:"session_id"`
+	AgentID   string         `json:"agent_id"`
+	AgentName string         `json:"agent_name"`
+	Title     string         `json:"title"`
+	Content   string         `json:"content"`
+	Answer    sql.NullString `json:"answer"`
+	CreatedAt int64          `json:"created_at"`
 }
 
 // A turn matches when every non-empty word is a substring of its input or its answer. The caller
@@ -695,7 +695,7 @@ func (q *Queries) SearchTurns(ctx context.Context, arg SearchTurnsParams) ([]Sea
 		var i SearchTurnsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.ConversationID,
+			&i.SessionID,
 			&i.AgentID,
 			&i.AgentName,
 			&i.Title,

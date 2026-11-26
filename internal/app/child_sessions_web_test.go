@@ -9,7 +9,7 @@ import (
 
 // The tests in this file read child sessions through the HTTP API that the web UI uses.
 
-type webChat struct {
+type webSession struct {
 	ID         int64  `json:"id"`
 	Channel    string `json:"channel"`
 	Busy       bool   `json:"busy"`
@@ -23,14 +23,14 @@ type webChat struct {
 	StoppedWithParent *bool `json:"stoppedWithParent"`
 }
 
-func (d *dex) listWebChats(t *testing.T) map[int64]webChat {
+func (d *dex) listWebSessions(t *testing.T) map[int64]webSession {
 	t.Helper()
 	var list struct {
-		Chats []webChat `json:"chats"`
+		Sessions []webSession `json:"sessions"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/chats", nil, &list)
-	out := map[int64]webChat{}
-	for _, c := range list.Chats {
+	d.must(t, http.MethodGet, "/api/agents/default/sessions", nil, &list)
+	out := map[int64]webSession{}
+	for _, c := range list.Sessions {
 		out[c.ID] = c
 	}
 	return out
@@ -38,7 +38,7 @@ func (d *dex) listWebChats(t *testing.T) map[int64]webChat {
 
 func TestUserOpensTheChildSessionOfAResultLink(t *testing.T) {
 	t.Parallel()
-	// Given a parent chat whose child session has answered once.
+	// Given a parent session whose child session has answered once.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
@@ -56,22 +56,22 @@ func TestUserOpensTheChildSessionOfAResultLink(t *testing.T) {
 		}
 		return false
 	})
-	var opened webChat
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", child.conversation(t)), nil, &opened)
+	var opened webSession
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", child.conversation(t)), nil, &opened)
 
 	// Then it gets the child session, which is writable and names its parent.
 	if opened.ID != child.conversation(t) || opened.ParentID == nil || *opened.ParentID != parent || opened.ReadOnly || opened.Channel != "web" {
 		t.Fatalf("turn %s opened %+v; child=%+v parent=%d", turn, opened, child, parent)
 	}
 	// And the session list carries the same parent link.
-	if listed := d.listWebChats(t)[opened.ID]; listed.ParentID == nil || *listed.ParentID != parent {
+	if listed := d.listWebSessions(t)[opened.ID]; listed.ParentID == nil || *listed.ParentID != parent {
 		t.Fatalf("listed child: %+v", listed)
 	}
 
 	// And another Bot cannot open the child at its own Session URL.
 	var other apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "B", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/chats/%d", other.ID, opened.ID), nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/sessions/%d", other.ID, opened.ID), nil, nil, http.StatusNotFound)
 }
 
 func TestUserParentStopWithdrawsParentInputQueuedBehindAUserRun(t *testing.T) {
@@ -87,8 +87,8 @@ func TestUserParentStopWithdrawsParentInputQueuedBehindAUserRun(t *testing.T) {
 	waitTaskFile(t, filepath.Join(dir, "user-active.pid"))
 	var ref childRef
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo parent queued"}), &ref)
-	// When the user stops the parent chat.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
+	// When the user stops the parent session.
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", parent), nil, nil)
 	releaseResultGate(t, dir, "user-active")
 	// Then the run of the user finishes, and the parent input never runs.
 	turns := waitChildTurnsEnded(t, conn, child.conversation(t), 3)
@@ -115,16 +115,16 @@ func TestUserSeesBusyChildActivityInTheSessionList(t *testing.T) {
 
 	// When the web lists the sessions, then the busy child has a parent and the engine's activity,
 	// which the stalled hint reads.
-	var listed webChat
+	var listed webSession
 	eventually(t, "activity of the busy child", func() (bool, any) {
-		listed = d.listWebChats(t)[child.conversation(t)]
+		listed = d.listWebSessions(t)[child.conversation(t)]
 		return listed.Busy && listed.LastActivityAt != nil && listed.ToolStartedAt != nil, listed
 	})
 	if listed.ParentID == nil || *listed.ParentID != parent {
 		t.Fatalf("busy child: %+v", listed)
 	}
 	// And the parent, which is idle, has no activity.
-	if idle := d.listWebChats(t)[parent]; idle.Busy || idle.LastActivityAt != nil || idle.ToolStartedAt != nil {
+	if idle := d.listWebSessions(t)[parent]; idle.Busy || idle.LastActivityAt != nil || idle.ToolStartedAt != nil {
 		t.Fatalf("idle parent: %+v", idle)
 	}
 
@@ -132,7 +132,7 @@ func TestUserSeesBusyChildActivityInTheSessionList(t *testing.T) {
 	releaseResultGate(t, dir, "busy")
 	waitResults(t, conn, parent, 1)
 	eventually(t, "idle child", func() (bool, any) {
-		done := d.listWebChats(t)[child.conversation(t)]
+		done := d.listWebSessions(t)[child.conversation(t)]
 		return !done.Busy && done.LastActivityAt == nil && done.ToolStartedAt == nil, fmt.Sprintf("%+v", done)
 	})
 }
@@ -149,22 +149,22 @@ func TestUserSeesStopOnlyForWithdrawableMixedChildInput(t *testing.T) {
 	d.send(t, child.conversation(t), "echo user queued")
 
 	// When no parent input is queued, Stop cannot act on the child.
-	if got := d.listWebChats(t)[child.conversation(t)]; got.StoppedWithParent != nil {
+	if got := d.listWebSessions(t)[child.conversation(t)]; got.StoppedWithParent != nil {
 		t.Fatalf("placed parent input must not enable Stop: %+v", got)
 	}
 	var ref childRef
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo parent queued"}), &ref)
-	if got := d.listWebChats(t)[child.conversation(t)]; got.StoppedWithParent == nil || !*got.StoppedWithParent {
+	if got := d.listWebSessions(t)[child.conversation(t)]; got.StoppedWithParent == nil || !*got.StoppedWithParent {
 		t.Fatalf("queued parent input must enable Stop: %+v", got)
 	}
 
 	// When the parent stops, only the queued parent input ends.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", parent), nil, nil)
 	turns := childTurns(t, conn, child.conversation(t))
 	if len(turns) != 3 || turns[0].status != "pending" || turns[1].status != "pending" || turns[2].status != "unanswered" || turns[2].reason != "stopped" {
 		t.Fatalf("mixed child after Stop: %+v", turns)
 	}
-	if got := d.listWebChats(t)[child.conversation(t)]; got.StoppedWithParent != nil {
+	if got := d.listWebSessions(t)[child.conversation(t)]; got.StoppedWithParent != nil {
 		t.Fatalf("withdrawn parent input must not enable Stop: %+v", got)
 	}
 	releaseResultGate(t, dir, "mixed-web")
@@ -186,7 +186,7 @@ func TestUserSeesWhichChildrenStopOnTheParentReaches(t *testing.T) {
 	waitTaskFile(t, filepath.Join(dir, "alone.pid"))
 
 	// When the web reads the session list, then only the first child is marked.
-	listed := d.listWebChats(t)
+	listed := d.listWebSessions(t)
 	if got := listed[reached.conversation(t)]; !got.Busy || got.StoppedWithParent == nil || !*got.StoppedWithParent {
 		t.Fatalf("child of a parent turn: %+v", got)
 	}
@@ -195,12 +195,12 @@ func TestUserSeesWhichChildrenStopOnTheParentReaches(t *testing.T) {
 	}
 
 	// And the mark is the effect of Stop: it ends the first child and leaves the second.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", parent), nil, nil)
 	waitChildTurnsEnded(t, conn, reached.conversation(t), 1)
 	if turns := childTurns(t, conn, alone.conversation(t)); turns[1].status != "pending" {
 		t.Fatalf("the stop of the parent ended the turn of the user: %+v", turns[1])
 	}
-	if got := d.listWebChats(t)[reached.conversation(t)]; got.Busy || got.StoppedWithParent != nil {
+	if got := d.listWebSessions(t)[reached.conversation(t)]; got.Busy || got.StoppedWithParent != nil {
 		t.Fatalf("stopped child: %+v", got)
 	}
 	releaseResultGate(t, dir, "alone")

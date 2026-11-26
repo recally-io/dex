@@ -66,7 +66,7 @@ Models + tools + MCP + memory" as engine
 Typed watch events + heartbeat" as live
 }
 database "control.sqlite
-Settings, chats, input receipts
+Settings, sessions, input receipts
 Tasks and platform delivery receipts" as cdb
 database "agents/<id>/state.sqlite
 Native admission and native Inbox

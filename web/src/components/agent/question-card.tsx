@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CircleAlert } from "lucide-react";
-import type { ChatQuestion } from "../../api/generated/types.gen";
+import type { SessionQuestion } from "../../api/generated/types.gen";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { cn } from "../../lib/utils";
@@ -12,7 +12,7 @@ export function QuestionCard({
   pending,
   answer,
 }: {
-  question: ChatQuestion;
+  question: SessionQuestion;
   pending: boolean;
   answer: (text: string) => void;
 }) {

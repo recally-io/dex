@@ -36,4 +36,4 @@ WHERE a.archived_at IS NULL AND t.status = 'in_review' AND t.reviewer_kind = 'ow
 ORDER BY t.updated_at DESC, t.number DESC;
 
 -- name: HasBoundTaskSession :one
-SELECT EXISTS (SELECT 1 FROM task_sessions WHERE conversation_id = ? AND bot_id = ?);
+SELECT EXISTS (SELECT 1 FROM task_sessions WHERE session_id = ? AND bot_id = ?);

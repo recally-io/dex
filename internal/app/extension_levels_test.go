@@ -32,14 +32,14 @@ func TestUserUsesVaultHeaderWithoutLeakingValues(t *testing.T) {
 	d := startDexHome(t, app.Config{DataDir: data}, home)
 	saveVault(t, d, "default", "dex", "NOTION_TOKEN", secret)
 	d.setModel(t, "tool")
-	chat := d.newChat(t, `mcp__good__append {"text":"ok"}`)
-	d.watch(t, chat).until(t, "HTTP header", answered("tool: appended 1"))
+	session := d.newSessionWithMessage(t, `mcp__good__append {"text":"ok"}`)
+	d.watch(t, session).until(t, "HTTP header", answered("tool: appended 1"))
 	got := d.extensions(t)
 	if got.server("good").State != "connected" || got.server("missing").State != "failed" || got.server("disabled").State != "disabled" || !strings.Contains(got.server("missing").Error, "ABSENT_HEADER_KEY") {
 		t.Fatalf("servers: %+v", got.Servers)
 	}
 	_, body := d.call(t, http.MethodGet, "/api/agents/default/integrations", nil)
-	for _, view := range []string{body, taskTool(t, d, chat, "mcp_server_list", map[string]any{}), taskTool(t, d, chat, "mcp_server_get", map[string]any{"name": "good", "level": "agent"})} {
+	for _, view := range []string{body, taskTool(t, d, session, "mcp_server_list", map[string]any{}), taskTool(t, d, session, "mcp_server_get", map[string]any{"name": "good", "level": "agent"})} {
 		if strings.Contains(view, secret) || !strings.Contains(view, ref) {
 			t.Fatalf("MCP view must show the reference only: %s", view)
 		}

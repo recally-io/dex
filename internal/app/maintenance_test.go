@@ -19,7 +19,7 @@ func TestUserUpdateWaitsForActiveTool(t *testing.T) {
 	started := filepath.Join(dir, "started")
 	release := filepath.Join(dir, "release")
 	command := fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo finished", started, release)
-	id := d.newChat(t, command)
+	id := d.newSessionWithMessage(t, command)
 	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0600) })
 	eventually(t, "tool running", func() (bool, any) { _, err := os.Stat(started); return err == nil, err })
 	// When an updater requests maintenance, the active tool makes acquire fail.
@@ -42,7 +42,7 @@ func TestUserMaintenanceRejectsWorkUntilReleaseOrRestart(t *testing.T) {
 	t.Parallel()
 	for _, restart := range []bool{false, true} {
 		t.Run(fmt.Sprintf("restart=%t", restart), func(t *testing.T) {
-			// Given an idle native runtime under maintenance and an empty Chat.
+			// Given an idle native runtime under maintenance and an empty Session.
 			data := t.TempDir()
 			d := startDex(t, data, "")
 			d.setModel(t, "bash")
@@ -50,7 +50,7 @@ func TestUserMaintenanceRejectsWorkUntilReleaseOrRestart(t *testing.T) {
 			d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
 			marker := filepath.Join(t.TempDir(), "executed")
 			requestID := uuid.NewV7().String()
-			path := fmt.Sprintf("/api/agents/default/chats/%d/messages", conversation.ID)
+			path := fmt.Sprintf("/api/agents/default/sessions/%d/messages", conversation.ID)
 			body := map[string]string{"id": requestID, "text": fmt.Sprintf("touch '%s'; echo released", marker)}
 
 			// When submission is refused, it stores no intent that could execute later.

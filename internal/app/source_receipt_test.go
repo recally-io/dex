@@ -91,7 +91,7 @@ func TestUserTelegramPendingAttachmentReplayKeepsOneUpload(t *testing.T) {
 	if err != nil || string(raw) != "once\n" {
 		t.Fatalf("native executions=%q err=%v", raw, err)
 	}
-	d.watch(t, d.mainChat(t)).until(t, "one native input", func(tr *transcript) bool {
+	d.watch(t, d.mainSession(t)).until(t, "one native input", func(tr *transcript) bool {
 		users := 0
 		for _, item := range tr.items {
 			if item.Kind == "user" {
@@ -122,8 +122,8 @@ func TestUserMovesTelegramBotWithoutReplayingOldInput(t *testing.T) {
 	if got := f.next(t); !strings.HasPrefix(got.Text, "echo: old input") {
 		t.Fatalf("default answer=%q", got.Text)
 	}
-	oldChat := d.mainChat(t)
-	oldWatch := d.watch(t, oldChat)
+	oldSession := d.mainSession(t)
+	oldWatch := d.watch(t, oldSession)
 	oldWatch.until(t, "default answer before bot transfer", func(tr *transcript) bool {
 		for _, item := range tr.items {
 			if item.Kind == "assistant" && strings.HasPrefix(item.Text, "echo: old input") {
@@ -148,12 +148,12 @@ func TestUserMovesTelegramBotWithoutReplayingOldInput(t *testing.T) {
 	if got := f.next(t); got.Text != "shout: new beta input" {
 		t.Fatalf("bot transfer answer=%q; want Beta's new input", got.Text)
 	}
-	var betaMain chatInfo
-	d.must(t, http.MethodGet, base+"/chats/main", nil, &betaMain)
-	betaWatch := d.watchPath(t, fmt.Sprintf("%s/chats/%d/events", base, betaMain.ID))
+	var betaMain sessionListItem
+	d.must(t, http.MethodGet, base+"/sessions/main", nil, &betaMain)
+	betaWatch := d.watchPath(t, fmt.Sprintf("%s/sessions/%d/events", base, betaMain.ID))
 	betaWatch.until(t, "Beta answers only new input", answered("shout: new beta input"))
 	// Read default again after Beta finishes so the assertion covers post-transfer history.
-	oldWatch = d.watch(t, oldChat)
+	oldWatch = d.watch(t, oldSession)
 	oldWatch.until(t, "default history after bot transfer", func(tr *transcript) bool {
 		for _, item := range tr.items {
 			if item.Kind == "assistant" && strings.HasPrefix(item.Text, "echo: old input") {
@@ -174,7 +174,7 @@ func TestUserMovesTelegramBotWithoutReplayingOldInput(t *testing.T) {
 		}
 	}
 	var receiptID, attachments, owner string
-	if err := conn.QueryRowContext(t.Context(), "SELECT s.id,s.attachments,c.agent_id FROM submissions s JOIN conversations c ON c.id=s.conversation_id WHERE s.source_key='telegram:123:1'").Scan(&receiptID, &attachments, &owner); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT s.id,s.attachments,c.agent_id FROM submissions s JOIN sessions c ON c.id=s.session_id WHERE s.source_key='telegram:123:1'").Scan(&receiptID, &attachments, &owner); err != nil {
 		t.Fatal(err)
 	}
 	if receiptID != oldID || attachments != oldAttachments || owner != "default" {

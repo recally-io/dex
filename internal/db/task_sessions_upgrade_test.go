@@ -48,12 +48,12 @@ func TestUserKeepsPrimarySessionWhenBoardSupportsMultipleSessions(t *testing.T) 
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	assertTaskBoardRows(t, conn, `SELECT json_array(t.assignee_bot_id, e.bot_id, e.is_primary, e.started_at)
-		FROM tasks t JOIN task_sessions e ON e.task_id = t.id WHERE e.conversation_id = 1`,
+		FROM tasks t JOIN task_sessions e ON e.task_id = t.id WHERE e.session_id = 1`,
 		`["owner","coder",1,10]`)
 
 	// Then a second Bot can link a session, and the database forbids two primary links.
-	exec(conn, `INSERT INTO task_sessions (id, task_id, conversation_id, bot_id, started_at)
+	exec(conn, `INSERT INTO task_sessions (id, task_id, session_id, bot_id, started_at)
 		VALUES ('session:task:2', 'task', 2, 'owner', 40)`)
-	_, err = conn.ExecContext(t.Context(), `UPDATE task_sessions SET is_primary = 1 WHERE task_id = 'task' AND conversation_id = 2`)
+	_, err = conn.ExecContext(t.Context(), `UPDATE task_sessions SET is_primary = 1 WHERE task_id = 'task' AND session_id = 2`)
 	assertTaskBoardSQLiteError(t, err, sqlite3.SQLITE_CONSTRAINT_UNIQUE)
 }

@@ -171,7 +171,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
       {off ? (
         <Confirm
           title="Turn off WeChat?"
-          description="dex stops the bot and forgets its credentials. Past chats stay read-only. Scan again to reconnect."
+          description="dex stops the bot and forgets its credentials. Past sessions stay read-only. Scan again to reconnect."
           confirmLabel="Turn off"
           onCancel={() => setOff(false)}
           onConfirm={() => deletion.mutate({ path: { agentId } })}

@@ -8,7 +8,7 @@ const result: AutomationResult = {
   agentName: "First",
   automationId: "routine",
   automationName: "Release check",
-  chatId: 4,
+  sessionId: 4,
   outcome: "changed",
   summary: "Release available\nVersion 2",
   createdAt: 1,
@@ -24,11 +24,11 @@ test("Continue can quote an unchanged run", () => {
 
 test("Continue quotes the stored result and identifies the exact run transcript", () => {
   expect(resultQuote(result)).toBe(
-    "Follow up on the Release check result (changed).\n\n> Release check\n> \n> Outcome: changed\n> \n> Release available\n> Version 2\n> \n> Run transcript: /a/first/c/4 (run run)",
+    "Follow up on the Release check result (changed).\n\n> Release check\n> \n> Outcome: changed\n> \n> Release available\n> Version 2\n> \n> Run transcript: /a/first/s/4 (run run)",
   );
 });
 
-test("a continuation chat pins the environment where the result ran", () => {
+test("a continuation session pins the environment where the result ran", () => {
   const runners = [
     { id: "box", name: "box", kind: "ssh", default: true, status: "available" },
     { id: "local", name: "local", kind: "local", default: false, status: "available" },

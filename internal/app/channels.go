@@ -10,8 +10,8 @@ import (
 	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/channel/telegram"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 )
 
 var _ delivery.TelegramHooks = (*telegram.Bot)(nil)
@@ -20,7 +20,7 @@ type channelRegistry struct {
 	mu       sync.Mutex
 	ctx      context.Context
 	db       *sql.DB
-	chats    *chat.Service
+	sessions *session.Service
 	managers map[string]*delivery.Manager
 }
 
@@ -28,7 +28,7 @@ func (r *channelRegistry) Agent(id string) *delivery.Manager {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.managers[id] == nil {
-		r.managers[id] = delivery.New(r.ctx, r.db, r.chats, id)
+		r.managers[id] = delivery.New(r.ctx, r.db, r.sessions, id)
 	}
 	return r.managers[id]
 }
@@ -59,7 +59,7 @@ func (r *channelRegistry) Status(agentID, platform string) channel.Status {
 	return m.Status(platform)
 }
 
-func (r *channelRegistry) reactionIntake(agentID, peer, id string, source chat.ChannelContext) {
+func (r *channelRegistry) reactionIntake(agentID, peer, id string, source session.ChannelContext) {
 	r.mu.Lock()
 	m := r.managers[agentID]
 	r.mu.Unlock()

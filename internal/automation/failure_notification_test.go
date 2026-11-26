@@ -8,7 +8,7 @@ import (
 
 	"github.com/recally-io/dex/internal/automation"
 
-	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/session"
 )
 
 func TestUserRoutineScheduleAndRunnerFailuresAlertButBusyDoesNot(t *testing.T) {
@@ -17,15 +17,15 @@ func TestUserRoutineScheduleAndRunnerFailuresAlertButBusyDoesNot(t *testing.T) {
 		name, reason string
 		alert        bool
 	}{
-		{"missed schedule", chat.RoutineSkipMissed, true},
+		{"missed schedule", session.RoutineSkipMissed, true},
 		{"unavailable Runner", "the Runner Box is unavailable", true},
-		{"busy overlap", chat.RoutineSkipBusy, false},
+		{"busy overlap", session.RoutineSkipBusy, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Given a Routine, an existing conversation and a configured same-bot destination.
 			f := newRoutineFixture(t)
 			ctx := t.Context()
-			if _, err := f.chats.Main(ctx, "a"); err != nil {
+			if _, err := f.sessions.Main(ctx, "a"); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := f.conn.ExecContext(ctx, `INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('a', '123:fixture', '42');
@@ -79,7 +79,7 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 			if !tc.alert {
 				wantRuns = 2
 			}
-			if err != nil || len(runs) != wantRuns || runs[0].Status != "skipped" || runs[0].Reason != tc.reason || runs[0].NotificationNote != "" || runs[0].ChatID != 0 {
+			if err != nil || len(runs) != wantRuns || runs[0].Status != "skipped" || runs[0].Reason != tc.reason || runs[0].NotificationNote != "" || runs[0].SessionID != 0 {
 				t.Fatalf("runs=%+v, err=%v", runs, err)
 			}
 			var count int
@@ -94,7 +94,7 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 	}
 }
 
-func TestUserRoutineDoesNotCreateConversationToOwnAnAlert(t *testing.T) {
+func TestUserRoutineDoesNotCreateSessionToOwnAnAlert(t *testing.T) {
 	t.Parallel()
 	// Given a bot with an authorized destination but no conversation.
 	f := newRoutineFixture(t)
@@ -109,7 +109,7 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 	if err != nil {
 		t.Fatal(err)
 	}
-	// When the routine cannot start, the run remains visible but has no Outbox row or chat.
+	// When the routine cannot start, the run remains visible but has no Outbox row or session.
 	if _, err = f.routines.RunNow(ctx, "a", a.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -117,8 +117,8 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 	if err != nil || len(runs) != 1 || runs[0].NotificationNote != "not delivered: no existing bot conversation" {
 		t.Fatalf("runs=%+v, err=%v", runs, err)
 	}
-	var conversations, alerts int
-	if err = f.conn.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM conversations), (SELECT count(*) FROM outbox_messages)`).Scan(&conversations, &alerts); err != nil || conversations != 0 || alerts != 0 {
-		t.Fatalf("conversations=%d, alerts=%d, err=%v", conversations, alerts, err)
+	var sessions, alerts int
+	if err = f.conn.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM sessions), (SELECT count(*) FROM outbox_messages)`).Scan(&sessions, &alerts); err != nil || sessions != 0 || alerts != 0 {
+		t.Fatalf("sessions=%d, alerts=%d, err=%v", sessions, alerts, err)
 	}
 }

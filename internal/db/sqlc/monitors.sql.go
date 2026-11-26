@@ -13,36 +13,36 @@ import (
 const cancelMonitor = `-- name: CancelMonitor :execrows
 UPDATE monitors
 SET state = 'cancelled', outcome = 'cancelled', running = 0, updated_at = ?1
-WHERE id = ?2 AND conversation_id = ?3 AND state = 'scheduled'
+WHERE id = ?2 AND session_id = ?3 AND state = 'scheduled'
 `
 
 type CancelMonitorParams struct {
-	UpdatedAt      int64  `json:"updated_at"`
-	ID             string `json:"id"`
-	ConversationID int64  `json:"conversation_id"`
+	UpdatedAt int64  `json:"updated_at"`
+	ID        string `json:"id"`
+	SessionID int64  `json:"session_id"`
 }
 
 func (q *Queries) CancelMonitor(ctx context.Context, arg CancelMonitorParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, cancelMonitor, arg.UpdatedAt, arg.ID, arg.ConversationID)
+	result, err := q.db.ExecContext(ctx, cancelMonitor, arg.UpdatedAt, arg.ID, arg.SessionID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-const cancelMonitorsByConversation = `-- name: CancelMonitorsByConversation :execrows
+const cancelMonitorsBySession = `-- name: CancelMonitorsBySession :execrows
 UPDATE monitors
 SET state = 'cancelled', outcome = 'session stopped or cleared', running = 0, updated_at = ?1
-WHERE conversation_id = ?2 AND state = 'scheduled'
+WHERE session_id = ?2 AND state = 'scheduled'
 `
 
-type CancelMonitorsByConversationParams struct {
-	UpdatedAt      int64 `json:"updated_at"`
-	ConversationID int64 `json:"conversation_id"`
+type CancelMonitorsBySessionParams struct {
+	UpdatedAt int64 `json:"updated_at"`
+	SessionID int64 `json:"session_id"`
 }
 
-func (q *Queries) CancelMonitorsByConversation(ctx context.Context, arg CancelMonitorsByConversationParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, cancelMonitorsByConversation, arg.UpdatedAt, arg.ConversationID)
+func (q *Queries) CancelMonitorsBySession(ctx context.Context, arg CancelMonitorsBySessionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, cancelMonitorsBySession, arg.UpdatedAt, arg.SessionID)
 	if err != nil {
 		return 0, err
 	}
@@ -68,11 +68,11 @@ func (q *Queries) ClaimMonitor(ctx context.Context, arg ClaimMonitorParams) (int
 }
 
 const countScheduledMonitors = `-- name: CountScheduledMonitors :one
-SELECT count(*) FROM monitors WHERE conversation_id = ? AND state = 'scheduled'
+SELECT count(*) FROM monitors WHERE session_id = ? AND state = 'scheduled'
 `
 
-func (q *Queries) CountScheduledMonitors(ctx context.Context, conversationID int64) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countScheduledMonitors, conversationID)
+func (q *Queries) CountScheduledMonitors(ctx context.Context, sessionID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countScheduledMonitors, sessionID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -80,7 +80,7 @@ func (q *Queries) CountScheduledMonitors(ctx context.Context, conversationID int
 
 const createMonitor = `-- name: CreateMonitor :execrows
 INSERT INTO monitors (
-    id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id,
+    id, operation_key, agent_id, session_id, root_request_id, source_submission_id,
     chain_depth, due_at, time_zone, prompt, state, created_at, updated_at,
     check_command, check_env, interval_seconds, max_runs, expires_at,
     target_execution_id, target_runner_id, target_runner_revision, target_cwd
@@ -97,7 +97,7 @@ type CreateMonitorParams struct {
 	ID                   string `json:"id"`
 	OperationKey         string `json:"operation_key"`
 	AgentID              string `json:"agent_id"`
-	ConversationID       int64  `json:"conversation_id"`
+	SessionID            int64  `json:"session_id"`
 	RootRequestID        string `json:"root_request_id"`
 	SourceSubmissionID   string `json:"source_submission_id"`
 	ChainDepth           int64  `json:"chain_depth"`
@@ -122,7 +122,7 @@ func (q *Queries) CreateMonitor(ctx context.Context, arg CreateMonitorParams) (i
 		arg.ID,
 		arg.OperationKey,
 		arg.AgentID,
-		arg.ConversationID,
+		arg.SessionID,
 		arg.RootRequestID,
 		arg.SourceSubmissionID,
 		arg.ChainDepth,
@@ -148,8 +148,8 @@ func (q *Queries) CreateMonitor(ctx context.Context, arg CreateMonitorParams) (i
 }
 
 const createMonitorSubmission = `-- name: CreateMonitorSubmission :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context, when_busy)
-SELECT ?1, t.conversation_id, ?2, 'null', ?1, root.origin, 'scheduler', '', '', 'wake', 'pending', ?3, root.channel_context, 'followUp'
+INSERT INTO submissions (id, session_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context, when_busy)
+SELECT ?1, t.session_id, ?2, 'null', ?1, root.origin, 'scheduler', '', '', 'wake', 'pending', ?3, root.channel_context, 'followUp'
 FROM monitors t JOIN submissions root ON root.id = t.root_request_id
 WHERE t.id = ?4
 ON CONFLICT DO NOTHING
@@ -213,7 +213,7 @@ func (q *Queries) FinishMonitor(ctx context.Context, arg FinishMonitorParams) (i
 }
 
 const getMonitor = `-- name: GetMonitor :one
-SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE id = ?
+SELECT id, operation_key, agent_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE id = ?
 `
 
 func (q *Queries) GetMonitor(ctx context.Context, id string) (Monitor, error) {
@@ -223,7 +223,7 @@ func (q *Queries) GetMonitor(ctx context.Context, id string) (Monitor, error) {
 		&i.ID,
 		&i.OperationKey,
 		&i.AgentID,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.RootRequestID,
 		&i.SourceSubmissionID,
 		&i.ChainDepth,
@@ -252,7 +252,7 @@ func (q *Queries) GetMonitor(ctx context.Context, id string) (Monitor, error) {
 }
 
 const getMonitorByOperationKey = `-- name: GetMonitorByOperationKey :one
-SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE operation_key = ?
+SELECT id, operation_key, agent_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE operation_key = ?
 `
 
 func (q *Queries) GetMonitorByOperationKey(ctx context.Context, operationKey string) (Monitor, error) {
@@ -262,7 +262,7 @@ func (q *Queries) GetMonitorByOperationKey(ctx context.Context, operationKey str
 		&i.ID,
 		&i.OperationKey,
 		&i.AgentID,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.RootRequestID,
 		&i.SourceSubmissionID,
 		&i.ChainDepth,
@@ -291,7 +291,7 @@ func (q *Queries) GetMonitorByOperationKey(ctx context.Context, operationKey str
 }
 
 const listDueMonitors = `-- name: ListDueMonitors :many
-SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
+SELECT id, operation_key, agent_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
 WHERE state = 'scheduled' AND (running = 1 OR due_at <= ?1 OR (expires_at > 0 AND expires_at <= ?1))
 ORDER BY due_at ASC, rowid ASC
 `
@@ -309,7 +309,7 @@ func (q *Queries) ListDueMonitors(ctx context.Context, now int64) ([]Monitor, er
 			&i.ID,
 			&i.OperationKey,
 			&i.AgentID,
-			&i.ConversationID,
+			&i.SessionID,
 			&i.RootRequestID,
 			&i.SourceSubmissionID,
 			&i.ChainDepth,
@@ -347,15 +347,15 @@ func (q *Queries) ListDueMonitors(ctx context.Context, now int64) ([]Monitor, er
 	return items, nil
 }
 
-const listMonitorsByConversation = `-- name: ListMonitorsByConversation :many
-SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
-WHERE conversation_id = ?
+const listMonitorsBySession = `-- name: ListMonitorsBySession :many
+SELECT id, operation_key, agent_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
+WHERE session_id = ?
 ORDER BY CASE WHEN state = 'scheduled' THEN 0 ELSE 1 END, due_at ASC, rowid DESC
 LIMIT 50
 `
 
-func (q *Queries) ListMonitorsByConversation(ctx context.Context, conversationID int64) ([]Monitor, error) {
-	rows, err := q.db.QueryContext(ctx, listMonitorsByConversation, conversationID)
+func (q *Queries) ListMonitorsBySession(ctx context.Context, sessionID int64) ([]Monitor, error) {
+	rows, err := q.db.QueryContext(ctx, listMonitorsBySession, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +367,7 @@ func (q *Queries) ListMonitorsByConversation(ctx context.Context, conversationID
 			&i.ID,
 			&i.OperationKey,
 			&i.AgentID,
-			&i.ConversationID,
+			&i.SessionID,
 			&i.RootRequestID,
 			&i.SourceSubmissionID,
 			&i.ChainDepth,
@@ -406,7 +406,7 @@ func (q *Queries) ListMonitorsByConversation(ctx context.Context, conversationID
 }
 
 const listPendingMonitorEvents = `-- name: ListPendingMonitorEvents :many
-SELECT s.id FROM monitors m JOIN submissions s ON s.conversation_id = m.conversation_id
+SELECT s.id FROM monitors m JOIN submissions s ON s.session_id = m.session_id
 WHERE m.id = ? AND s.kind = 'wake' AND s.source_key = s.id
   AND (s.status = 'pending' OR (s.status = 'unanswered' AND s.reason = 'aborted'))
   AND (s.id = m.fire_submission_id OR substr(s.id, 1, length(m.id) + 9) = 'monitor:' || m.id || ':')

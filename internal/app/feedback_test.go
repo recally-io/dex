@@ -22,7 +22,7 @@ func TestUserPreviewsFeedbackInPairedPrivateChannelsWithoutModel(t *testing.T) {
 			// When the user asks for feedback and supplies a title and description.
 			e.send("/feedback")
 			e.send("/feedback A *literal* title\nDescription <literal>\nSecond line")
-			// Then the paired chat gets instructions and a literal draft, not a model submission.
+			// Then the paired session gets instructions and a literal draft, not a model submission.
 			eventually(t, "feedback instructions and draft", func() (bool, any) {
 				var prompted, previewed bool
 				for _, send := range e.sends() {

@@ -76,7 +76,7 @@ func pngImage(t *testing.T) []byte {
 	return b.Bytes()
 }
 
-type chatSettings struct {
+type sessionSettings struct {
 	Provider      string `json:"provider,omitempty"`
 	ModelID       string `json:"modelId,omitempty"`
 	ThinkingLevel string `json:"thinkingLevel,omitempty"`
@@ -133,13 +133,13 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 	if s.ThinkingLevel != "high" {
 		t.Fatalf("saved thinking level = %q", s.ThinkingLevel)
 	}
-	chatID := d.newChat(t, "hi")
-	w := d.watch(t, chatID)
+	sessionID := d.newSessionWithMessage(t, "hi")
+	w := d.watch(t, sessionID)
 	w.until(t, "answer at high", answered("think high: hi"))
 
-	// When the user lowers it, the same chat uses the new level from its next message
+	// When the user lowers it, the same session uses the new level from its next message
 	d.setThinking(t, "low")
-	d.send(t, chatID, "again")
+	d.send(t, sessionID, "again")
 	w.until(t, "answer at low", answered("think low: again"))
 
 	// And an unknown level is refused
@@ -177,7 +177,7 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 
 	// When the user sends a message with both
 	created := d.newSession(t)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", created.ID), map[string]any{
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", created.ID), map[string]any{
 		"id": uuid.NewV7().String(), "text": "look", "attachments": []string{pic.ID, notes.ID},
 	}, nil, http.StatusAccepted)
 	w := d.watch(t, created.ID)
@@ -191,15 +191,15 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 		t.Fatalf("user item = %+v", user)
 	}
 
-	// When the user sends only a file in a new chat
+	// When the user sends only a file in a new session
 	only := d.mustUpload(t, "report.pdf", []byte("%PDF-1.4\n"))
 	created = d.newSession(t)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", created.ID), map[string]any{
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", created.ID), map[string]any{
 		"id": uuid.NewV7().String(), "text": " ", "attachments": []string{only.ID},
 	}, nil, http.StatusAccepted)
 
-	// Then the chat is named after the file, and the model gets the path
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", created.ID), nil, &created)
+	// Then the session is named after the file, and the model gets the path
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", created.ID), nil, &created)
 	if created.Title != "report.pdf" {
 		t.Fatalf("file-only title: %+v", created)
 	}
@@ -334,8 +334,8 @@ func TestInvalidUploadsAndAttachmentsAreRefused(t *testing.T) {
 	d.mustUpload(t, "max.bin", bytes.Repeat([]byte("x"), 20<<20))
 
 	// Messages: too many, unknown, repeated, or no attachments
-	chatID := d.newSession(t).ID
-	messagePath := fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID)
+	sessionID := d.newSession(t).ID
+	messagePath := fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID)
 	ids := make([]string, 11)
 	for i := range ids {
 		ids[i] = d.mustUpload(t, fmt.Sprintf("f%d.txt", i), []byte("x")).ID
@@ -356,8 +356,8 @@ func TestInvalidUploadsAndAttachmentsAreRefused(t *testing.T) {
 			t.Fatalf("%s: %d %s", c.name, status, raw)
 		}
 	}
-	if chats := d.chats(t); len(chats) != 0 {
-		t.Fatalf("refused messages created chats: %+v", chats)
+	if sessions := d.sessions(t); len(sessions) != 0 {
+		t.Fatalf("refused messages created sessions: %+v", sessions)
 	}
 	// 10 attachments are allowed
 	d.must(t, http.MethodPost, messagePath, map[string]any{"id": uuid.NewV7().String(), "text": "ten", "attachments": ids[:10]},
@@ -377,13 +377,13 @@ func TestPendingMessageWithAttachmentsIsReplayedAfterRestart(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
 
-	// Given a chat, and a message with a file that control stored but the worker never got, as
+	// Given a session, and a message with a file that control stored but the worker never got, as
 	// after a crash
 	d := startDex(t, dataDir, "")
 	d.setModel(t, "echo")
 	notes := d.mustUpload(t, "notes.txt", []byte("x"))
-	chatID := d.newChat(t, "hello")
-	d.watch(t, chatID).until(t, "answer", answered("echo: hello"))
+	sessionID := d.newSessionWithMessage(t, "hello")
+	d.watch(t, sessionID).until(t, "answer", answered("echo: hello"))
 	d.stop()
 	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
@@ -396,7 +396,7 @@ func TestPendingMessageWithAttachmentsIsReplayedAfterRestart(t *testing.T) {
 	}
 	pendingID := uuid.NewV7().String()
 	_, err = sqlc.New(conn).CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{Kind: "message", Origin: "web", Producer: "user",
-		ID: pendingID, ConversationID: chatID, Content: "read it", Attachments: string(attachments),
+		ID: pendingID, SessionID: sessionID, Content: "read it", Attachments: string(attachments),
 		CreatedAt: time.Now().UnixMilli(),
 	})
 	if err != nil {
@@ -405,7 +405,7 @@ func TestPendingMessageWithAttachmentsIsReplayedAfterRestart(t *testing.T) {
 
 	// When dex starts again
 	d = startDex(t, dataDir, "")
-	w := d.watch(t, chatID)
+	w := d.watch(t, sessionID)
 
 	// Then the worker gets the same message with the file
 	w.until(t, "answer", answered("echo: read it\n\nAttached files:\n- "+filepath.Join(dataDir, "agents", "default", "workspace", notes.Path)))

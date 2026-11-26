@@ -53,15 +53,15 @@ ORDER BY q.rowid;
 
 -- name: TaskForQuestion :one
 SELECT i.task_id FROM task_inputs i JOIN questions q ON q.source_submission_id = i.submission_id
-WHERE q.id = @question_id AND q.conversation_id = @conversation_id;
+WHERE q.id = @question_id AND q.session_id = @session_id;
 
 -- name: ListTaskQuestionBlockers :many
 SELECT q.id, q.text, CAST(CASE WHEN c.channel_key = 'main' THEN 1 + (
   SELECT count(*) FROM questions prior JOIN submissions ps ON ps.id = prior.source_submission_id
-  WHERE prior.status = 'open' AND ps.status = 'done' AND prior.conversation_id = q.conversation_id
+  WHERE prior.status = 'open' AND ps.status = 'done' AND prior.session_id = q.session_id
     AND (prior.queued, prior.rowid) < (q.queued, q.rowid)
 ) ELSE 0 END AS INTEGER) AS queue_position
 FROM questions q JOIN task_inputs i ON i.submission_id = q.source_submission_id
-JOIN submissions s ON s.id = q.source_submission_id JOIN conversations c ON c.id = q.conversation_id
+JOIN submissions s ON s.id = q.source_submission_id JOIN sessions c ON c.id = q.session_id
 WHERE i.task_id = @task_id AND q.status = 'open' AND s.status = 'done'
 ORDER BY q.queued, q.rowid;

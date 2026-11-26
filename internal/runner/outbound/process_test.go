@@ -36,8 +36,8 @@ func TestUserRunsAnotherBotsToolDuringAnOutboundProcess(t *testing.T) {
 		}
 	}
 	seed(`INSERT INTO agents (id,name,model_provider,model_id,created_at) VALUES ('alpha','Alpha','faux','echo',1),('beta','Beta','faux','echo',1)`)
-	seed(`INSERT INTO conversations (id,agent_id,channel_key,created_at) VALUES (1,'alpha','main',1),(2,'beta','main',1)`)
-	if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: "input", ConversationID: 1, Origin: "web", Producer: "user", Kind: "message", Content: "start", CreatedAt: 1}); err != nil {
+	seed(`INSERT INTO sessions (id,agent_id,channel_key,created_at) VALUES (1,'alpha','main',1),(2,'beta','main',1)`)
+	if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: "input", SessionID: 1, Origin: "web", Producer: "user", Kind: "message", Content: "start", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	seed(`INSERT INTO runners (id,name,kind,config,created_at,updated_at) VALUES ('remote','Remote','runner','{}',1,1)`)
@@ -93,7 +93,7 @@ func TestUserRunsAnotherBotsToolDuringAnOutboundProcess(t *testing.T) {
 		}
 		return e, h.Workspace(), h.Kind(), release, nil
 	})
-	row, err := bg.Start(ctx, background.StartParams{CallKey: "alpha/process", AgentID: "alpha", ConversationID: 1, SourceRequestID: "input", Wake: background.WakeNone,
+	row, err := bg.Start(ctx, background.StartParams{CallKey: "alpha/process", AgentID: "alpha", SessionID: 1, SourceRequestID: "input", Wake: background.WakeNone,
 		Command: `touch started; while [ ! -e finish ]; do sleep .05; done`, Cwd: work, DefaultCwd: work, RunnerID: "remote", EnvKind: runner.KindRunner, Timeout: 15 * time.Second,
 	})
 	if err != nil {

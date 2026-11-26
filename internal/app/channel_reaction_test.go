@@ -118,7 +118,7 @@ func TestUserTelegramStatusWaitsForNativeRunAndConfirmation(t *testing.T) {
 	f.reactGate = gate
 	d := startTelegram(t, f, data, 42, 43)
 	d.setModel(t, "bash")
-	d.send(t, d.mainChat(t), taskGate(t, data, "earlier"))
+	d.send(t, d.mainSession(t), taskGate(t, data, "earlier"))
 	waitTaskFile(t, filepath.Join(data, "earlier.pid"))
 	f.message(1, 42, 42, taskGate(t, data, "incoming"))
 	gate.expect(t, "1", "👀")

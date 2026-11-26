@@ -102,7 +102,7 @@ an existing Reviewer, cancel an open Task, or reopen a closed Task.
 
 `internal/task` checks the caller's role, Session or run binding, and input
 origin. The Owner can read Tasks across all active Bots. Main and top-level
-Chats can read Tasks for which their Bot is Assignee or Reviewer. A writable child can read only
+Sessions can read Tasks for which their Bot is Assignee or Reviewer. A writable child can read only
 Tasks linked to that exact Session. A scoped token grants access to one Task
 and one external run. A child link does not give its Bot's Main access.
 
@@ -111,20 +111,20 @@ result (`session_result`) can authorize a note or artifact. A Monitor or
 Process `wake` cannot authorize Task writes. Reads do not require an
 interactive turn.
 
-| Action                                                      | Bot access                                                                                                                         | Other access and limits                                          |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Create top-level Task (`task_new`)                          | Main or top-level Chat on a user turn.                                                                                             | Owner, or a Source under an explicit creation rule.              |
-| Post note or artifact (`task_post`)                         | Assignee or Reviewer in Main or top-level Chat, or a linked child. Requires an interactive turn or a child result.                 | Owner or scoped run token.                                       |
-| Link external object (Source tool)                          | Assignee or Reviewer in Main or top-level Chat. Requires an interactive turn or a child result.                                    | Owner.                                                           |
-| Rename or link Session (`task_update`)                      | Assignee Main on an interactive turn, or Assignee top-level Chat on a user turn. The Session must be a direct child of the caller. | Owner.                                                           |
-| Change ordinary status or submit for review (`task_update`) | Assignee Main on an interactive turn.                                                                                              | Owner. Lifecycle rules still apply.                              |
-| Review (`task_review`)                                      | Reviewer Main on an interactive turn.                                                                                              | Owner.                                                           |
-| Create subtask (`task_split`)                               | Parent Assignee Main on an interactive turn.                                                                                       | Owner. The parent must be open and have user root authorization. |
-| Reassign open Task (`task_assign`)                          | Assignee Main or the parent Assignee's Main on an interactive turn. The parent path requires user root authorization.              | Owner.                                                           |
-| Cancel, reopen, set existing Reviewer, or edit dependencies | None.                                                                                                                              | Owner.                                                           |
-| Dispatch external run (`task_dispatch_external`)            | Assignee Main on an interactive turn.                                                                                              | The Owner uses attach and resume endpoints instead.              |
+| Action                                                      | Bot access                                                                                                                            | Other access and limits                                          |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Create top-level Task (`task_new`)                          | Main or top-level Session on a user turn.                                                                                             | Owner, or a Source under an explicit creation rule.              |
+| Post note or artifact (`task_post`)                         | Assignee or Reviewer in Main or top-level Session, or a linked child. Requires an interactive turn or a child result.                 | Owner or scoped run token.                                       |
+| Link external object (Source tool)                          | Assignee or Reviewer in Main or top-level Session. Requires an interactive turn or a child result.                                    | Owner.                                                           |
+| Rename or link Session (`task_update`)                      | Assignee Main on an interactive turn, or Assignee top-level Session on a user turn. The Session must be a direct child of the caller. | Owner.                                                           |
+| Change ordinary status or submit for review (`task_update`) | Assignee Main on an interactive turn.                                                                                                 | Owner. Lifecycle rules still apply.                              |
+| Review (`task_review`)                                      | Reviewer Main on an interactive turn.                                                                                                 | Owner.                                                           |
+| Create subtask (`task_split`)                               | Parent Assignee Main on an interactive turn.                                                                                          | Owner. The parent must be open and have user root authorization. |
+| Reassign open Task (`task_assign`)                          | Assignee Main or the parent Assignee's Main on an interactive turn. The parent path requires user root authorization.                 | Owner.                                                           |
+| Cancel, reopen, set existing Reviewer, or edit dependencies | None.                                                                                                                                 | Owner.                                                           |
+| Dispatch external run (`task_dispatch_external`)            | Assignee Main on an interactive turn.                                                                                                 | The Owner uses attach and resume endpoints instead.              |
 
-Main and writable top-level Chats have `task_list` and `task_my_workload`.
+Main and writable top-level Sessions have `task_list` and `task_my_workload`.
 `task_list` defaults to open Tasks and returns up to 50. `task_my_workload`
 puts pending reviews first. A writable linked child has only `task_read` and
 `task_post`. Tool writes save a replay receipt with the change. Replays do

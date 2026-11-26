@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/channel/delivery"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 )
 
 func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
@@ -35,7 +35,7 @@ func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer agents.Close(context.WithoutCancel(t.Context()))
-	service := chat.New(conn, agents, time.Now, nil, nil)
+	service := session.New(conn, agents, time.Now, nil, nil)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { defer close(done); service.Run(ctx) }()
@@ -44,20 +44,20 @@ func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
 	defer manager.Close()
 	// When a group or malformed peer sends a command with valid-looking actor IDs.
 	for _, peer := range []string{"telegram:-100", "telegram:042", "telegram:0"} {
-		err := manager.Receive(ctx, peer, "group-command", chat.Message{Content: "/clear", ChannelContext: chat.ChannelContext{AccountID: "123", SenderID: "42"}})
+		err := manager.Receive(ctx, peer, "group-command", session.Message{Content: "/clear", ChannelContext: session.ChannelContext{AccountID: "123", SenderID: "42"}})
 		if err == nil {
 			t.Fatalf("non-private peer %q reached Main", peer)
 		}
 	}
 	// Then no command receipt or private conversation can be created by that request.
-	var commands, conversations int
+	var commands, sessions int
 	if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM channel_commands").Scan(&commands); err != nil {
 		t.Fatal(err)
 	}
-	if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM conversations").Scan(&conversations); err != nil {
+	if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM sessions").Scan(&sessions); err != nil {
 		t.Fatal(err)
 	}
-	if commands != 0 || conversations != 0 {
-		t.Fatalf("private command side effects preceded rejection: commands=%d conversations=%d", commands, conversations)
+	if commands != 0 || sessions != 0 {
+		t.Fatalf("private command side effects preceded rejection: commands=%d sessions=%d", commands, sessions)
 	}
 }

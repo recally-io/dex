@@ -3,16 +3,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { listAutomationResultsOptions } from "../api/generated/@tanstack/react-query.gen";
 import {
-  createChat,
+  createAgentSession,
   dismissAutomationResult,
   listAgentRunners,
   readAutomationResult,
   sendMessage,
-  setChatRunner,
-  setChatProject,
+  setSessionRunner,
+  setSessionProject,
 } from "../api/generated/sdk.gen";
 import type { AgentRunners, AutomationResult, Ok } from "../api/generated/types.gen";
-import { queryClient, refreshBoardAttention, refreshChats } from "./queries";
+import { queryClient, refreshBoardAttention, refreshSessions } from "./queries";
 import { newId } from "./utils";
 
 export const automationResultsOptions = () => ({
@@ -76,17 +76,20 @@ export function useDismissResults() {
   });
 }
 
-type ResultQuote = Pick<AutomationResult, "automationName" | "summary" | "agentId" | "chatId" | "runId"> & {
+type ResultQuote = Pick<
+  AutomationResult,
+  "automationName" | "summary" | "agentId" | "sessionId" | "runId"
+> & {
   outcome: AutomationResult["outcome"] | "unchanged" | "unknown";
 };
 
-// The first line is plain text because the chat takes its title from the start of the message.
+// The first line is plain text because the session takes its title from the start of the message.
 export function resultQuote(item: ResultQuote) {
   const quote = [
     item.automationName,
     `Outcome: ${item.outcome}`,
     item.summary,
-    `Run transcript: /a/${item.agentId}/c/${item.chatId} (run ${item.runId})`,
+    `Run transcript: /a/${item.agentId}/s/${item.sessionId} (run ${item.runId})`,
   ]
     .join("\n\n")
     .split("\n")
@@ -96,8 +99,8 @@ export function resultQuote(item: ResultQuote) {
   return `Follow up on the ${item.automationName} result (${item.outcome}).\n\n${quote}`;
 }
 
-// continuationRunner returns the environment that a chat about a run selects. The run's
-// paths and files exist only where it ran, so the chat pins local, SSH, or Runner.
+// continuationRunner returns the environment that a session about a run selects. The run's
+// paths and files exist only where it ran, so the session pins local, SSH, or Runner.
 // An E2B selection does not identify the exact sandbox. Older runs may record
 // no environment. Stop rather than guess.
 export function continuationRunner(ranIn: string, runners: AgentRunners["runners"]) {
@@ -118,7 +121,7 @@ export function continuationRunner(ranIn: string, runners: AgentRunners["runners
   throw new Error(`This result ${where}. Start a session and select a Runner.`);
 }
 
-type Continuation = { chatId: number; messageId: string; runnerId: string; configured: boolean };
+type Continuation = { sessionId: number; messageId: string; runnerId: string; configured: boolean };
 
 type ContinuableResult = ResultQuote & { runnerId?: string; cwd?: string };
 
@@ -135,19 +138,19 @@ export function useContinueResult() {
       if (!attempt) {
         const list = await listAgentRunners({ path: { agentId }, throwOnError: true });
         const runnerId = continuationRunner(result.runnerId ?? "", list.data.runners);
-        const chat = await createChat({ path: { agentId }, throwOnError: true });
-        attempt = { chatId: chat.data.id, messageId: newId(), runnerId, configured: false };
-        // A retry of the same run keeps the chat and message ID.
+        const session = await createAgentSession({ path: { agentId }, throwOnError: true });
+        attempt = { sessionId: session.data.id, messageId: newId(), runnerId, configured: false };
+        // A retry of the same run keeps the session and message ID.
         attempts.current.set(runId, attempt);
       }
 
-      const { chatId, messageId, runnerId } = attempt;
-      const path = { agentId, chatId };
+      const { sessionId, messageId, runnerId } = attempt;
+      const path = { agentId, sessionId };
 
       if (!attempt.configured) {
         // The project path belongs to this Runner. Select it before setting the project.
-        await setChatRunner({ path, body: { runnerId }, throwOnError: true });
-        await setChatProject({ path, body: { cwd: result.cwd ?? "" }, throwOnError: true });
+        await setSessionRunner({ path, body: { runnerId }, throwOnError: true });
+        await setSessionProject({ path, body: { cwd: result.cwd ?? "" }, throwOnError: true });
         attempt.configured = true;
       }
 
@@ -158,8 +161,8 @@ export function useContinueResult() {
         body: { id: messageId, text: extra ? `${quote}\n\n${extra}` : quote },
         throwOnError: true,
       });
-      await Promise.all([refreshChats(agentId), refreshAutomationResults(client)]);
-      await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chatId) } });
+      await Promise.all([refreshSessions(agentId), refreshAutomationResults(client)]);
+      await navigate({ to: "/a/$agentId/s/$sessionId", params: { agentId, sessionId: String(sessionId) } });
       attempts.current.delete(runId);
     },
   });

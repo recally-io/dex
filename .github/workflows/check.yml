@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # The jobs run every step of `mise run check`. App tests run in one job without the race detector,
-# chat race tests use separate partitions, and the Go job runs lint, builds, and all other packages. Keep coverage equal to mise.toml.
+# session race tests use separate partitions, and the Go job runs lint, builds, and all other packages. Keep coverage equal to mise.toml.
 jobs:
   lint:
     name: Lint and drift
@@ -129,9 +129,9 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-  # A package-wide timeout must not cut off later chat tests during native/SQLite-heavy runs.
-  chat:
-    name: Chat race tests (${{ matrix.shard }})
+  # A package-wide timeout must not cut off later session tests during native/SQLite-heavy runs.
+  session:
+    name: Session race tests (${{ matrix.shard }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -156,11 +156,11 @@ jobs:
             go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-
       - run: mise run install
-      - run: mise run check:go-shard ./internal/chat ${{ strategy.job-index }} ${{ strategy.job-total }}
+      - run: mise run check:go-shard ./internal/session ${{ strategy.job-index }} ${{ strategy.job-total }}
       - if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: chat-tests-${{ matrix.shard }}
+          name: session-tests-${{ matrix.shard }}
           path: .local/ci/
           include-hidden-files: true
           retention-days: 7

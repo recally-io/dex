@@ -84,7 +84,7 @@ func TestUserDelegatesTaskFromMainAndKeepsSessionOwnership(t *testing.T) {
 	if got, err := s.Assign(ctx, main("parent-assign"), TaskAssignArgs{ID: unreviewed.Key, AssigneeBotID: "other"}); err != nil || got.AssigneeBotID != "other" {
 		t.Fatalf("parent Assignee could not reassign its subtask: %+v, %v", got, err)
 	}
-	child, err := q.GetConversation(ctx, 4)
+	child, err := q.GetSession(ctx, 4)
 	if err != nil || child.ParentID != (sql.NullInt64{Int64: 1, Valid: true}) {
 		t.Fatalf("child Session changed parents: %+v, %v", child, err)
 	}

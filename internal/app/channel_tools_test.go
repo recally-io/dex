@@ -78,10 +78,10 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 		d.must(t, http.MethodPut, base+"/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": users}, nil)
 	}
 	setTelegram(42, 43)
-	chat := d.newSession(t).ID
+	session := d.newSession(t).ID
 	read := func(tool, botID string) string {
 		t.Helper()
-		answer := taskTool(t, d, chat, tool, map[string]string{"bot": botID})
+		answer := taskTool(t, d, session, tool, map[string]string{"bot": botID})
 		if strings.Contains(answer, fakeToken) || strings.Contains(answer, token) {
 			t.Fatal("channel tools exposed a credential")
 		}
@@ -104,7 +104,7 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 	target := targets.Targets[1]
 	request := func(botID, op, target string) string {
 		t.Helper()
-		return taskTool(t, d, chat, "channel_request_change", map[string]string{"bot": botID, "operation": op, "target": target})
+		return taskTool(t, d, session, "channel_request_change", map[string]string{"bot": botID, "operation": op, "target": target})
 	}
 	if got := request("default", "set_notification_target", target.ID); !strings.HasPrefix(got, "tool error:") {
 		t.Fatalf("accepted a destination from another bot: %q", got)
@@ -112,11 +112,11 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 
 	// Reject an unexpected credential field without returning or displaying its value.
 	const canary = "unexpected-credential-canary"
-	invalid := taskTool(t, d, chat, "channel_request_change", map[string]string{"operation": "disconnect", "bot": bot.ID, "target": "telegram", "token": canary})
+	invalid := taskTool(t, d, session, "channel_request_change", map[string]string{"operation": "disconnect", "bot": bot.ID, "target": "telegram", "token": canary})
 	if !strings.Contains(invalid, "invalid channel tool arguments") || strings.Contains(invalid, canary) {
 		t.Fatal("a rejected argument reached the tool result")
 	}
-	watch := d.watch(t, chat)
+	watch := d.watch(t, session)
 	watch.until(t, "rejected change", answered(invalid))
 	for _, item := range watch.tr.items {
 		if item.Name == "channel_request_change" && (len(item.Args) != 0 || strings.Contains(item.Output, canary)) {
@@ -124,9 +124,9 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 		}
 	}
 
-	// When the model asks for a change, chat text and unauthenticated or cross-site POSTs cannot approve it.
+	// When the model asks for a change, session text and unauthenticated or cross-site POSTs cannot approve it.
 	path := channelApprovalPath(t, request(bot.ID, "set_notification_target", target.ID))
-	if got := taskTurn(t, d, chat, `channel_request_change {"operation":"confirm","target":`+taskJSON(t, path)+`}`); !strings.HasPrefix(got, "tool error:") {
+	if got := taskTurn(t, d, session, `channel_request_change {"operation":"confirm","target":`+taskJSON(t, path)+`}`); !strings.HasPrefix(got, "tool error:") {
 		t.Fatalf("the model approved its own request: %q", got)
 	}
 	guest := &http.Client{Transport: owner.Transport}
@@ -240,9 +240,9 @@ func TestUserRevokesFeishuPairingWithoutReplacingCredentials(t *testing.T) {
 	f := newFakeFeishu(t)
 	d := startFeishu(t, f, t.TempDir())
 	pairFeishu(t, d, f)
-	chat := d.newSession(t).ID
+	session := d.newSession(t).ID
 	// When the owner reviews and approves a request to revoke its pairing.
-	answer := taskTool(t, d, chat, "channel_request_change", map[string]string{"operation": "revoke_pairing", "target": "feishu"})
+	answer := taskTool(t, d, session, "channel_request_change", map[string]string{"operation": "revoke_pairing", "target": "feishu"})
 	path := channelApprovalPath(t, answer)
 	reviewChannelChange(t, d, d.srv.Client(), http.MethodPost, path, "", http.StatusOK)
 	// Then the app stays connected to settings, and the secure form can issue a new code without a new secret.
@@ -254,13 +254,13 @@ func TestUserRevokesFeishuPairingWithoutReplacingCredentials(t *testing.T) {
 	}
 	var setup agent.FeishuSetup
 	d.must(t, http.MethodPut, base, map[string]string{"appId": "app", "brand": "feishu"}, &setup)
-	got := taskTool(t, d, chat, "channel_pairing", map[string]string{})
+	got := taskTool(t, d, session, "channel_pairing", map[string]string{})
 	if setup.PairingCode == "" || !strings.Contains(got, `"feishu":false`) || strings.Contains(got, setup.PairingCode) || strings.Contains(got, "app-secret") {
 		t.Fatal("the pairing secret must only appear on the secure setup surface")
 	}
 }
 
-func TestUserCanRequestChannelChangesFromPrivateChatButNotFromAChild(t *testing.T) {
+func TestUserCanRequestChannelChangesFromPrivateSessionButNotFromAChild(t *testing.T) {
 	t.Parallel()
 	// Given a paired Telegram sender and an owner who can delegate work.
 	f := newFakeTelegram(t)

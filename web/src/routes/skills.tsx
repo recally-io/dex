@@ -33,7 +33,7 @@ export function BotSecretsPage() {
     <FramedPage title="Secrets" toolbar={<BotSettingsSwitcher segment="secrets" />}>
       <div className="mb-6">
         <Note tone="warn">
-          Put secrets in the vault. Do not paste secret values in chats, instructions, or skill files. Use
+          Put secrets in the vault. Do not paste secret values in sessions, instructions, or skill files. Use
           vault:NAME to share a reference with the bot.
         </Note>
       </div>

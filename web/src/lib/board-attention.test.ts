@@ -10,7 +10,7 @@ const result = {
   agentId: "a",
   automationId: "auto",
   automationName: "Daily",
-  chatId: 10,
+  sessionId: 10,
   outcome: "failed",
   summary: "Failed",
   createdAt: 1,

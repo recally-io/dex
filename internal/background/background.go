@@ -126,7 +126,7 @@ type StartParams struct {
 	// CallKey identifies the tool call. A second start with the same key returns the first command.
 	CallKey         string
 	AgentID         string
-	ConversationID  int64
+	SessionID       int64
 	SourceRequestID string
 	Command         string
 	Wake            string
@@ -184,7 +184,7 @@ type Manager struct {
 	now    func() time.Time
 	limits Limits
 	// changed runs after a wake-up input is stored: the owner admits it.
-	changed func(conversationID int64)
+	changed func(sessionID int64)
 
 	wg sync.WaitGroup // supervisors and delayed kills
 
@@ -195,7 +195,7 @@ type Manager struct {
 }
 
 // New returns a manager. changed runs after a wake-up is stored and may be nil.
-func New(db *sql.DB, now func() time.Time, limits Limits, changed func(conversationID int64)) *Manager {
+func New(db *sql.DB, now func() time.Time, limits Limits, changed func(sessionID int64)) *Manager {
 	return &Manager{db: db, q: sqlc.New(db), now: now, limits: limits.withDefaults(), changed: changed, procs: make(map[string]*proc)}
 }
 
@@ -332,7 +332,7 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 		timeoutMs = sql.NullInt64{Int64: p.Timeout.Milliseconds(), Valid: true}
 	}
 	created, err := m.q.CreateBackgroundCommand(ctx, sqlc.CreateBackgroundCommandParams{
-		ID: id, CallKey: p.CallKey, ConversationID: p.ConversationID, SourceRequestID: p.SourceRequestID, Wake: p.Wake,
+		ID: id, CallKey: p.CallKey, SessionID: p.SessionID, SourceRequestID: p.SourceRequestID, Wake: p.Wake,
 		Label: label, Command: p.Command, Cwd: cwd, OutputPath: output, TimeoutMs: timeoutMs, ProcessStartedAt: m.now().UnixMilli(),
 	})
 	if err != nil {
@@ -449,9 +449,9 @@ func (m *Manager) storeEnd(ctx context.Context, p *proc, state string, status in
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	// Take the writer before any read, as the chat service does, so that this transaction cannot
+	// Take the writer before any read, as the session service does, so that this transaction cannot
 	// fail on an upgrade of its lock.
-	if _, err := tx.ExecContext(ctx, "UPDATE conversations SET id = id WHERE 0"); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE sessions SET id = id WHERE 0"); err != nil {
 		return false, err
 	}
 	q := m.q.WithTx(tx)
@@ -496,7 +496,7 @@ func (m *Manager) finish(p *proc, state string, status int, reason, tailText str
 		return
 	}
 	if woke && m.changed != nil {
-		m.changed(p.row.ConversationID)
+		m.changed(p.row.SessionID)
 	}
 }
 
@@ -516,8 +516,8 @@ func (m *Manager) terminate(p *proc, reason string) {
 }
 
 // Stop ends the process group of one command of a session and waits until the state is stored.
-func (m *Manager) Stop(ctx context.Context, conversationID int64, id string) (sqlc.BackgroundCommand, error) {
-	row, err := m.owned(ctx, conversationID, id)
+func (m *Manager) Stop(ctx context.Context, sessionID int64, id string) (sqlc.BackgroundCommand, error) {
+	row, err := m.owned(ctx, sessionID, id)
 	if err != nil {
 		return row, err
 	}
@@ -535,7 +535,7 @@ func (m *Manager) Stop(ctx context.Context, conversationID int64, id string) (sq
 	p := m.procs[id]
 	m.mu.Unlock()
 	if p == nil {
-		return m.owned(ctx, conversationID, id)
+		return m.owned(ctx, sessionID, id)
 	}
 	m.terminate(p, reasonStop)
 	select {
@@ -543,12 +543,12 @@ func (m *Manager) Stop(ctx context.Context, conversationID int64, id string) (sq
 	case <-ctx.Done():
 		return row, ctx.Err()
 	}
-	return m.owned(ctx, conversationID, id)
+	return m.owned(ctx, sessionID, id)
 }
 
-// StopConversation ends the process group of each running command of a session. It does not wait.
-func (m *Manager) StopConversation(ctx context.Context, conversationID int64) error {
-	ids, err := m.q.ListRunningBackgroundIDs(ctx, conversationID)
+// StopSession ends the process group of each running command of a session. It does not wait.
+func (m *Manager) StopSession(ctx context.Context, sessionID int64) error {
+	ids, err := m.q.ListRunningBackgroundIDs(ctx, sessionID)
 	if err != nil {
 		return err
 	}
@@ -582,8 +582,8 @@ func (m *Manager) stopAll(ids []string) {
 }
 
 // List returns the commands of a session, the newest first.
-func (m *Manager) List(ctx context.Context, conversationID int64) ([]sqlc.BackgroundCommand, error) {
-	return m.q.ListBackgroundCommands(ctx, conversationID)
+func (m *Manager) List(ctx context.Context, sessionID int64) ([]sqlc.BackgroundCommand, error) {
+	return m.q.ListBackgroundCommands(ctx, sessionID)
 }
 
 const defaultWaitTimeout = 60 * time.Second
@@ -591,7 +591,7 @@ const defaultWaitTimeout = 60 * time.Second
 // Wait blocks until every specified background command of a session reaches a terminal state or
 // timeout elapses, returning the latest rows and whether the wait timed out. Any terminal exit
 // wake for an observed command is consumed so the session does not receive a redundant wake.
-func (m *Manager) Wait(ctx context.Context, conversationID int64, ids []string, timeout time.Duration) ([]sqlc.BackgroundCommand, bool, error) {
+func (m *Manager) Wait(ctx context.Context, sessionID int64, ids []string, timeout time.Duration) ([]sqlc.BackgroundCommand, bool, error) {
 	if len(ids) == 0 {
 		return nil, false, fmt.Errorf("%w: no background command IDs", ErrInvalid)
 	}
@@ -612,7 +612,7 @@ func (m *Manager) Wait(ctx context.Context, conversationID int64, ids []string, 
 
 	var watched []*proc
 	for _, id := range uniqueIDs {
-		row, err := m.owned(ctx, conversationID, id)
+		row, err := m.owned(ctx, sessionID, id)
 		if err != nil {
 			releaseWaiters(watched)
 			return nil, false, err
@@ -662,14 +662,14 @@ func (m *Manager) Wait(ctx context.Context, conversationID int64, ids []string, 
 	rows := make([]sqlc.BackgroundCommand, 0, len(ids))
 	byID := make(map[string]sqlc.BackgroundCommand, len(uniqueIDs))
 	for _, id := range uniqueIDs {
-		row, err := m.owned(ctx, conversationID, id)
+		row, err := m.owned(ctx, sessionID, id)
 		if err != nil {
 			return nil, false, err
 		}
 		if isTerminalState(row.State) {
 			if _, err := m.q.ConsumeBackgroundWake(ctx, sqlc.ConsumeBackgroundWakeParams{
-				ID:             "background:" + id + ":end",
-				ConversationID: conversationID,
+				ID:        "background:" + id + ":end",
+				SessionID: sessionID,
 			}); err != nil {
 				return nil, false, err
 			}
@@ -699,9 +699,9 @@ func isTerminalState(state string) bool {
 	}
 }
 
-func (m *Manager) owned(ctx context.Context, conversationID int64, id string) (sqlc.BackgroundCommand, error) {
+func (m *Manager) owned(ctx context.Context, sessionID int64, id string) (sqlc.BackgroundCommand, error) {
 	row, err := m.q.GetBackgroundCommand(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && row.ConversationID != conversationID {
+	if errors.Is(err, sql.ErrNoRows) || err == nil && row.SessionID != sessionID {
 		return row, fmt.Errorf("%w: %s", errNotFound, id)
 	}
 	return row, err
@@ -1239,7 +1239,7 @@ func (p *proc) flush(m *Manager) {
 		return
 	}
 	if stored > 0 && m.changed != nil {
-		m.changed(p.row.ConversationID)
+		m.changed(p.row.SessionID)
 	}
 }
 

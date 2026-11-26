@@ -8,7 +8,7 @@ import {
   createTask,
   splitTask,
   getBoardAttention,
-  getMainChat,
+  getMainSession,
   getTask,
   listHeldEvents,
   runAutomation,
@@ -166,7 +166,7 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
     throwOnError: true,
   });
 
-  const { data: main } = await getMainChat({ client, path: { agentId: owner.id }, throwOnError: true });
+  const { data: main } = await getMainSession({ client, path: { agentId: owner.id }, throwOnError: true });
 
   const { data: task } = await createTask({
     client,
@@ -182,7 +182,7 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
   async function startChild(title: string, bot?: string) {
     await sendMessage({
       client,
-      path: { agentId: owner.id, chatId: main.id },
+      path: { agentId: owner.id, sessionId: main.id },
       body: {
         id: randomUUID(),
         taskId: task.key,
@@ -202,7 +202,7 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
 
   if (!review) throw new Error("Missing the collaborator Session");
   await screen.getByRole("link", "Review the change", { exact: true }).tap();
-  expect(new URL(await browser.url()).pathname).toBe(`/a/${collaborator.id}/c/${review.conversationId}`);
+  expect(new URL(await browser.url()).pathname).toBe(`/a/${collaborator.id}/s/${review.sessionId}`);
 });
 
 test("answers questions and resolves automation updates directly from Board", async ({
@@ -260,10 +260,10 @@ test("answers questions and resolves automation updates directly from Board", as
     throwOnError: true,
   });
   await runAutomation({ client, path: { agentId: bot.id, automationId: changed.id }, throwOnError: true });
-  const { data: main } = await getMainChat({ client, path: { agentId: bot.id }, throwOnError: true });
+  const { data: main } = await getMainSession({ client, path: { agentId: bot.id }, throwOnError: true });
   await sendMessage({
     client,
-    path: { agentId: bot.id, chatId: main.id },
+    path: { agentId: bot.id, sessionId: main.id },
     body: {
       id: randomUUID(),
       text: 'ask_user {"question":"Which color should the bot use?","options":["Blue","Green"]}',

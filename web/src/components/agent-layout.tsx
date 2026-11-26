@@ -4,11 +4,11 @@ import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  getChatOptions,
-  getMainChatOptions,
+  getSessionOptions,
+  getMainSessionOptions,
   listAgentsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import { ChatTitle, MainTimeline } from "../routes/chat";
+import { SessionTitle, MainTimeline } from "../routes/session";
 import { Artifacts } from "./agent/artifacts";
 import { BotNavigation } from "./bot-navigation";
 import { AgentAvatar } from "./agent-avatar";
@@ -16,7 +16,7 @@ import { Failure, Loading } from "./feedback";
 import { InPaneContext, MainPane, MenuButton } from "./page";
 import { cn } from "../lib/utils";
 
-/** The name of each page under a bot that is not a chat. */
+/** The name of each page under a bot that is not a session. */
 const pageNames = new Map([
   ["automations", "Automations"],
   ["agent", "Settings"],
@@ -82,18 +82,18 @@ function AgentView() {
 function AgentPane({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const [, , segment, chatSegment] = path.split("/").filter(Boolean);
+  const [, , segment, sessionSegment] = path.split("/").filter(Boolean);
   const onMain = segment === undefined;
-  const openChat = segment === "c" ? Number(chatSegment) : 0;
+  const openSession = segment === "c" ? Number(sessionSegment) : 0;
 
-  // The chat page reads the same query, so this adds no request.
-  const chat = useQuery({
-    ...getChatOptions({ path: { agentId, chatId: openChat } }),
-    enabled: openChat > 0,
+  // The session page reads the same query, so this adds no request.
+  const session = useQuery({
+    ...getSessionOptions({ path: { agentId, sessionId: openSession } }),
+    enabled: openSession > 0,
   });
 
-  const main = useQuery({ ...getMainChatOptions({ path: { agentId } }), enabled: openChat === 0 });
-  const shown = onMain ? main.data : openChat > 0 ? chat.data : undefined;
+  const main = useQuery({ ...getMainSessionOptions({ path: { agentId } }), enabled: openSession === 0 });
+  const shown = onMain ? main.data : openSession > 0 ? session.data : undefined;
 
   return (
     <InPaneContext.Provider value>
@@ -107,7 +107,7 @@ function AgentPane({ settings }: { settings: Settings }) {
               <AgentAvatar agent={settings.agent} className="size-5 rounded-control text-[11px]" />
             </span>
             {shown ? (
-              <ChatTitle chat={shown} heading mainTitle={settings.agent.name} />
+              <SessionTitle session={shown} heading mainTitle={settings.agent.name} />
             ) : (
               <span className="min-w-0 truncate text-[13px] font-medium">
                 {pageNames.get(segment ?? "") ?? ""}
@@ -115,7 +115,7 @@ function AgentPane({ settings }: { settings: Settings }) {
             )}
           </div>
           <div className="flex min-w-0 items-center justify-end gap-1">
-            {shown ? <Artifacts key={`${agentId}:${shown.id}`} chatId={shown.id} /> : null}
+            {shown ? <Artifacts key={`${agentId}:${shown.id}`} sessionId={shown.id} /> : null}
             <BotNavigation
               agent={settings.agent}
               segment={segment ?? ""}

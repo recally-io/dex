@@ -59,15 +59,15 @@ func TestUserDelegatesTaskToChildSessionWithScopedTools(t *testing.T) {
 	// Given a Task input to Main that starts a linked child on the faux tool model.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 	const tasks = "/api/tasks"
 	var task, unrelated api.TaskSummary
 	d.must(t, http.MethodPost, tasks, map[string]string{"title": "Verify release", "assigneeBotId": "default"}, &task, http.StatusCreated)
 	d.must(t, http.MethodPost, tasks, map[string]string{"title": "Unrelated work", "assigneeBotId": "default"}, &unrelated, http.StatusCreated)
 	path := tasks + "/" + task.Key
 	const note = "Child verified the release."
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", main.ID), map[string]string{
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", main.ID), map[string]string{
 		"id": uuid.NewV7().String(), "taskId": task.Id,
 		"text": "session_new " + childJSON(t, map[string]any{
 			"title": "Verify", "provider": "faux", "modelId": "tool",
@@ -89,7 +89,7 @@ func TestUserDelegatesTaskToChildSessionWithScopedTools(t *testing.T) {
 	if len(detail.Sessions) != 1 {
 		t.Fatalf("linked Sessions = %+v", detail.Sessions)
 	}
-	child := detail.Sessions[0].ConversationId
+	child := detail.Sessions[0].SessionId
 	w := d.watch(t, child)
 	w.until(t, "child is idle", func(tr *transcript) bool { return !tr.running })
 

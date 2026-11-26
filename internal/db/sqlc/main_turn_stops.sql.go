@@ -10,25 +10,25 @@ import (
 )
 
 const finishMainTurnStop = `-- name: FinishMainTurnStop :exec
-DELETE FROM main_turn_stops WHERE conversation_id = ? AND target = ?
+DELETE FROM main_turn_stops WHERE session_id = ? AND target = ?
 `
 
 type FinishMainTurnStopParams struct {
-	ConversationID int64  `json:"conversation_id"`
-	Target         string `json:"target"`
+	SessionID int64  `json:"session_id"`
+	Target    string `json:"target"`
 }
 
 func (q *Queries) FinishMainTurnStop(ctx context.Context, arg FinishMainTurnStopParams) error {
-	_, err := q.db.ExecContext(ctx, finishMainTurnStop, arg.ConversationID, arg.Target)
+	_, err := q.db.ExecContext(ctx, finishMainTurnStop, arg.SessionID, arg.Target)
 	return err
 }
 
 const listMainTurnStops = `-- name: ListMainTurnStops :many
-SELECT target FROM main_turn_stops WHERE conversation_id = ? ORDER BY rowid
+SELECT target FROM main_turn_stops WHERE session_id = ? ORDER BY rowid
 `
 
-func (q *Queries) ListMainTurnStops(ctx context.Context, conversationID int64) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listMainTurnStops, conversationID)
+func (q *Queries) ListMainTurnStops(ctx context.Context, sessionID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listMainTurnStops, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -51,24 +51,24 @@ func (q *Queries) ListMainTurnStops(ctx context.Context, conversationID int64) (
 }
 
 const recordMainTurnStop = `-- name: RecordMainTurnStop :exec
-INSERT INTO main_turn_stops (conversation_id, target) VALUES (?, ?) ON CONFLICT DO NOTHING
+INSERT INTO main_turn_stops (session_id, target) VALUES (?, ?) ON CONFLICT DO NOTHING
 `
 
 type RecordMainTurnStopParams struct {
-	ConversationID int64  `json:"conversation_id"`
-	Target         string `json:"target"`
+	SessionID int64  `json:"session_id"`
+	Target    string `json:"target"`
 }
 
 func (q *Queries) RecordMainTurnStop(ctx context.Context, arg RecordMainTurnStopParams) error {
-	_, err := q.db.ExecContext(ctx, recordMainTurnStop, arg.ConversationID, arg.Target)
+	_, err := q.db.ExecContext(ctx, recordMainTurnStop, arg.SessionID, arg.Target)
 	return err
 }
 
 const supersedeMainTurnStops = `-- name: SupersedeMainTurnStops :exec
-DELETE FROM main_turn_stops WHERE conversation_id = ?
+DELETE FROM main_turn_stops WHERE session_id = ?
 `
 
-func (q *Queries) SupersedeMainTurnStops(ctx context.Context, conversationID int64) error {
-	_, err := q.db.ExecContext(ctx, supersedeMainTurnStops, conversationID)
+func (q *Queries) SupersedeMainTurnStops(ctx context.Context, sessionID int64) error {
+	_, err := q.db.ExecContext(ctx, supersedeMainTurnStops, sessionID)
 	return err
 }

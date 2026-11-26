@@ -19,11 +19,11 @@ type automationInfo struct {
 }
 
 type runInfo struct {
-	ID     string `json:"id"`
-	DueAt  int64  `json:"dueAt"`
-	Status string `json:"status"`
-	Reason string `json:"reason"`
-	ChatID int64  `json:"chatId"`
+	ID        string `json:"id"`
+	DueAt     int64  `json:"dueAt"`
+	Status    string `json:"status"`
+	Reason    string `json:"reason"`
+	SessionID int64  `json:"sessionId"`
 }
 
 func (d *dex) createAutomation(t *testing.T, name, prompt, session string, schedule map[string]any) automationInfo {
@@ -52,7 +52,7 @@ func (d *dex) runNow(t *testing.T, id string) runInfo {
 	return run
 }
 
-func TestUserAutomationRunsAtItsTimeInANewChat(t *testing.T) {
+func TestUserAutomationRunsAtItsTimeInANewSession(t *testing.T) {
 	t.Parallel()
 	// Given dex that checks automations every 100 ms, and an automation for 1 s from now
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), AutomationCheck: 100 * time.Millisecond})
@@ -64,30 +64,30 @@ func TestUserAutomationRunsAtItsTimeInANewChat(t *testing.T) {
 	}
 
 	// When the time comes
-	// Then the agent runs the prompt in a new automation chat with the automation's name
+	// Then the agent runs the prompt in a new automation session with the automation's name
 	var run runInfo
 	eventually(t, "run", func() (bool, any) {
 		runs := d.runs(t, a.ID)
 		if len(runs) == 1 {
 			run = runs[0]
 		}
-		return len(runs) == 1 && runs[0].ChatID != 0, runs
+		return len(runs) == 1 && runs[0].SessionID != 0, runs
 	})
 	if run.DueAt != at {
 		t.Fatalf("run due at %d, want %d", run.DueAt, at)
 	}
-	d.watch(t, run.ChatID).until(t, "answer", answered("echo: summarize the day"))
+	d.watch(t, run.SessionID).until(t, "answer", answered("echo: summarize the day"))
 	eventually(t, "failed run without report", func() (bool, any) {
 		runs := d.runs(t, a.ID)
 		return len(runs) == 1 && runs[0].Status == "failed", runs
 	})
-	var chat struct {
-		chatInfo
+	var session struct {
+		sessionListItem
 		AutomationID string `json:"automationId"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", run.ChatID), nil, &chat)
-	if chat.Channel != "automation" || chat.AutomationID != a.ID || chat.Title != "Morning brief" {
-		t.Fatalf("chat = %+v", chat)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", run.SessionID), nil, &session)
+	if session.Channel != "automation" || session.AutomationID != a.ID || session.Title != "Morning brief" {
+		t.Fatalf("session = %+v", session)
 	}
 
 	// And a once automation has no next run
@@ -98,9 +98,9 @@ func TestUserAutomationRunsAtItsTimeInANewChat(t *testing.T) {
 	}
 }
 
-func TestUserAutomationReusesItsChatAndSkipsWhileBusy(t *testing.T) {
+func TestUserAutomationReusesItsSessionAndSkipsWhileBusy(t *testing.T) {
 	t.Parallel()
-	// Given an automation that reuses its chat, with a prompt that takes 2 s
+	// Given an automation that reuses its session, with a prompt that takes 2 s
 	d := startDexWith(t, app.Config{DataDir: t.TempDir()})
 	d.setModel(t, "bash")
 	a := d.createAutomation(t, "Slow check", "sleep 2; echo checked", "reuse",
@@ -110,12 +110,12 @@ func TestUserAutomationReusesItsChatAndSkipsWhileBusy(t *testing.T) {
 	first := d.runNow(t, a.ID)
 	second := d.runNow(t, a.ID)
 
-	// Then the second run is skipped, because the chat is busy
+	// Then the second run is skipped, because the session is busy
 	if first.Status != "running" || second.Status != "skipped" || !strings.Contains(second.Reason, "busy") {
 		t.Fatalf("runs = %+v, %+v", first, second)
 	}
-	d.watch(t, first.ChatID).until(t, "first answer", answered("bash: checked"))
-	// The chat stays busy until the worker settles the submission, a moment after the answer.
+	d.watch(t, first.SessionID).until(t, "first answer", answered("bash: checked"))
+	// The session stays busy until the worker settles the submission, a moment after the answer.
 	eventually(t, "settled first run without report", func() (bool, any) {
 		runs := d.runs(t, a.ID)
 		i := slices.IndexFunc(runs, func(r runInfo) bool { return r.ID == first.ID })
@@ -125,11 +125,11 @@ func TestUserAutomationReusesItsChatAndSkipsWhileBusy(t *testing.T) {
 	// When the user runs it again
 	third := d.runNow(t, a.ID)
 
-	// Then it continues the same chat
-	if third.ChatID != first.ChatID {
-		t.Fatalf("third run chat = %d, want %d", third.ChatID, first.ChatID)
+	// Then it continues the same session
+	if third.SessionID != first.SessionID {
+		t.Fatalf("third run session = %d, want %d", third.SessionID, first.SessionID)
 	}
-	d.watch(t, first.ChatID).until(t, "third answer", func(tr *transcript) bool {
+	d.watch(t, first.SessionID).until(t, "third answer", func(tr *transcript) bool {
 		n := 0
 		for _, it := range tr.items {
 			if it.Kind == "assistant" && it.Text == "bash: checked" {
@@ -140,7 +140,7 @@ func TestUserAutomationReusesItsChatAndSkipsWhileBusy(t *testing.T) {
 	})
 
 	// The run stays readable; web input goes to the main timeline.
-	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", first.ChatID),
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", first.SessionID),
 		map[string]string{"id": uuid.NewV7().String(), "text": "echo reply"})
 	if status != http.StatusForbidden {
 		t.Fatalf("automation reply: %d %s", status, raw)
@@ -205,7 +205,7 @@ func TestUserAutomationResponsesKeepTheirFields(t *testing.T) {
 			if run["status"] != "skipped" || run["reason"] != "the bot has no model" {
 				t.Fatalf("run = %v", run)
 			}
-			for _, field := range []string{"dueAt", "chatId"} {
+			for _, field := range []string{"dueAt", "sessionId"} {
 				if _, ok := run[field]; ok {
 					t.Fatalf("unexpected %s: %v", field, run)
 				}

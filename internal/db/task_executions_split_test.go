@@ -43,9 +43,7 @@ func TestUserKeepsTaskSessionsAndExternalTokensAcrossUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	provider, err := goose.NewProvider(goose.DialectSQLite3, conn, migrationFS(t, func(name string) bool {
-		return name <= "20261126090719_split_task_executions_tables.sql"
-	}))
+	provider, err := goose.NewProvider(goose.DialectSQLite3, conn, migrationFS(t, func(string) bool { return true }))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,6 +102,10 @@ func TestUserKeepsTaskSessionsAndExternalTokensAcrossUpgrade(t *testing.T) {
 		}
 	}
 
+	// Run the current queries against the current schema.
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
 	// A later result cannot settle the link while its first message is pending.
 	q := sqlc.New(conn)
 	const sessionOutcome = `SELECT json_array(turn_request_id, state, ended_at) FROM task_sessions WHERE id = 'session:first'`

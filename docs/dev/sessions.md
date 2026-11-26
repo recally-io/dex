@@ -1,37 +1,37 @@
 # Sessions
 
-This document describes conversations, Main, Chats, child sessions, and
-internal delegation.
+This document describes Main, separate Web sessions, and internal delegation
+through child sessions.
 
-## Conversations
+## Sessions
 
-Control stores the parent of a child session in `conversations.parent_id` and the
+Control stores the parent of a child session in `sessions.parent_id` and the
 turn that created work for it in `submissions.parent_request_id`. A child session is a
-Chat that a parent session created. It keeps bash and all coding tools, and the user
+Session that a parent session created. It keeps bash and all coding tools, and the user
 can write to it at any time. The engine owns its transcript and execution records.
 Business services do not query execution SQLite. There is no user goal lifecycle
 or automatic retry chain.
 
-Each agent has one main conversation with channel key `main`. The unique
-agent/key constraint makes `GET /api/agents/{agentId}/chats/main` safe to repeat.
+Each agent has one Main session with channel key `main`. The unique
+agent/key constraint makes `GET /api/agents/{agentId}/sessions/main` safe to repeat.
 It creates the control record on demand. Messages use
-`POST /api/agents/{agentId}/chats/{id}/messages`. Main defaults to the Bot's model and
+`POST /api/agents/{agentId}/sessions/{sessionId}/messages`. Main defaults to the Bot's model and
 thinking settings.
-`POST /api/agents/{agentId}/chats` takes no body and returns a writable
-Chat session (`201`).
-Its channel key starts with `chat:`. One SQLite write reuses the newest Chat
+`POST /api/agents/{agentId}/sessions` takes no body and returns a writable
+session (`201`).
+Its stored channel key starts with `chat:`. One SQLite write reuses the newest Web session
 with no ordinary message, or creates one. Concurrent opens reuse the same row.
 The first message and its title commit together. The title has at most
 60 characters. Longer text uses its first 59 characters and an ellipsis. A file-only
-message uses the first file's name. Each Chat has its own execution conversation.
+message uses the first file's name. Each Session has its own execution conversation.
 It defaults to the bot's model settings and uses its instructions and shared memory.
 It does not read
 main's model context or send its answers to main.
 
-`GET /api/agents/{agentId}/chats` lists session summaries
+`GET /api/agents/{agentId}/sessions` lists session summaries
 by `updatedAt` descending, then ID descending. `updatedAt` is the latest
-conversation creation, or input creation or settlement. List and detail use the
-same rule. The list excludes Main, dreams, and Chats with no message. A child
+session creation, or input creation or settlement. List and detail use the
+same rule. The list excludes Main, dreams, and Sessions with no message. A child
 session is a row with `parentId`. While a session is busy, the list
 adds `lastActivityAt` and `toolStartedAt` from the engine. The web uses them to
 show a stalled hint. Detail does not carry them.
@@ -43,12 +43,12 @@ when the parent belongs to another bot than the one in the path. Detail has the
 parent fields.
 
 A result mark includes `childSessionId` when the saved result names its child.
-The Sessions list supplies the owning Bot, so the web opens the canonical
-Session URL under that Bot. A result without a saved Session ID remains readable
+The Sessions list supplies the owning Bot. The web opens the session at
+`/a/{agentId}/s/{sessionId}` under that Bot. A result without a saved Session ID remains readable
 in the transcript. Open its child from Sessions.
 
-Channel input enters the agent's main conversation. Chat and automation
-contexts stay separate. See [Product](../product.md#scope) for session behavior,
+Channel input enters the agent's Main session. Separate Web sessions and
+Automation runs keep their own contexts. See [Product](../product.md#scope) for session behavior,
 page navigation, and channel setup.
 
 The web keeps visited main timelines mounted and `inert` when hidden. Their
@@ -60,10 +60,10 @@ A browser reload discards these drafts.
 Every enqueue writes `submissions.origin` together with Input Queue metadata:
 `submissions.producer` (`user`, `sub_session`, `scheduler`, or `plugin`) and
 optional `reply_channel` / `reply_peer` (populated only for direct channel `user`
-inputs; Web and background inputs leave them empty). Web input in main and Chat uses `web`.
+inputs; Web and background inputs leave them empty). Web input in Main and other Web sessions uses `web`.
 Channel input uses the exact peer, such as `telegram:7`, and always enters main.
 Automation, parent turns to a child session, and dream input use `automation`, `task`, and `dream`.
-Retrying the same request ID with a different conversation, kind, content,
+Retrying the same request ID with a different session, kind, content,
 attachments, mode, producer, or reply address is rejected as a conflict.
 A channel input also saves the account and peer that received it. Pairing is
 checked at intake. A child result can retain the origin for attribution or an
@@ -87,14 +87,14 @@ automatic channel Outbox row is written. Web input and a parent's
 
 ## Web notifications
 
-Main and Chat display explicit `notify_user` output when the stored source
+Main and Web sessions display explicit `notify_user` output when the stored source
 submission has Web origin. The notice and source must belong to the requested
-conversation. An Automation does not get a Web timeline notification. A channel target
+session. An Automation does not get a Web timeline notification. A channel target
 on an eligible Web notification does not change its origin.
 
 The Web stream reads a recent page from `web_notifications` when it connects.
 A committed notice wakes the stream. Older notices use a notification ID cursor
-in chat history, separate from the native entry cursor. The Web client merges
+in session history, separate from the native entry cursor. The Web client merges
 pages and live updates by notification ID. If a newer notice with the same
 `topicKey` supersedes a pending channel delivery, the timeline keeps both
 notices. Channel revocation does not hide a Web-origin notice. Neither the
@@ -103,11 +103,11 @@ reads an entry.
 
 ## Internal delegation
 
-`ask_user` is installed only on Main and Chat conversations. Extension edits
+`ask_user` is installed only on Main and top-level Web sessions. Extension edits
 persist per conversation, so tasks, automations and dreams never get it. A
 `questions` row holds the text, the options and one of `open`, `answered`,
 `consumed` and `dismissed`. A partial unique index allows one open question per
-conversation. The tool key is the agent ID plus PiG's tool task ID, so a replay
+session. The tool key is the agent ID plus PiG's tool task ID, so a replay
 returns the saved question. The tool reads `harness.LiveState` and returns
 `ToolControl{Terminate: true}` only when it is the only call in the round.
 PiG ends the turn only when every call terminates, so a mixed round gets a tool
@@ -138,11 +138,11 @@ commands, code changes or research to a child session with `session_new`. It
 then ends the turn with a short reply. When the user writes while a child runs,
 main answers first and stops or steers a child whose goal changed.
 
-Each Chat and automation session runs one main agent loop. The loop does
+Each Session and automation session runs one main agent loop. The loop does
 ordinary work itself. It uses child sessions only for independent parallel work,
 long commands whose output would flood its context, and independent review.
 
-A child session is a Chat with `conversations.parent_id`. It has its own context
+A child session is a Session with `sessions.parent_id`. It has its own context
 and runs at once. There is no count limit and no cwd lock. Children in one
 directory run at the same time, so the prompt tells the parent to give each
 writing child separate files or directories. The tools are:
@@ -215,7 +215,7 @@ against them:
   the settings of the parent. Admission reads the agent of the child, so the
   child runs with the instructions, memory section, skills, MCP servers, and
   vault of that bot. A child still cannot create children.
-- A result goes to `conversations.parent_id` in the settlement transaction, in the
+- A result goes to `sessions.parent_id` in the settlement transaction, in the
   bot of the parent. The parent Session takes it from the same receipt queue as its other inputs.
 - No call path holds two Session delivery gates. A session tool runs in its own
   conversation without the delivery gate. `session_stop` takes only the target
@@ -276,11 +276,11 @@ line at each `session_send` call. A `session_report` call shows as a
 "Reported to parent" step. That step keeps a
 System Turn trace unfolded. A result mark with a child Session ID has a
 "View session" action. The card, the line and the action open a read-only side panel that
-shows the child's own transcript with the usual chat reads and stream. The web
+shows the child's own transcript with the usual session reads and stream. The web
 reads the child ID from the Session tool result or the `childSessionId` of a
 result mark. Channels have no thread, so a channel user sees only
 the reply of Main. Child
-conversations stay absent from dream inputs, and dream input selects only
+sessions stay absent from dream inputs, and dream input selects only
 ordinary messages.
 
 A card shows the child's current state, not the outcome of the dispatch that
@@ -296,7 +296,7 @@ Disconnect makes status unavailable. A reconnect reads the current snapshot
 and child states.
 
 A child is writable on the web at any time. A user message goes to the child
-like to any Chat and sends no result. On Main, the web composer uses Main's
+like to any Session and sends no result. On Main, the web composer uses Main's
 live run state. It can send while a child runs. Web Main Stop requires the
 native foreground task target from the connected snapshot or run event. The
 engine checks the task's Session and cancels only that task ID. If it has
@@ -384,7 +384,7 @@ uri = pathlib.Path(sys.argv[1]).resolve().as_uri() + "?mode=ro"
 with closing(sqlite3.connect(uri, uri=True)) as db:
     for request, *fields in db.execute("""
         SELECT id, rowid, created_at, admitted_at, settled_at, status
-        FROM submissions WHERE conversation_id = ? AND kind = 'message'
+        FROM submissions WHERE session_id = ? AND kind = 'message'
         ORDER BY rowid DESC LIMIT 20
         """, (int(sys.argv[2]),)):
         print(hashlib.sha256(request.encode()).hexdigest()[:32], *fields)
@@ -408,7 +408,7 @@ transaction. If a parent input is placed in an unfinished run, recovery
 interrupts the placed inputs and withdraws queued and unadmitted inputs. Each
 placed parent input gets an interrupted result with the withdrawal count.
 Settlements, results, withdrawals and abort intent commit together before any
-Harness resumes. Recovery isolates those conversations. A second restart adds
+Harness resumes. Recovery isolates those sessions. A second restart adds
 nothing. The parent reports the interruption and warns that side effects may
 exist.
 
@@ -459,7 +459,7 @@ than the session that opened the lease, the call fails until a reload. If the se
 tries once more on the next session. A call that Dex sent is never sent again.
 When the machine connects again with the same token, the new session replaces
 the earlier one at once, so a half-open socket does not block the reconnect.
-Each new session wakes the chats that wait, so their input runs without a new
+Each new session wakes the sessions that wait, so their input runs without a new
 message. A revoke or a new enrollment changes the identity, so a lease fails at
 once and the bot reloads.
 `runner.Manager` dispatches each kind to one backend and owns the Runner
@@ -507,7 +507,7 @@ external actions occurred once.
 ## Session Runners
 
 Each session runs its command and file tools on one Runner.
-`conversations.runner_id` in `control.sqlite` is the source of truth. An empty
+`sessions.runner_id` in `control.sqlite` is the source of truth. An empty
 value follows the bot's Runner (`agents.runner_id`). `local` or a registered
 Runner ID pins the selection even if the bot's Runner changes. The `runners`
 table stores registered SSH Machines, Outbound Machines, and E2B Sandboxes.
@@ -518,7 +518,7 @@ use the same `<base>/<bot-id>/workspace` layout under their respective base
 directories. These workspaces are not permission boundaries.
 
 The engine resolves the Runner of a Session at each call, through the
-`SessionRunner` callback that chat provides. One resolver
+`SessionRunner` callback that session provides. One resolver
 ([`internal/engine/session_env.go`](../../internal/engine/session_env.go))
 serves the Harness `Env` hook, the `bash` tool, background commands, upload
 staging, project paths, the project `AGENTS.md`, and artifact delivery. The open
@@ -561,8 +561,8 @@ work opens a fresh sandbox in the same selected Runner; old files do not
 carry over.
 Automations support explicit overrides for Local and SSH Machines only.
 
-A web chat sets `runnerId` before its first message with
-`PUT /api/agents/{agentId}/chats/{chatId}/runner`. A started chat returns 409.
+A web session sets `runnerId` before its first message with
+`PUT /api/agents/{agentId}/sessions/{sessionId}/runner`. A started session returns 409.
 `POST /api/agents/{agentId}/runner/reset` resets an idle bot's E2B Sandbox.
 `session_new` takes `runnerId`. If omitted, a child of the same bot uses the
 parent's Runner. A child of another bot uses that bot's Runner. `runner_list`
@@ -574,7 +574,7 @@ This plain text is data. It does not change selection or access and does not go
 into the system prompt. The tool does not show configuration or secrets.
 
 A fork keeps its source Runner unless it selects Local or a registered Runner.
-Use `runnerId` in `POST /api/agents/{agentId}/chats/{chatId}/fork` or `session_fork`.
+Use `runnerId` in `POST /api/agents/{agentId}/sessions/{sessionId}/fork` or `session_fork`.
 When the Runner changes, the fork has no cwd. If copied history ends on a different Runner, the engine appends one
 `dex.runner` entry. The model reads its notice before the next input. The
 transcript projects a `boundary` item with `boundary: "runner"`. The entry

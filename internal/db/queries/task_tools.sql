@@ -2,10 +2,10 @@
 -- Match CanRead for Bot actors before applying the limit.
 SELECT t.* FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
 WHERE a.archived_at IS NULL AND (
-  (CAST(@child_conversation_id AS INTEGER) = 0 AND
+  (CAST(@child_session_id AS INTEGER) = 0 AND
     (t.assignee_bot_id = @bot_id OR (t.reviewer_kind = 'bot' AND t.reviewer_id = @bot_id)))
   OR EXISTS (SELECT 1 FROM task_sessions s WHERE s.task_id = t.id AND s.bot_id = @bot_id
-    AND s.conversation_id = @child_conversation_id)
+    AND s.session_id = @child_session_id)
 )
 AND (CAST(@status_filter AS TEXT) = 'all' OR t.status = @status_filter
   OR (@status_filter = 'open' AND t.status NOT IN ('done', 'cancelled')))
@@ -28,22 +28,22 @@ SELECT EXISTS (SELECT 1 FROM task_entries
   WHERE task_id = @task_id AND kind = 'status' AND trust <> 'external' AND content = @title);
 
 -- name: ListTaskSessions :many
-SELECT c.id AS conversation_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
-FROM task_sessions s JOIN conversations c ON c.id = s.conversation_id JOIN agents a ON a.id = s.bot_id
+SELECT c.id AS session_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
+FROM task_sessions s JOIN sessions c ON c.id = s.session_id JOIN agents a ON a.id = s.bot_id
 WHERE s.task_id = ? ORDER BY s.is_primary DESC, s.started_at, c.id;
 
 -- name: LinkTaskSession :one
 -- Keep the original timestamp and child turn on replay. The first link becomes primary.
-INSERT INTO task_sessions (id, task_id, conversation_id, bot_id, is_primary, started_at, turn_request_id)
+INSERT INTO task_sessions (id, task_id, session_id, bot_id, is_primary, started_at, turn_request_id)
 SELECT 'session:' || @task_id || ':' || c.id, @task_id, c.id, c.agent_id,
   NOT EXISTS (SELECT 1 FROM task_sessions s WHERE s.task_id = @task_id AND s.is_primary = 1), @linked_at,
-  COALESCE((SELECT s.id FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message'
+  COALESCE((SELECT s.id FROM submissions s WHERE s.session_id = c.id AND s.kind = 'message'
     AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL ORDER BY s.rowid LIMIT 1), '')
-FROM conversations c WHERE c.id = @conversation_id
+FROM sessions c WHERE c.id = @session_id
 ON CONFLICT DO NOTHING RETURNING *;
 
 -- name: GetTaskSession :one
-SELECT * FROM task_sessions WHERE task_id = ? AND conversation_id = ?;
+SELECT * FROM task_sessions WHERE task_id = ? AND session_id = ?;
 
 -- name: ListTaskSessionExecutions :many
 SELECT sqlc.embed(s), t.number AS task_number
@@ -59,7 +59,7 @@ UPDATE task_sessions SET is_primary = 1 WHERE id = ?;
 
 -- name: HasTaskBotExecution :one
 SELECT EXISTS (SELECT 1 FROM task_sessions WHERE task_id = @task_id AND bot_id = @bot_id
-  AND conversation_id = CAST(@conversation_id AS INTEGER));
+  AND session_id = CAST(@session_id AS INTEGER));
 
 -- name: HasTaskExternalExecution :one
 SELECT EXISTS (SELECT 1 FROM task_external_runs WHERE task_id = @task_id AND id = @id);
@@ -85,5 +85,5 @@ LIMIT @max_rows;
 SELECT * FROM task_tool_operations WHERE key = ?;
 
 -- name: CreateTaskToolOperation :exec
-INSERT INTO task_tool_operations (key, agent_id, conversation_id, source_request_id, action, result)
+INSERT INTO task_tool_operations (key, agent_id, session_id, source_request_id, action, result)
 VALUES (?, ?, ?, ?, ?, ?);

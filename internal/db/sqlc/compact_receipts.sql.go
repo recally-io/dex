@@ -10,19 +10,19 @@ import (
 )
 
 const createCompactReceipt = `-- name: CreateCompactReceipt :execrows
-INSERT INTO compact_receipts (id, conversation_id, instructions)
+INSERT INTO compact_receipts (id, session_id, instructions)
 VALUES (?, ?, ?)
 ON CONFLICT DO NOTHING
 `
 
 type CreateCompactReceiptParams struct {
-	ID             string `json:"id"`
-	ConversationID int64  `json:"conversation_id"`
-	Instructions   string `json:"instructions"`
+	ID           string `json:"id"`
+	SessionID    int64  `json:"session_id"`
+	Instructions string `json:"instructions"`
 }
 
 func (q *Queries) CreateCompactReceipt(ctx context.Context, arg CreateCompactReceiptParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, createCompactReceipt, arg.ID, arg.ConversationID, arg.Instructions)
+	result, err := q.db.ExecContext(ctx, createCompactReceipt, arg.ID, arg.SessionID, arg.Instructions)
 	if err != nil {
 		return 0, err
 	}
@@ -30,12 +30,12 @@ func (q *Queries) CreateCompactReceipt(ctx context.Context, arg CreateCompactRec
 }
 
 const getCompactReceipt = `-- name: GetCompactReceipt :one
-SELECT id, conversation_id, instructions FROM compact_receipts WHERE id = ?
+SELECT id, session_id, instructions FROM compact_receipts WHERE id = ?
 `
 
 func (q *Queries) GetCompactReceipt(ctx context.Context, id string) (CompactReceipt, error) {
 	row := q.db.QueryRowContext(ctx, getCompactReceipt, id)
 	var i CompactReceipt
-	err := row.Scan(&i.ID, &i.ConversationID, &i.Instructions)
+	err := row.Scan(&i.ID, &i.SessionID, &i.Instructions)
 	return i, err
 }
