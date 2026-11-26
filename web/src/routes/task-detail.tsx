@@ -66,9 +66,9 @@ import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Textarea } from "../components/ui/textarea";
 import { GitHubPullForm } from "../plugins/github/pull-form";
-import { invalidateTasks, useTaskStream } from "../lib/task-stream";
+import { invalidateTasks } from "../lib/task-stream";
 import { isClosed, nextStatuses, statusLabel } from "../lib/tasks";
-import { errorText, refreshInbox } from "../lib/queries";
+import { errorText, refreshChats } from "../lib/queries";
 import { newId } from "../lib/utils";
 
 class TaskConflict extends Error {}
@@ -76,7 +76,6 @@ class TaskConflict extends Error {}
 type ActiveDialog = "rename" | "reviewer" | "subtask" | "dependency" | "github" | null;
 
 export function TaskDetailPage({ taskKey }: { taskKey: string }) {
-  useTaskStream();
   const detail = useQuery(getTaskOptions({ path: { taskKey } }));
   const bots = useQuery(listAgentsOptions()).data?.agents ?? [];
 
@@ -155,7 +154,7 @@ function TaskWorkspace({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) 
 
       if (error) throw new Error(errorText(error));
     },
-    onSuccess: () => Promise.all([invalidateTasks(client), refreshInbox()]),
+    onSuccess: () => invalidateTasks(client),
   });
 
   const canLinkGitHub = open && Boolean(health.data?.plugins.includes("github"));
@@ -511,7 +510,7 @@ function ReviewActionCard({
     onSuccess: async () => {
       setFeedback("");
       setRequesting(false);
-      await Promise.all([invalidateTasks(client), refreshInbox()]);
+      await invalidateTasks(client);
     },
   });
 
@@ -591,7 +590,7 @@ function BlockerActionCard({ detail }: { detail: TaskDetail }) {
         body: { id: newId(), text, answersQuestionId: question.id },
         throwOnError: true,
       }),
-    onSuccess: () => Promise.all([invalidateTasks(client), refreshInbox()]),
+    onSuccess: (_, { question }) => Promise.all([invalidateTasks(client), refreshChats(question.agentId)]),
   });
 
   const waits = detail.blockers.filter((blocker) => blocker.kind === "wait");

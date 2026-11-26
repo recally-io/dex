@@ -46,13 +46,13 @@ func runTask(ctx context.Context, args []string, out io.Writer) error {
 		cwd := f.String("cwd", "", "External workspace path (default current directory on attach)")
 		branch := f.String("branch", "", "Git branch")
 		session := f.String("session", "", "External session ID")
-		machine := f.String("machine", "", "Registered Runner ID; omit for a self-reported host")
+		runnerID := f.String("runner", "", "Registered Runner ID; omit for a self-reported host")
 		seconds := f.Int64("lease-seconds", 0, "Lease duration in seconds (default 120)")
 		prepare = func() error {
 			if (*task == "") == (*resume == "") {
 				return fmt.Errorf("%w: specify exactly one of --task and --resume", errUsage)
 			}
-			b := api.TaskExecutionAttach{MachineId: taskString(*machine), GitBranch: taskString(*branch), ExternalSessionId: taskString(*session), LeaseSeconds: taskSeconds(*seconds)}
+			b := api.TaskExecutionAttach{RunnerId: taskString(*runnerID), GitBranch: taskString(*branch), ExternalSessionId: taskString(*session), LeaseSeconds: taskSeconds(*seconds)}
 			if *resume != "" {
 				path = "/api/tasks/executions/" + url.PathEscape(*resume) + "/resume"
 			} else {
@@ -79,7 +79,7 @@ func runTask(ctx context.Context, args []string, out io.Writer) error {
 			return nil
 		}
 	case "read":
-		after := f.Int64("after-seq", 0, "Read after this Timeline sequence")
+		after := f.Int64("after-seq", 0, "Read after this Timeline sequence (nextCursor from the previous page)")
 		limit := f.Int64("limit", 50, "Maximum entries to return (1–100)")
 		prepare = func() error {
 			path = fmt.Sprintf("/api/tasks/external/task?afterSeq=%d&limit=%d", *after, *limit)

@@ -58,6 +58,24 @@ func (e AssistantItemKind) Valid() bool {
 	}
 }
 
+// Defines values for AutomationResultSummaryOutcome.
+const (
+	AutomationResultSummaryOutcomeChanged AutomationResultSummaryOutcome = "changed"
+	AutomationResultSummaryOutcomeFailed  AutomationResultSummaryOutcome = "failed"
+)
+
+// Valid indicates whether the value is a known member of the AutomationResultSummaryOutcome enum.
+func (e AutomationResultSummaryOutcome) Valid() bool {
+	switch e {
+	case AutomationResultSummaryOutcomeChanged:
+		return true
+	case AutomationResultSummaryOutcomeFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BoundaryItemBoundary.
 const (
 	BoundaryItemBoundaryCompaction BoundaryItemBoundary = "compaction"
@@ -1299,6 +1317,36 @@ type AutomationList struct {
 	Automations []Automation `json:"automations"`
 }
 
+// AutomationResult defines model for AutomationResult.
+type AutomationResult = automation.Result
+
+// AutomationResultList defines model for AutomationResultList.
+type AutomationResultList struct {
+	Results []AutomationResult `json:"results"`
+}
+
+// AutomationResultSummary defines model for AutomationResultSummary.
+type AutomationResultSummary struct {
+	AgentId        string `json:"agentId"`
+	AutomationId   string `json:"automationId"`
+	AutomationName string `json:"automationName"`
+	ChatId         int64  `json:"chatId"`
+	CreatedAt      int64  `json:"createdAt"`
+
+	// Cwd The cwd on the Runner when the run started.
+	Cwd     string                         `json:"cwd"`
+	Outcome AutomationResultSummaryOutcome `json:"outcome"`
+	Read    bool                           `json:"read"`
+	RunId   string                         `json:"runId"`
+
+	// RunnerId The Runner on which the run started. Empty if no Runner was recorded.
+	RunnerId string `json:"runnerId"`
+	Summary  string `json:"summary"`
+}
+
+// AutomationResultSummaryOutcome defines model for AutomationResultSummary.Outcome.
+type AutomationResultSummaryOutcome string
+
 // AutomationRun defines model for AutomationRun.
 type AutomationRun = automation.Run
 
@@ -1312,6 +1360,51 @@ type AutomationTarget struct {
 	Id    int64  `json:"id"`
 	Main  bool   `json:"main"`
 	Title string `json:"title"`
+}
+
+// BoardAttention defines model for BoardAttention.
+type BoardAttention struct {
+	Automations []BoardAttentionAutomation `json:"automations"`
+
+	// Results Unhandled failed and changed Automation results.
+	Results     []AutomationResultSummary  `json:"results"`
+	Sessions    []BoardAttentionSession    `json:"sessions"`
+	TaskReviews []BoardAttentionTaskReview `json:"taskReviews"`
+}
+
+// BoardAttentionAutomation defines model for BoardAttentionAutomation.
+type BoardAttentionAutomation struct {
+	AgentId              string `json:"agentId"`
+	Id                   string `json:"id"`
+	Name                 string `json:"name"`
+	Setup                bool   `json:"setup"`
+	TargetConversationId *int64 `json:"targetConversationId,omitempty"`
+}
+
+// BoardAttentionQuestion An open question that waits for the Owner.
+type BoardAttentionQuestion struct {
+	Id      string   `json:"id"`
+	Options []string `json:"options"`
+	Text    string   `json:"text"`
+}
+
+// BoardAttentionSession defines model for BoardAttentionSession.
+type BoardAttentionSession struct {
+	AgentId string `json:"agentId"`
+	Busy    bool   `json:"busy"`
+	Id      int64  `json:"id"`
+	Main    bool   `json:"main"`
+
+	// Question An open question that waits for the Owner.
+	Question *BoardAttentionQuestion `json:"question,omitempty"`
+	Title    string                  `json:"title"`
+}
+
+// BoardAttentionTaskReview defines model for BoardAttentionTaskReview.
+type BoardAttentionTaskReview struct {
+	AssigneeBotId string `json:"assigneeBotId"`
+	Key           string `json:"key"`
+	Title         string `json:"title"`
 }
 
 // BotIntegrations defines model for BotIntegrations.
@@ -1626,30 +1719,6 @@ type HistoryPage struct {
 	NextBefore             *int64                  `json:"nextBefore,omitempty"`
 	NextBeforeNotification *string                 `json:"nextBeforeNotification,omitempty"`
 	Notifications          *[]TimelineNotification `json:"notifications,omitempty"`
-}
-
-// InboxItem defines model for InboxItem.
-type InboxItem = automation.InboxItem
-
-// InboxSummary defines model for InboxSummary.
-type InboxSummary struct {
-	Automations []InboxSummaryAutomation `json:"automations"`
-	Inbox       []InboxItem              `json:"inbox"`
-	Sessions    []InboxSummarySession    `json:"sessions"`
-	TaskReviews []TaskRef                `json:"taskReviews"`
-}
-
-// InboxSummaryAutomation defines model for InboxSummaryAutomation.
-type InboxSummaryAutomation struct {
-	AgentId    string     `json:"agentId"`
-	Automation Automation `json:"automation"`
-	Setup      bool       `json:"setup"`
-}
-
-// InboxSummarySession defines model for InboxSummarySession.
-type InboxSummarySession struct {
-	AgentId string `json:"agentId"`
-	Chat    Chat   `json:"chat"`
 }
 
 // IntegrationScope Shared across dex or scoped to one agent.
@@ -2296,24 +2365,26 @@ type TaskEvent struct {
 
 // TaskExecution defines model for TaskExecution.
 type TaskExecution struct {
-	BotId             string             `json:"botId"`
-	DispatchId        *string            `json:"dispatchId,omitempty"`
-	EndedAt           *int64             `json:"endedAt,omitempty"`
-	ExternalSessionId *string            `json:"externalSessionId,omitempty"`
-	GitBranch         *string            `json:"gitBranch,omitempty"`
-	Harness           *string            `json:"harness,omitempty"`
-	Hostname          *string            `json:"hostname,omitempty"`
-	Id                string             `json:"id"`
-	Kind              TaskExecutionKind  `json:"kind"`
-	LastHeartbeatAt   *int64             `json:"lastHeartbeatAt,omitempty"`
-	LeaseEpoch        int64              `json:"leaseEpoch"`
-	LeaseExpiresAt    *int64             `json:"leaseExpiresAt,omitempty"`
-	MachineId         *string            `json:"machineId,omitempty"`
-	RunnerName        *string            `json:"runnerName,omitempty"`
-	StartedAt         int64              `json:"startedAt"`
-	State             TaskExecutionState `json:"state"`
-	TaskKey           *string            `json:"taskKey,omitempty"`
-	WorkspacePath     *string            `json:"workspacePath,omitempty"`
+	BotId             string            `json:"botId"`
+	DispatchId        *string           `json:"dispatchId,omitempty"`
+	EndedAt           *int64            `json:"endedAt,omitempty"`
+	ExternalSessionId *string           `json:"externalSessionId,omitempty"`
+	GitBranch         *string           `json:"gitBranch,omitempty"`
+	Harness           *string           `json:"harness,omitempty"`
+	Hostname          *string           `json:"hostname,omitempty"`
+	Id                string            `json:"id"`
+	Kind              TaskExecutionKind `json:"kind"`
+	LastHeartbeatAt   *int64            `json:"lastHeartbeatAt,omitempty"`
+	LeaseEpoch        int64             `json:"leaseEpoch"`
+	LeaseExpiresAt    *int64            `json:"leaseExpiresAt,omitempty"`
+
+	// RunnerId The ID of the registered Runner.
+	RunnerId      *string            `json:"runnerId,omitempty"`
+	RunnerName    *string            `json:"runnerName,omitempty"`
+	StartedAt     int64              `json:"startedAt"`
+	State         TaskExecutionState `json:"state"`
+	TaskKey       *string            `json:"taskKey,omitempty"`
+	WorkspacePath *string            `json:"workspacePath,omitempty"`
 }
 
 // TaskExecutionKind defines model for TaskExecution.Kind.
@@ -2329,8 +2400,10 @@ type TaskExecutionAttach struct {
 	Harness           *TaskExecutionAttachHarness `json:"harness,omitempty"`
 	HostMeta          *TaskExecutionHost          `json:"hostMeta,omitempty"`
 	LeaseSeconds      *int64                      `json:"leaseSeconds,omitempty"`
-	MachineId         *string                     `json:"machineId,omitempty"`
-	WorkspacePath     *string                     `json:"workspacePath,omitempty"`
+
+	// RunnerId The ID of the registered Runner.
+	RunnerId      *string `json:"runnerId,omitempty"`
+	WorkspacePath *string `json:"workspacePath,omitempty"`
 }
 
 // TaskExecutionAttachHarness defines model for TaskExecutionAttach.Harness.
@@ -2364,9 +2437,9 @@ type TaskExecutionList struct {
 
 // TaskExternalTask defines model for TaskExternalTask.
 type TaskExternalTask struct {
-	Entries      []TaskEntry `json:"entries"`
-	NextAfterSeq int64       `json:"nextAfterSeq"`
-	Task         TaskRef     `json:"task"`
+	Entries    []TaskEntry `json:"entries"`
+	NextCursor int64       `json:"nextCursor"`
+	Task       TaskRef     `json:"task"`
 }
 
 // TaskItem Marks the result of a child session turn. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
@@ -2817,6 +2890,11 @@ type PutVaultJSONBody struct {
 	Value *string          `json:"value,omitempty"`
 }
 
+// ListAutomationResultsParams defines parameters for ListAutomationResults.
+type ListAutomationResultsParams struct {
+	IncludeDismissed *bool `form:"includeDismissed,omitempty" json:"includeDismissed,omitempty"`
+}
+
 // ListDirectoriesParams defines parameters for ListDirectories.
 type ListDirectoriesParams struct {
 	Path    *string `form:"path,omitempty" json:"path,omitempty"`
@@ -2826,20 +2904,15 @@ type ListDirectoriesParams struct {
 	RunnerId *string `form:"runnerId,omitempty" json:"runnerId,omitempty"`
 }
 
-// ListInboxParams defines parameters for ListInbox.
-type ListInboxParams struct {
-	IncludeDismissed *bool `form:"includeDismissed,omitempty" json:"includeDismissed,omitempty"`
+// SetSourceEnabledJSONBody defines parameters for SetSourceEnabled.
+type SetSourceEnabledJSONBody struct {
+	Enabled bool `json:"enabled"`
 }
 
 // AttachHeldEventJSONBody defines parameters for AttachHeldEvent.
 type AttachHeldEventJSONBody struct {
 	AgentId string `json:"agentId"`
 	TaskId  string `json:"taskId"`
-}
-
-// SetSourceEnabledJSONBody defines parameters for SetSourceEnabled.
-type SetSourceEnabledJSONBody struct {
-	Enabled bool `json:"enabled"`
 }
 
 // GetSystemLogsParams defines parameters for GetSystemLogs.
@@ -2883,10 +2956,10 @@ type StreamTaskEventsParams struct {
 
 // ListTaskExecutionsParams defines parameters for ListTaskExecutions.
 type ListTaskExecutionsParams struct {
-	TaskKey   *string `form:"taskKey,omitempty" json:"taskKey,omitempty"`
-	MachineId *string `form:"machineId,omitempty" json:"machineId,omitempty"`
-	Kind      *string `form:"kind,omitempty" json:"kind,omitempty"`
-	State     *string `form:"state,omitempty" json:"state,omitempty"`
+	TaskKey  *string `form:"taskKey,omitempty" json:"taskKey,omitempty"`
+	RunnerId *string `form:"runnerId,omitempty" json:"runnerId,omitempty"`
+	Kind     *string `form:"kind,omitempty" json:"kind,omitempty"`
+	State    *string `form:"state,omitempty" json:"state,omitempty"`
 }
 
 // ReadTaskExternalTaskParams defines parameters for ReadTaskExternalTask.
@@ -2999,9 +3072,6 @@ type PutVaultJSONRequestBody PutVaultJSONBody
 // PreviewScheduleJSONRequestBody defines body for PreviewSchedule for application/json ContentType.
 type PreviewScheduleJSONRequestBody = ScheduleInput
 
-// AttachHeldEventJSONRequestBody defines body for AttachHeldEvent for application/json ContentType.
-type AttachHeldEventJSONRequestBody AttachHeldEventJSONBody
-
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = NewSession
 
@@ -3025,6 +3095,9 @@ type UpdateRunnerJSONRequestBody = RunnerInput
 
 // SetSourceEnabledJSONRequestBody defines body for SetSourceEnabled for application/json ContentType.
 type SetSourceEnabledJSONRequestBody SetSourceEnabledJSONBody
+
+// AttachHeldEventJSONRequestBody defines body for AttachHeldEvent for application/json ContentType.
+type AttachHeldEventJSONRequestBody AttachHeldEventJSONBody
 
 // RestartSystemJSONRequestBody defines body for RestartSystem for application/json ContentType.
 type RestartSystemJSONRequestBody RestartSystemJSONBody
@@ -3807,32 +3880,23 @@ type ServerInterface interface {
 	// (POST /api/automations/preview)
 	PreviewSchedule(w http.ResponseWriter, r *http.Request)
 
+	// (GET /api/automations/results)
+	ListAutomationResults(w http.ResponseWriter, r *http.Request, params ListAutomationResultsParams)
+
+	// (POST /api/automations/results/{runId}/dismiss)
+	DismissAutomationResult(w http.ResponseWriter, r *http.Request, runId string)
+
+	// (POST /api/automations/results/{runId}/read)
+	ReadAutomationResult(w http.ResponseWriter, r *http.Request, runId string)
+
+	// (GET /api/board/attention)
+	GetBoardAttention(w http.ResponseWriter, r *http.Request)
+
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
 
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
-
-	// (GET /api/inbox)
-	ListInbox(w http.ResponseWriter, r *http.Request, params ListInboxParams)
-
-	// (GET /api/inbox/held-events)
-	ListHeldEvents(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/inbox/held-events/{eventId}/attach)
-	AttachHeldEvent(w http.ResponseWriter, r *http.Request, eventId string)
-
-	// (POST /api/inbox/held-events/{eventId}/dismiss)
-	DismissHeldEvent(w http.ResponseWriter, r *http.Request, eventId string)
-
-	// (GET /api/inbox/summary)
-	GetInboxSummary(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/inbox/{runId}/dismiss)
-	DismissInboxItem(w http.ResponseWriter, r *http.Request, runId string)
-
-	// (POST /api/inbox/{runId}/read)
-	ReadInboxItem(w http.ResponseWriter, r *http.Request, runId string)
 
 	// (DELETE /api/maintenance)
 	ReleaseMaintenance(w http.ResponseWriter, r *http.Request)
@@ -3899,6 +3963,15 @@ type ServerInterface interface {
 
 	// (PUT /api/settings/sources/{name})
 	SetSourceEnabled(w http.ResponseWriter, r *http.Request, name string)
+
+	// (GET /api/sources/held-events)
+	ListHeldEvents(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/sources/held-events/{eventId}/attach)
+	AttachHeldEvent(w http.ResponseWriter, r *http.Request, eventId string)
+
+	// (POST /api/sources/held-events/{eventId}/dismiss)
+	DismissHeldEvent(w http.ResponseWriter, r *http.Request, eventId string)
 
 	// (POST /api/system/backup)
 	BackupSystemDatabase(w http.ResponseWriter, r *http.Request)
@@ -6168,6 +6241,105 @@ func (siw *ServerInterfaceWrapper) PreviewSchedule(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ListAutomationResults operation middleware
+func (siw *ServerInterfaceWrapper) ListAutomationResults(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAutomationResultsParams
+
+	// ------------- Optional query parameter "includeDismissed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeDismissed", r.URL.Query(), &params.IncludeDismissed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeDismissed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeDismissed", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAutomationResults(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissAutomationResult operation middleware
+func (siw *ServerInterfaceWrapper) DismissAutomationResult(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runId" -------------
+	var runId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", r.PathValue("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissAutomationResult(w, r, runId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReadAutomationResult operation middleware
+func (siw *ServerInterfaceWrapper) ReadAutomationResult(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runId" -------------
+	var runId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", r.PathValue("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReadAutomationResult(w, r, runId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBoardAttention operation middleware
+func (siw *ServerInterfaceWrapper) GetBoardAttention(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBoardAttention(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListDirectories operation middleware
 func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *http.Request) {
 
@@ -6232,171 +6404,6 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListInbox operation middleware
-func (siw *ServerInterfaceWrapper) ListInbox(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListInboxParams
-
-	// ------------- Optional query parameter "includeDismissed" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeDismissed", r.URL.Query(), &params.IncludeDismissed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeDismissed"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeDismissed", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListInbox(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListHeldEvents operation middleware
-func (siw *ServerInterfaceWrapper) ListHeldEvents(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListHeldEvents(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// AttachHeldEvent operation middleware
-func (siw *ServerInterfaceWrapper) AttachHeldEvent(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "eventId" -------------
-	var eventId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "eventId", r.PathValue("eventId"), &eventId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "eventId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AttachHeldEvent(w, r, eventId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DismissHeldEvent operation middleware
-func (siw *ServerInterfaceWrapper) DismissHeldEvent(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "eventId" -------------
-	var eventId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "eventId", r.PathValue("eventId"), &eventId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "eventId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DismissHeldEvent(w, r, eventId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetInboxSummary operation middleware
-func (siw *ServerInterfaceWrapper) GetInboxSummary(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetInboxSummary(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DismissInboxItem operation middleware
-func (siw *ServerInterfaceWrapper) DismissInboxItem(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "runId" -------------
-	var runId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runId", r.PathValue("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DismissInboxItem(w, r, runId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ReadInboxItem operation middleware
-func (siw *ServerInterfaceWrapper) ReadInboxItem(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "runId" -------------
-	var runId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runId", r.PathValue("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ReadInboxItem(w, r, runId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6822,6 +6829,72 @@ func (siw *ServerInterfaceWrapper) SetSourceEnabled(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListHeldEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListHeldEvents(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListHeldEvents(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AttachHeldEvent operation middleware
+func (siw *ServerInterfaceWrapper) AttachHeldEvent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "eventId" -------------
+	var eventId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "eventId", r.PathValue("eventId"), &eventId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "eventId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AttachHeldEvent(w, r, eventId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissHeldEvent operation middleware
+func (siw *ServerInterfaceWrapper) DismissHeldEvent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "eventId" -------------
+	var eventId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "eventId", r.PathValue("eventId"), &eventId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "eventId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissHeldEvent(w, r, eventId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // BackupSystemDatabase operation middleware
 func (siw *ServerInterfaceWrapper) BackupSystemDatabase(w http.ResponseWriter, r *http.Request) {
 
@@ -7141,15 +7214,15 @@ func (siw *ServerInterfaceWrapper) ListTaskExecutions(w http.ResponseWriter, r *
 		return
 	}
 
-	// ------------- Optional query parameter "machineId" -------------
+	// ------------- Optional query parameter "runnerId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "machineId", r.URL.Query(), &params.MachineId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "runnerId", r.URL.Query(), &params.RunnerId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "machineId"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "runnerId"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "machineId", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runnerId", Err: err})
 		}
 		return
 	}
@@ -7793,13 +7866,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/external/heartbeat", wrapper.HeartbeatTaskExecution)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/external/finish", wrapper.FinishTaskExecution)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/events", wrapper.StreamTaskEvents)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/summary", wrapper.GetInboxSummary)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox", wrapper.ListInbox)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/held-events", wrapper.ListHeldEvents)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/held-events/{eventId}/attach", wrapper.AttachHeldEvent)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/held-events/{eventId}/dismiss", wrapper.DismissHeldEvent)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/read", wrapper.ReadInboxItem)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/dismiss", wrapper.DismissInboxItem)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/attention", wrapper.GetBoardAttention)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/automations/results", wrapper.ListAutomationResults)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/sources/held-events", wrapper.ListHeldEvents)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/sources/held-events/{eventId}/attach", wrapper.AttachHeldEvent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/sources/held-events/{eventId}/dismiss", wrapper.DismissHeldEvent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/automations/results/{runId}/read", wrapper.ReadAutomationResult)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/automations/results/{runId}/dismiss", wrapper.DismissAutomationResult)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/session", wrapper.CreateSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
@@ -12002,6 +12075,189 @@ func (response PreviewScheduledefaultJSONResponse) VisitPreviewScheduleResponse(
 	return err
 }
 
+type ListAutomationResultsRequestObject struct {
+	Params ListAutomationResultsParams
+}
+
+type ListAutomationResultsResponseObject interface {
+	VisitListAutomationResultsResponse(w http.ResponseWriter) error
+}
+
+type ListAutomationResults200JSONResponse AutomationResultList
+
+func (response ListAutomationResults200JSONResponse) VisitListAutomationResultsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationResultsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAutomationResultsdefaultJSONResponse) VisitListAutomationResultsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissAutomationResultRequestObject struct {
+	RunId string `json:"runId"`
+}
+
+type DismissAutomationResultResponseObject interface {
+	VisitDismissAutomationResultResponse(w http.ResponseWriter) error
+}
+
+type DismissAutomationResult200JSONResponse Ok
+
+func (response DismissAutomationResult200JSONResponse) VisitDismissAutomationResultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissAutomationResult404JSONResponse struct{ ErrorJSONResponse }
+
+func (response DismissAutomationResult404JSONResponse) VisitDismissAutomationResultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissAutomationResultdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DismissAutomationResultdefaultJSONResponse) VisitDismissAutomationResultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadAutomationResultRequestObject struct {
+	RunId string `json:"runId"`
+}
+
+type ReadAutomationResultResponseObject interface {
+	VisitReadAutomationResultResponse(w http.ResponseWriter) error
+}
+
+type ReadAutomationResult200JSONResponse Ok
+
+func (response ReadAutomationResult200JSONResponse) VisitReadAutomationResultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadAutomationResult404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ReadAutomationResult404JSONResponse) VisitReadAutomationResultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadAutomationResultdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ReadAutomationResultdefaultJSONResponse) VisitReadAutomationResultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBoardAttentionRequestObject struct {
+}
+
+type GetBoardAttentionResponseObject interface {
+	VisitGetBoardAttentionResponse(w http.ResponseWriter) error
+}
+
+type GetBoardAttention200JSONResponse BoardAttention
+
+func (response GetBoardAttention200JSONResponse) VisitGetBoardAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBoardAttentiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetBoardAttentiondefaultJSONResponse) VisitGetBoardAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListDirectoriesRequestObject struct {
 	Params ListDirectoriesParams
 }
@@ -12072,326 +12328,6 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListInboxRequestObject struct {
-	Params ListInboxParams
-}
-
-type ListInboxResponseObject interface {
-	VisitListInboxResponse(w http.ResponseWriter) error
-}
-
-type ListInbox200JSONResponse struct {
-	Items []InboxItem `json:"items"`
-}
-
-func (response ListInbox200JSONResponse) VisitListInboxResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListInboxdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListInboxdefaultJSONResponse) VisitListInboxResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListHeldEventsRequestObject struct {
-}
-
-type ListHeldEventsResponseObject interface {
-	VisitListHeldEventsResponse(w http.ResponseWriter) error
-}
-
-type ListHeldEvents200JSONResponse struct {
-	Events []HeldEvent `json:"events"`
-}
-
-func (response ListHeldEvents200JSONResponse) VisitListHeldEventsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListHeldEventsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListHeldEventsdefaultJSONResponse) VisitListHeldEventsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AttachHeldEventRequestObject struct {
-	EventId string `json:"eventId"`
-	Body    *AttachHeldEventJSONRequestBody
-}
-
-type AttachHeldEventResponseObject interface {
-	VisitAttachHeldEventResponse(w http.ResponseWriter) error
-}
-
-type AttachHeldEvent204Response struct {
-}
-
-func (response AttachHeldEvent204Response) VisitAttachHeldEventResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type AttachHeldEvent404JSONResponse struct{ ErrorJSONResponse }
-
-func (response AttachHeldEvent404JSONResponse) VisitAttachHeldEventResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AttachHeldEventdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response AttachHeldEventdefaultJSONResponse) VisitAttachHeldEventResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DismissHeldEventRequestObject struct {
-	EventId string `json:"eventId"`
-}
-
-type DismissHeldEventResponseObject interface {
-	VisitDismissHeldEventResponse(w http.ResponseWriter) error
-}
-
-type DismissHeldEvent204Response struct {
-}
-
-func (response DismissHeldEvent204Response) VisitDismissHeldEventResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type DismissHeldEvent404JSONResponse struct{ ErrorJSONResponse }
-
-func (response DismissHeldEvent404JSONResponse) VisitDismissHeldEventResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DismissHeldEventdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DismissHeldEventdefaultJSONResponse) VisitDismissHeldEventResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetInboxSummaryRequestObject struct {
-}
-
-type GetInboxSummaryResponseObject interface {
-	VisitGetInboxSummaryResponse(w http.ResponseWriter) error
-}
-
-type GetInboxSummary200JSONResponse InboxSummary
-
-func (response GetInboxSummary200JSONResponse) VisitGetInboxSummaryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetInboxSummarydefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetInboxSummarydefaultJSONResponse) VisitGetInboxSummaryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DismissInboxItemRequestObject struct {
-	RunId string `json:"runId"`
-}
-
-type DismissInboxItemResponseObject interface {
-	VisitDismissInboxItemResponse(w http.ResponseWriter) error
-}
-
-type DismissInboxItem200JSONResponse Ok
-
-func (response DismissInboxItem200JSONResponse) VisitDismissInboxItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DismissInboxItem404JSONResponse struct{ ErrorJSONResponse }
-
-func (response DismissInboxItem404JSONResponse) VisitDismissInboxItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DismissInboxItemdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DismissInboxItemdefaultJSONResponse) VisitDismissInboxItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReadInboxItemRequestObject struct {
-	RunId string `json:"runId"`
-}
-
-type ReadInboxItemResponseObject interface {
-	VisitReadInboxItemResponse(w http.ResponseWriter) error
-}
-
-type ReadInboxItem200JSONResponse Ok
-
-func (response ReadInboxItem200JSONResponse) VisitReadInboxItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReadInboxItem404JSONResponse struct{ ErrorJSONResponse }
-
-func (response ReadInboxItem404JSONResponse) VisitReadInboxItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReadInboxItemdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ReadInboxItemdefaultJSONResponse) VisitReadInboxItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -13476,6 +13412,144 @@ type SetSourceEnableddefaultJSONResponse struct {
 }
 
 func (response SetSourceEnableddefaultJSONResponse) VisitSetSourceEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListHeldEventsRequestObject struct {
+}
+
+type ListHeldEventsResponseObject interface {
+	VisitListHeldEventsResponse(w http.ResponseWriter) error
+}
+
+type ListHeldEvents200JSONResponse struct {
+	Events []HeldEvent `json:"events"`
+
+	// Total The number of all open held events.
+	Total int64 `json:"total"`
+}
+
+func (response ListHeldEvents200JSONResponse) VisitListHeldEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListHeldEventsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListHeldEventsdefaultJSONResponse) VisitListHeldEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachHeldEventRequestObject struct {
+	EventId string `json:"eventId"`
+	Body    *AttachHeldEventJSONRequestBody
+}
+
+type AttachHeldEventResponseObject interface {
+	VisitAttachHeldEventResponse(w http.ResponseWriter) error
+}
+
+type AttachHeldEvent204Response struct {
+}
+
+func (response AttachHeldEvent204Response) VisitAttachHeldEventResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AttachHeldEvent404JSONResponse struct{ ErrorJSONResponse }
+
+func (response AttachHeldEvent404JSONResponse) VisitAttachHeldEventResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachHeldEventdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AttachHeldEventdefaultJSONResponse) VisitAttachHeldEventResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissHeldEventRequestObject struct {
+	EventId string `json:"eventId"`
+}
+
+type DismissHeldEventResponseObject interface {
+	VisitDismissHeldEventResponse(w http.ResponseWriter) error
+}
+
+type DismissHeldEvent204Response struct {
+}
+
+func (response DismissHeldEvent204Response) VisitDismissHeldEventResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DismissHeldEvent404JSONResponse struct{ ErrorJSONResponse }
+
+func (response DismissHeldEvent404JSONResponse) VisitDismissHeldEventResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissHeldEventdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DismissHeldEventdefaultJSONResponse) VisitDismissHeldEventResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -15162,32 +15236,23 @@ type StrictServerInterface interface {
 	// (POST /api/automations/preview)
 	PreviewSchedule(ctx context.Context, request PreviewScheduleRequestObject) (PreviewScheduleResponseObject, error)
 
+	// (GET /api/automations/results)
+	ListAutomationResults(ctx context.Context, request ListAutomationResultsRequestObject) (ListAutomationResultsResponseObject, error)
+
+	// (POST /api/automations/results/{runId}/dismiss)
+	DismissAutomationResult(ctx context.Context, request DismissAutomationResultRequestObject) (DismissAutomationResultResponseObject, error)
+
+	// (POST /api/automations/results/{runId}/read)
+	ReadAutomationResult(ctx context.Context, request ReadAutomationResultRequestObject) (ReadAutomationResultResponseObject, error)
+
+	// (GET /api/board/attention)
+	GetBoardAttention(ctx context.Context, request GetBoardAttentionRequestObject) (GetBoardAttentionResponseObject, error)
+
 	// (GET /api/directories)
 	ListDirectories(ctx context.Context, request ListDirectoriesRequestObject) (ListDirectoriesResponseObject, error)
 
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
-
-	// (GET /api/inbox)
-	ListInbox(ctx context.Context, request ListInboxRequestObject) (ListInboxResponseObject, error)
-
-	// (GET /api/inbox/held-events)
-	ListHeldEvents(ctx context.Context, request ListHeldEventsRequestObject) (ListHeldEventsResponseObject, error)
-
-	// (POST /api/inbox/held-events/{eventId}/attach)
-	AttachHeldEvent(ctx context.Context, request AttachHeldEventRequestObject) (AttachHeldEventResponseObject, error)
-
-	// (POST /api/inbox/held-events/{eventId}/dismiss)
-	DismissHeldEvent(ctx context.Context, request DismissHeldEventRequestObject) (DismissHeldEventResponseObject, error)
-
-	// (GET /api/inbox/summary)
-	GetInboxSummary(ctx context.Context, request GetInboxSummaryRequestObject) (GetInboxSummaryResponseObject, error)
-
-	// (POST /api/inbox/{runId}/dismiss)
-	DismissInboxItem(ctx context.Context, request DismissInboxItemRequestObject) (DismissInboxItemResponseObject, error)
-
-	// (POST /api/inbox/{runId}/read)
-	ReadInboxItem(ctx context.Context, request ReadInboxItemRequestObject) (ReadInboxItemResponseObject, error)
 
 	// (DELETE /api/maintenance)
 	ReleaseMaintenance(ctx context.Context, request ReleaseMaintenanceRequestObject) (ReleaseMaintenanceResponseObject, error)
@@ -15254,6 +15319,15 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/sources/{name})
 	SetSourceEnabled(ctx context.Context, request SetSourceEnabledRequestObject) (SetSourceEnabledResponseObject, error)
+
+	// (GET /api/sources/held-events)
+	ListHeldEvents(ctx context.Context, request ListHeldEventsRequestObject) (ListHeldEventsResponseObject, error)
+
+	// (POST /api/sources/held-events/{eventId}/attach)
+	AttachHeldEvent(ctx context.Context, request AttachHeldEventRequestObject) (AttachHeldEventResponseObject, error)
+
+	// (POST /api/sources/held-events/{eventId}/dismiss)
+	DismissHeldEvent(ctx context.Context, request DismissHeldEventRequestObject) (DismissHeldEventResponseObject, error)
 
 	// (POST /api/system/backup)
 	BackupSystemDatabase(ctx context.Context, request BackupSystemDatabaseRequestObject) (BackupSystemDatabaseResponseObject, error)
@@ -17366,6 +17440,108 @@ func (sh *strictHandler) PreviewSchedule(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// ListAutomationResults operation middleware
+func (sh *strictHandler) ListAutomationResults(w http.ResponseWriter, r *http.Request, params ListAutomationResultsParams) {
+	var request ListAutomationResultsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAutomationResults(ctx, request.(ListAutomationResultsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAutomationResults")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAutomationResultsResponseObject); ok {
+		if err := validResponse.VisitListAutomationResultsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DismissAutomationResult operation middleware
+func (sh *strictHandler) DismissAutomationResult(w http.ResponseWriter, r *http.Request, runId string) {
+	var request DismissAutomationResultRequestObject
+
+	request.RunId = runId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DismissAutomationResult(ctx, request.(DismissAutomationResultRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DismissAutomationResult")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DismissAutomationResultResponseObject); ok {
+		if err := validResponse.VisitDismissAutomationResultResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReadAutomationResult operation middleware
+func (sh *strictHandler) ReadAutomationResult(w http.ResponseWriter, r *http.Request, runId string) {
+	var request ReadAutomationResultRequestObject
+
+	request.RunId = runId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReadAutomationResult(ctx, request.(ReadAutomationResultRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReadAutomationResult")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReadAutomationResultResponseObject); ok {
+		if err := validResponse.VisitReadAutomationResultResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBoardAttention operation middleware
+func (sh *strictHandler) GetBoardAttention(w http.ResponseWriter, r *http.Request) {
+	var request GetBoardAttentionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBoardAttention(ctx, request.(GetBoardAttentionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBoardAttention")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBoardAttentionResponseObject); ok {
+		if err := validResponse.VisitGetBoardAttentionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListDirectories operation middleware
 func (sh *strictHandler) ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams) {
 	var request ListDirectoriesRequestObject
@@ -17409,191 +17585,6 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListInbox operation middleware
-func (sh *strictHandler) ListInbox(w http.ResponseWriter, r *http.Request, params ListInboxParams) {
-	var request ListInboxRequestObject
-
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListInbox(ctx, request.(ListInboxRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListInbox")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListInboxResponseObject); ok {
-		if err := validResponse.VisitListInboxResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListHeldEvents operation middleware
-func (sh *strictHandler) ListHeldEvents(w http.ResponseWriter, r *http.Request) {
-	var request ListHeldEventsRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListHeldEvents(ctx, request.(ListHeldEventsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListHeldEvents")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListHeldEventsResponseObject); ok {
-		if err := validResponse.VisitListHeldEventsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// AttachHeldEvent operation middleware
-func (sh *strictHandler) AttachHeldEvent(w http.ResponseWriter, r *http.Request, eventId string) {
-	var request AttachHeldEventRequestObject
-
-	request.EventId = eventId
-
-	var body AttachHeldEventJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.AttachHeldEvent(ctx, request.(AttachHeldEventRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AttachHeldEvent")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(AttachHeldEventResponseObject); ok {
-		if err := validResponse.VisitAttachHeldEventResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DismissHeldEvent operation middleware
-func (sh *strictHandler) DismissHeldEvent(w http.ResponseWriter, r *http.Request, eventId string) {
-	var request DismissHeldEventRequestObject
-
-	request.EventId = eventId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DismissHeldEvent(ctx, request.(DismissHeldEventRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DismissHeldEvent")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DismissHeldEventResponseObject); ok {
-		if err := validResponse.VisitDismissHeldEventResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetInboxSummary operation middleware
-func (sh *strictHandler) GetInboxSummary(w http.ResponseWriter, r *http.Request) {
-	var request GetInboxSummaryRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetInboxSummary(ctx, request.(GetInboxSummaryRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetInboxSummary")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetInboxSummaryResponseObject); ok {
-		if err := validResponse.VisitGetInboxSummaryResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DismissInboxItem operation middleware
-func (sh *strictHandler) DismissInboxItem(w http.ResponseWriter, r *http.Request, runId string) {
-	var request DismissInboxItemRequestObject
-
-	request.RunId = runId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DismissInboxItem(ctx, request.(DismissInboxItemRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DismissInboxItem")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DismissInboxItemResponseObject); ok {
-		if err := validResponse.VisitDismissInboxItemResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ReadInboxItem operation middleware
-func (sh *strictHandler) ReadInboxItem(w http.ResponseWriter, r *http.Request, runId string) {
-	var request ReadInboxItemRequestObject
-
-	request.RunId = runId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ReadInboxItem(ctx, request.(ReadInboxItemRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ReadInboxItem")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ReadInboxItemResponseObject); ok {
-		if err := validResponse.VisitReadInboxItemResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -18196,6 +18187,89 @@ func (sh *strictHandler) SetSourceEnabled(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetSourceEnabledResponseObject); ok {
 		if err := validResponse.VisitSetSourceEnabledResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListHeldEvents operation middleware
+func (sh *strictHandler) ListHeldEvents(w http.ResponseWriter, r *http.Request) {
+	var request ListHeldEventsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListHeldEvents(ctx, request.(ListHeldEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListHeldEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListHeldEventsResponseObject); ok {
+		if err := validResponse.VisitListHeldEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AttachHeldEvent operation middleware
+func (sh *strictHandler) AttachHeldEvent(w http.ResponseWriter, r *http.Request, eventId string) {
+	var request AttachHeldEventRequestObject
+
+	request.EventId = eventId
+
+	var body AttachHeldEventJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AttachHeldEvent(ctx, request.(AttachHeldEventRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AttachHeldEvent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AttachHeldEventResponseObject); ok {
+		if err := validResponse.VisitAttachHeldEventResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DismissHeldEvent operation middleware
+func (sh *strictHandler) DismissHeldEvent(w http.ResponseWriter, r *http.Request, eventId string) {
+	var request DismissHeldEventRequestObject
+
+	request.EventId = eventId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DismissHeldEvent(ctx, request.(DismissHeldEventRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DismissHeldEvent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DismissHeldEventResponseObject); ok {
+		if err := validResponse.VisitDismissHeldEventResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

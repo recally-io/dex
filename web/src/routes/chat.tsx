@@ -22,7 +22,7 @@ import {
 } from "../api/generated/@tanstack/react-query.gen";
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
-import { errorText, refreshChats, refreshInbox } from "../lib/queries";
+import { errorText, refreshChats, refreshBoardAttention } from "../lib/queries";
 import { agentModel, findModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
@@ -548,7 +548,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       await refreshChats(agentId);
 
       // The question card shows the saved answer. A plain message leaves the question as it was.
-      if (answersQuestionId) await Promise.all([refetchChat(), refreshInbox()]);
+      if (answersQuestionId) await Promise.all([refetchChat(), refreshBoardAttention()]);
     } catch (cause) {
       setQueued((previous) => previous.filter((item) => item.id !== body.id));
 

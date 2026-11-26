@@ -64,7 +64,7 @@ func (s *Service) AttachHeld(ctx context.Context, eventID, agentID, taskID strin
 	return nil
 }
 
-// DismissHeld removes a held event from the Inbox. The event stays recorded.
+// DismissHeld removes a held event from Board. The event stays recorded.
 func (s *Service) DismissHeld(ctx context.Context, eventID string) error {
 	return decideHold(ctx, s.q, eventID, "dismissed", time.Now().UnixMilli())
 }

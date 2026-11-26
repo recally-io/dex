@@ -38,7 +38,7 @@ func externalAttachParams(b *api.TaskExecutionAttach) tasksvc.ExternalParams {
 	if b.HostMeta != nil {
 		host = deref(b.HostMeta.Hostname)
 	}
-	return tasksvc.ExternalParams{Harness: stringValue(b.Harness), MachineID: deref(b.MachineId), Hostname: host,
+	return tasksvc.ExternalParams{Harness: stringValue(b.Harness), RunnerID: deref(b.RunnerId), Hostname: host,
 		WorkspacePath: deref(b.WorkspacePath), GitBranch: deref(b.GitBranch), ExternalSessionID: deref(b.ExternalSessionId), LeaseSeconds: int64Value(b.LeaseSeconds)}
 }
 
@@ -67,7 +67,7 @@ func (h *handler) ResumeTaskExecution(ctx context.Context, req api.ResumeTaskExe
 
 func (h *handler) ListTaskExecutions(ctx context.Context, req api.ListTaskExecutionsRequestObject) (api.ListTaskExecutionsResponseObject, error) {
 	p := req.Params
-	rows, err := h.Tasks.ListTaskExecutions(ctx, deref(p.TaskKey), deref(p.MachineId), deref(p.Kind), deref(p.State))
+	rows, err := h.Tasks.ListTaskExecutions(ctx, deref(p.TaskKey), deref(p.RunnerId), deref(p.Kind), deref(p.State))
 	if err != nil {
 		return nil, taskError(err)
 	}
@@ -77,7 +77,7 @@ func (h *handler) ListTaskExecutions(ctx context.Context, req api.ListTaskExecut
 		e.TaskKey = new(tasksvc.FormatKey(row.TaskNumber))
 		e.RunnerName = optional(row.RunnerName)
 		if e.RunnerName != nil {
-			e.MachineId = optional(row.TaskExecution.MachineID)
+			e.RunnerId = optional(row.TaskExecution.RunnerID)
 		}
 		out.Executions = append(out.Executions, e)
 	}
@@ -85,19 +85,17 @@ func (h *handler) ListTaskExecutions(ctx context.Context, req api.ListTaskExecut
 }
 
 func (h *handler) ReadTaskExternalTask(ctx context.Context, req api.ReadTaskExternalTaskRequestObject) (api.ReadTaskExternalTaskResponseObject, error) {
-	after := int64Value(req.Params.AfterSeq)
-	task, rows, err := h.Tasks.ExternalReadTask(ctx, taskBearer(ctx), after, int64Value(req.Params.Limit))
+	page, err := h.Tasks.ExternalReadTask(ctx, taskBearer(ctx), int64Value(req.Params.AfterSeq), int64Value(req.Params.Limit))
 	if err != nil {
 		return nil, taskError(err)
 	}
-	out := api.ReadTaskExternalTask200JSONResponse{Task: taskViewRef(task), Entries: make([]api.TaskEntry, 0, len(rows)), NextAfterSeq: after}
-	for _, row := range rows {
+	out := api.ReadTaskExternalTask200JSONResponse{Task: taskViewRef(page.Task), Entries: make([]api.TaskEntry, 0, len(page.Entries)), NextCursor: page.NextCursor}
+	for _, row := range page.Entries {
 		e, err := taskEntry(row)
 		if err != nil {
 			return nil, err
 		}
 		out.Entries = append(out.Entries, e)
-		out.NextAfterSeq = row.Seq
 	}
 	return out, nil
 }

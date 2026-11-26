@@ -89,7 +89,7 @@ func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
 
 	// The ambiguous message and the unknown reply wait for the owner.
 	var held api.ListHeldEvents200JSONResponse
-	d.must(t, http.MethodGet, "/api/inbox/held-events", nil, &held)
+	d.must(t, http.MethodGet, "/api/sources/held-events", nil, &held)
 	reasons := map[api.HeldEventReason]int{}
 	for _, e := range held.Events {
 		reasons[e.Reason]++

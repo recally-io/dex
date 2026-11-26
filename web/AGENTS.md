@@ -26,8 +26,8 @@ Run `mise run build:web` to build it separately.
 Each page in `src/routes/` reads the API only. The app keeps no settings in
 `localStorage`. It stores only browser choices there: the theme (`dex-theme`),
 the open or closed Context panel of a chat (`dex-context`), the bot rail
-(`dex-sidebar`), and the Sessions sidebar (`dex-chats`). Inbox read and dismissed
-state live in `control.sqlite`, not browser storage. The unsaved agent instructions are in
+(`dex-sidebar`), and the Sessions sidebar (`dex-chats`). Automation result read
+and dismissed state live in `control.sqlite`, not browser storage. The unsaved agent instructions are in
 memory (`src/lib/app-state.tsx`), so a draft stays when the user opens another page, and a reload discards it.
 `src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
 agent first, so a model change does not overwrite the instructions.
@@ -50,19 +50,21 @@ The right Sessions sidebar starts closed. The global sidebar
 links to Board (`/board`) with the Owner attention count badge.
 Board unifies Tasks and Owner attention items in one grouped list:
 
-- **Needs you**: active questions (answerable inline), Tasks awaiting Owner review (approvable inline), blocked Tasks, enabled Automations without an available model, and held external events (attach to an open Task or dismiss).
+- **Needs you**: active questions (answerable inline), Tasks awaiting Owner review (approvable inline), enabled Automations without an available model, and held external events (attach to an open Task or dismiss).
+- **Blocked**: open Tasks with blockers. These Tasks do not add to the Owner attention badge.
 - **Active**: open Tasks (`ready`, `in_progress`, and Bot-reviewed `in_review`).
 - **Updates**: unhandled failed or changed Automation results grouped by Automation (`×N`), showing the latest summary preview and timestamp, expandable inline to read full text, mark done, or continue in a session (deep link at `/board/results/$runId`).
 - **Later** (`backlog`) and collapsible **Completed** (`done`, `cancelled`).
   Empty sections are omitted. One-way notifications stay in transcripts and channels.
-  Board reads `/api/tasks/*`, `/api/inbox/summary`, and the held-events endpoints. A top quick-add bar creates a `ready` Task assigned to a Bot; Bot-scoped views use `/board?bot=<id>` with a dismissible chip.
+  The badge counts individual items in **Needs you** and **Updates**. Board reads `/api/tasks/*`, `/api/board/attention`, and `/api/sources/held-events`. Result details use `/api/automations/results`. A top quick-add bar creates a `ready` Task assigned to a Bot; Bot-scoped views use `/board?bot=<id>` with a dismissible chip.
 
 Task detail opens at `/board/$taskKey` with a stable key such as `T-42`. It combines a structured property strip (clickable Status, Assignee Bot, and Reviewer controls that auto-save with `If-Match`, plus quick `+ Subtask` / `+ Dependency` / `+ Link PR` actions and an overflow `⋯` menu), a contextual action card when in review or blocked, dedicated context cards shown only when data exists (Sessions, external runs, parent/subtasks/dependencies, and external links/waits), a rail-structured Markdown Timeline, and a bottom composer defaulting to sending a message to the Assignee Bot's Main (staying on the Task page) with a secondary `Note only` action.
 Active external runs refresh every five seconds because heartbeats do not add Timeline entries. `/settings/runners` also lists active external Task runs by Runner from `/api/tasks/executions`.
 
-`src/lib/task-stream.ts` uses EventSource to resume with `Last-Event-ID`.
-It invalidates Task list and detail queries on Task events. Board does not
-poll. Task edits keep the revision from the start of the edit. A conflict
+The shell uses `src/lib/task-stream.ts` to resume Task events with `Last-Event-ID`.
+Task events invalidate the Task list, Task detail, and Board attention queries.
+Board attention also polls every 10 seconds for changes outside the Task stream.
+Task edits keep the revision from the start of the edit. A conflict
 prompts the Owner to load the latest values. Approval uses the current review
 sequence. The composer adds a note or sends to the Assignee Bot's Main.
 Global Integrations lists Sources from `GET /api/settings/sources` with a switch for each. A note asks for a
@@ -82,8 +84,8 @@ shows the target picker instead of the Runner and project fields.
 The automation dialog offers "Follow bot", Local, and SSH Machines. It keeps a
 saved Runner that the list no longer shows. A change of Runner clears the
 project directory. An automation update sends `runnerId`, because a PUT
-replaces the automation. Automations and Inbox use `continueResult`
-(`lib/inbox.ts`). The new session pins the run's Local or Machine Runner and
+replaces the automation. Board and Automations share result actions in
+`src/lib/automation-results.ts`. The new session pins the run's Local or Machine Runner and
 uses its cwd. A run in a Sandbox, on an unavailable Runner, or with no recorded
 Runner stops before it creates a session.
 Each child session reads like a thread. The transcript shows one card at a

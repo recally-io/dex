@@ -25,18 +25,18 @@ func TestUserAttachesAndDismissesHeldGitHubEvents(t *testing.T) {
 	deliverGitHub(t, d, secret, "issue-1", "issues", `{"action":"opened","repository":{"id":10},"issue":{"id":17,"number":1,"user":{"login":"maintainer"},"author_association":"MEMBER","title":"Fix login","html_url":"https://github.com/o/r/issues/1","created_at":"2026-11-21T02:00:00Z"}}`)
 	deliverGitHub(t, d, secret, "review-1-again", "pull_request_review", review(1, 7, "MEMBER"))
 
-	// Then the Inbox holds the two member events once each, and no Task exists yet.
+	// Then Board holds the two member events once each, and no Task exists yet.
 	var held api.ListHeldEvents200JSONResponse
-	d.must(t, http.MethodGet, "/api/inbox/held-events", nil, &held)
+	d.must(t, http.MethodGet, "/api/sources/held-events", nil, &held)
 	t.Logf("artifact: held=%+v", held.Events)
 	types := map[string]api.HeldEvent{}
 	for _, e := range held.Events {
 		types[e.EventType] = e
 	}
 	pr, issue := types["review.submitted"], types["issue.opened"]
-	if len(held.Events) != 2 || pr.Reason != api.Unmatched || pr.AuthorAssociation != "MEMBER" || !strings.Contains(pr.Content, "Review 1") ||
+	if len(held.Events) != 2 || held.Total != 2 || pr.Reason != api.Unmatched || pr.AuthorAssociation != "MEMBER" || !strings.Contains(pr.Content, "Review 1") ||
 		len(pr.Objects) != 1 || pr.Objects[0].Key != "7" || issue.Id == "" {
-		t.Fatalf("the Inbox must hold the member review and Issue: %+v", held.Events)
+		t.Fatalf("Board must hold the member review and Issue: %+v", held)
 	}
 	var tasks api.TaskList
 	d.must(t, http.MethodGet, "/api/tasks", nil, &tasks)
@@ -48,15 +48,15 @@ func TestUserAttachesAndDismissesHeldGitHubEvents(t *testing.T) {
 	var task api.TaskSummary
 	d.must(t, http.MethodPost, "/api/tasks", map[string]string{"assigneeBotId": "default", "title": "Ship PR 7"}, &task, http.StatusCreated)
 	attach := map[string]string{"agentId": "default", "taskId": task.Id}
-	d.must(t, http.MethodPost, "/api/inbox/held-events/"+pr.Id+"/attach", attach, nil, http.StatusNoContent)
-	d.must(t, http.MethodPost, "/api/inbox/held-events/"+pr.Id+"/attach", attach, nil, http.StatusNotFound)
-	d.must(t, http.MethodPost, "/api/inbox/held-events/"+issue.Id+"/dismiss", nil, nil, http.StatusNoContent)
-	d.must(t, http.MethodPost, "/api/inbox/held-events/"+issue.Id+"/dismiss", nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodPost, "/api/sources/held-events/"+pr.Id+"/attach", attach, nil, http.StatusNoContent)
+	d.must(t, http.MethodPost, "/api/sources/held-events/"+pr.Id+"/attach", attach, nil, http.StatusNotFound)
+	d.must(t, http.MethodPost, "/api/sources/held-events/"+issue.Id+"/dismiss", nil, nil, http.StatusNoContent)
+	d.must(t, http.MethodPost, "/api/sources/held-events/"+issue.Id+"/dismiss", nil, nil, http.StatusNotFound)
 
-	// Then the Inbox is empty, the Task shows the review, and the PR now routes to the Task.
-	d.must(t, http.MethodGet, "/api/inbox/held-events", nil, &held)
-	if len(held.Events) != 0 {
-		t.Fatalf("decided events stay in the Inbox: %+v", held.Events)
+	// Then no holds remain, the Task shows the review, and the PR now routes to the Task.
+	d.must(t, http.MethodGet, "/api/sources/held-events", nil, &held)
+	if len(held.Events) != 0 || held.Total != 0 {
+		t.Fatalf("decided events stay on Board: %+v", held)
 	}
 	deliverGitHub(t, d, secret, "review-3", "pull_request_review", review(3, 7, "MEMBER"))
 	var detail api.TaskDetail
@@ -68,12 +68,21 @@ func TestUserAttachesAndDismissesHeldGitHubEvents(t *testing.T) {
 	if len(detail.Links) != 1 || detail.Links[0].Type != "pull_request" || detail.Links[0].Key != "7" {
 		t.Fatalf("the attach must link the PR: %+v", detail.Links)
 	}
-	d.must(t, http.MethodGet, "/api/inbox/held-events", nil, &held)
+	d.must(t, http.MethodGet, "/api/sources/held-events", nil, &held)
 	if len(held.Events) != 0 {
 		t.Fatalf("a routed review must not be held: %+v", held.Events)
 	}
-	// An owner decision is not an alert rule.
+	// An Owner decision is not an alert rule.
 	if got := pendingTaskAlerts(t, d.dataDir(t)); len(got) != 0 {
 		t.Fatalf("a held event alerted Main: %q", got)
+	}
+
+	// The badge can count all open holds even when Board shows only the newest page.
+	for id := 10; id < 111; id++ {
+		deliverGitHub(t, d, secret, fmt.Sprintf("review-%d", id), "pull_request_review", review(id, id, "MEMBER"))
+	}
+	d.must(t, http.MethodGet, "/api/sources/held-events", nil, &held)
+	if len(held.Events) != 100 || held.Total != 101 {
+		t.Fatalf("held event page: got %d rows of %d, want 100 rows of 101", len(held.Events), held.Total)
 	}
 }

@@ -93,25 +93,25 @@ func (h *handler) ListAutomationRuns(ctx context.Context, req api.ListAutomation
 	return api.ListAutomationRuns200JSONResponse{Runs: runs}, nil
 }
 
-func (h *handler) ListInbox(ctx context.Context, req api.ListInboxRequestObject) (api.ListInboxResponseObject, error) {
+func (h *handler) ListAutomationResults(ctx context.Context, req api.ListAutomationResultsRequestObject) (api.ListAutomationResultsResponseObject, error) {
 	include := req.Params.IncludeDismissed != nil && *req.Params.IncludeDismissed
-	items, err := h.Automations.Inbox(ctx, include)
+	results, err := h.Automations.Results(ctx, include)
 	if err != nil {
 		return nil, err
 	}
-	return api.ListInbox200JSONResponse{Items: items}, nil
+	return api.ListAutomationResults200JSONResponse{Results: results}, nil
 }
 
-func (h *handler) ReadInboxItem(ctx context.Context, req api.ReadInboxItemRequestObject) (api.ReadInboxItemResponseObject, error) {
-	if err := h.Automations.ReadInboxItem(ctx, req.RunId); err != nil {
+func (h *handler) ReadAutomationResult(ctx context.Context, req api.ReadAutomationResultRequestObject) (api.ReadAutomationResultResponseObject, error) {
+	if err := h.Automations.ReadResult(ctx, req.RunId); err != nil {
 		return nil, err
 	}
-	return api.ReadInboxItem200JSONResponse(ok), nil
+	return api.ReadAutomationResult200JSONResponse(ok), nil
 }
 
-func (h *handler) DismissInboxItem(ctx context.Context, req api.DismissInboxItemRequestObject) (api.DismissInboxItemResponseObject, error) {
-	if err := h.Automations.DismissInboxItem(ctx, req.RunId); err != nil {
+func (h *handler) DismissAutomationResult(ctx context.Context, req api.DismissAutomationResultRequestObject) (api.DismissAutomationResultResponseObject, error) {
+	if err := h.Automations.DismissResult(ctx, req.RunId); err != nil {
 		return nil, err
 	}
-	return api.DismissInboxItem200JSONResponse(ok), nil
+	return api.DismissAutomationResult200JSONResponse(ok), nil
 }

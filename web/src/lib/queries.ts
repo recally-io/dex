@@ -1,7 +1,7 @@
 // HTTP and transport errors enter here without a shared runtime schema.
 /* eslint-disable anti-slop/no-runtime-typeof */
 import { QueryClient } from "@tanstack/react-query";
-import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
+import { getBoardAttentionOptions, listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 
 export const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: Infinity }, mutations: { retry: false } },
@@ -39,17 +39,12 @@ export async function refreshAutomations(agentId: string) {
     queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomations", path: { agentId } }] }),
     queryClient.invalidateQueries({ queryKey: [{ _id: "getAutomation", path: { agentId } }] }),
     queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomationRuns", path: { agentId } }] }),
+    refreshBoardAttention(),
   ]);
 }
 
-// Inbox uses the same handled state as the sidebar and automation pages.
-export async function refreshInbox() {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: [{ _id: "getInboxSummary" }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listInbox" }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listChats" }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listAgents" }] }),
-  ]);
+export function refreshBoardAttention(client = queryClient) {
+  return client.invalidateQueries({ queryKey: getBoardAttentionOptions().queryKey });
 }
 
 export function errorText(cause: unknown): string {

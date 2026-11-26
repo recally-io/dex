@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { listAgentsOptions, listTasksOptions } from "../api/generated/@tanstack/react-query.gen";
-import { heldEventsOptions } from "../lib/inbox";
+import { heldEventsOptions } from "../lib/board-attention";
 import { attachHeldEvent, dismissHeldEvent } from "../api/generated/sdk.gen";
 import type { Agent, HeldEvent, TaskSummary } from "../api/generated/types.gen";
 import { Failure } from "./feedback";
@@ -20,7 +20,7 @@ function sourceHref(url: string) {
   return /^https?:\/\//i.test(url) ? url : undefined;
 }
 
-export function HeldEventRows({ events }: { events: HeldEvent[] }) {
+export function HeldEventRows({ events, total }: { events: HeldEvent[]; total: number }) {
   const agents = useQuery(listAgentsOptions());
 
   const tasks = useQuery({
@@ -39,6 +39,11 @@ export function HeldEventRows({ events }: { events: HeldEvent[] }) {
       {events.map((event) => (
         <HeldEventRow key={event.id} event={event} tasks={open} agents={botList} />
       ))}
+      {total > events.length ? (
+        <li className="py-3.5 text-[13px] text-muted-foreground">
+          Showing the newest {events.length} of {total} held events.
+        </li>
+      ) : null}
     </>
   );
 }

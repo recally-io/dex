@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"encoding/json/v2"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -67,6 +68,9 @@ func TestUserExternalTaskTokenOnlyActsOnItsExecution(t *testing.T) {
 	if !strings.HasPrefix(initial.TaskToken, "dex_tt_") {
 		t.Fatal("attach did not issue a Task token")
 	}
+	if initial.Execution.RunnerId != nil || initial.Execution.Hostname == nil || *initial.Execution.Hostname != "reported-host" {
+		t.Fatalf("self-reported host must not identify a registered Runner: %+v", initial.Execution)
+	}
 	const external = "/api/tasks/external/"
 	request("GET", external+"task", owner, "", 401, nil)
 	request("GET", external+"task", "dex_tt_invalid", "", 401, nil)
@@ -75,11 +79,11 @@ func TestUserExternalTaskTokenOnlyActsOnItsExecution(t *testing.T) {
 	request("POST", secondPath+"/executions/attach", initial.TaskToken, `{"harness":"custom"}`, 401, nil)
 	var view api.TaskExternalTask
 	request("GET", external+"task?limit=1", initial.TaskToken, "", 200, &view)
-	if view.Task.Key != first.Key || len(view.Entries) != 1 || view.Entries[0].Content != "Task brief" || view.NextAfterSeq != 1 {
+	if view.Task.Key != first.Key || len(view.Entries) != 1 || view.Entries[0].Content != "Task brief" || view.NextCursor != 1 {
 		t.Fatalf("first page: %+v", view)
 	}
-	request("GET", external+"task?afterSeq=1", initial.TaskToken, "", 200, &view)
-	if len(view.Entries) != 2 || view.Entries[0].Kind != "execution" || view.Entries[1].Content != "Saved association" {
+	request("GET", fmt.Sprintf("%stask?afterSeq=%d", external, view.NextCursor), initial.TaskToken, "", 200, &view)
+	if len(view.Entries) != 2 || view.Entries[0].Kind != "execution" || view.Entries[1].Content != "Saved association" || view.NextCursor != 1001 {
 		t.Fatalf("external read must include the saved association but not the source entry: %+v", view.Entries)
 	}
 	request("POST", external+"entries", initial.TaskToken, `{"kind":"status","content":"done"}`, 400, nil)
@@ -137,8 +141,9 @@ func TestUserDispatchesExternalBoardRunThroughARunnerProcess(t *testing.T) {
 		t.Fatal("the tool did not return a Process ID without the Task token")
 	}
 	var runs api.TaskExecutionList
-	d.must(t, http.MethodGet, "/api/tasks/executions?machineId="+m.envID+"&kind=external_agent&state=running", nil, &runs)
-	if len(runs.Executions) != 1 || runs.Executions[0].DispatchId == nil || runs.Executions[0].RunnerName == nil {
+	d.must(t, http.MethodGet, "/api/tasks/executions?runnerId="+m.envID+"&kind=external_agent&state=running", nil, &runs)
+	if len(runs.Executions) != 1 || runs.Executions[0].DispatchId == nil || runs.Executions[0].RunnerName == nil ||
+		runs.Executions[0].RunnerId == nil || *runs.Executions[0].RunnerId != m.envID {
 		t.Fatalf("registered Runner did not report the dispatch: %+v", runs)
 	}
 	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))

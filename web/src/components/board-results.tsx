@@ -1,12 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
-import type { Agent, Chat, InboxItem, TaskSummary } from "../api/generated/types.gen";
-import { dismissInboxItem, getTask, readInboxItem, reviewTask, sendMessage } from "../api/generated/sdk.gen";
-import { errorText, refreshInbox } from "../lib/queries";
-import { type Continuation, continueResult, inboxOptions, resultQuote } from "../lib/inbox";
+import type {
+  Agent,
+  AutomationResult,
+  AutomationResultSummary,
+  BoardAttentionSession,
+  TaskSummary,
+} from "../api/generated/types.gen";
+import { getTask, reviewTask, sendMessage } from "../api/generated/sdk.gen";
+import { errorText, refreshBoardAttention, refreshChats } from "../lib/queries";
+import {
+  automationResultsOptions,
+  useContinueResult,
+  useDismissResults,
+  useReadResults,
+  useReadResultsOnOpen,
+} from "../lib/automation-results";
 import { invalidateTasks } from "../lib/task-stream";
 import { newId } from "../lib/utils";
 import { AgentAvatar } from "./agent-avatar";
@@ -20,13 +32,12 @@ export type ResultGroup = {
   automationId: string;
   automationName: string;
   agentId: string;
-  agentName: string;
-  runs: InboxItem[];
+  runs: AutomationResultSummary[];
   hasFailure: boolean;
   hasUnread: boolean;
 };
 
-export function groupResults(items: InboxItem[]): ResultGroup[] {
+export function groupResults(items: AutomationResultSummary[]): ResultGroup[] {
   const byAutomation = new Map<string, ResultGroup>();
 
   for (const item of items) {
@@ -43,7 +54,6 @@ export function groupResults(items: InboxItem[]): ResultGroup[] {
         automationId: item.automationId,
         automationName: item.automationName,
         agentId: item.agentId,
-        agentName: item.agentName,
         runs: [item],
         hasFailure: item.outcome === "failed",
         hasUnread: !item.read,
@@ -81,7 +91,7 @@ export function QuestionRow({
   options,
 }: {
   agent: { id: string; name: string };
-  chat: Chat;
+  chat: BoardAttentionSession;
   questionId: string;
   text: string;
   options: string[];
@@ -93,7 +103,7 @@ export function QuestionRow({
         body: { id: newId(), text: choice, answersQuestionId: questionId },
         throwOnError: true,
       }),
-    onSuccess: () => refreshInbox(),
+    onSuccess: () => Promise.all([refreshBoardAttention(), refreshChats(agent.id)]),
   });
 
   const uniqueOptions = Array.from(new Set(options));
@@ -173,7 +183,7 @@ export function TaskReviewRow({
 
       if (error) throw new Error(errorText(error));
     },
-    onSuccess: () => Promise.all([invalidateTasks(client), refreshInbox()]),
+    onSuccess: () => invalidateTasks(client),
   });
 
   return (
@@ -218,44 +228,12 @@ export function TaskReviewRow({
 
 export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pick<Agent, "id" | "name"> }) {
   const [expanded, setExpanded] = useState(false);
-  const navigate = useNavigate();
-  const continuation = useRef<Continuation | null>(null);
   const latest = group.runs[0];
   const earlier = group.runs.slice(1);
-
-  const read = useMutation({
-    mutationFn: async (runId: string) => {
-      await readInboxItem({ path: { runId }, throwOnError: true });
-      await refreshInbox();
-    },
-  });
-
-  const dismissGroup = useMutation({
-    mutationFn: async (runs: InboxItem[]) => {
-      await Promise.all(
-        runs.map((run) => dismissInboxItem({ path: { runId: run.runId }, throwOnError: true })),
-      );
-      await refreshInbox();
-    },
-  });
-
-  const dismissOne = useMutation({
-    mutationFn: async (runId: string) => {
-      await dismissInboxItem({ path: { runId }, throwOnError: true });
-      await refreshInbox();
-    },
-  });
-
-  const next = useMutation({
-    mutationFn: async (result: InboxItem) => {
-      const chatId = await continueResult(result.agentId, result, resultQuote(result), continuation);
-
-      await navigate({
-        to: "/a/$agentId/c/$chatId",
-        params: { agentId: result.agentId, chatId: String(chatId) },
-      });
-    },
-  });
+  const read = useReadResults();
+  const dismiss = useDismissResults();
+  const next = useContinueResult();
+  const dismissGroup = () => dismiss.mutate(group.runs.map((run) => run.runId));
 
   const toggle = () => {
     const opening = !expanded;
@@ -269,7 +247,7 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
   if (!latest) return null;
 
   const preview = firstLine(latest.summary);
-  const busy = dismissGroup.isPending || dismissOne.isPending || next.isPending;
+  const busy = dismiss.isPending || next.isPending;
 
   return (
     <li className="py-1">
@@ -334,7 +312,7 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
             title="Done"
             disabled={busy}
             className="mt-0.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-            onClick={() => dismissGroup.mutate(group.runs)}
+            onClick={dismissGroup}
           >
             <Check className="size-3.5" />
           </Button>
@@ -349,11 +327,16 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
             <p className="text-[13.5px] text-muted-foreground">No summary.</p>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled={busy} onClick={() => dismissGroup.mutate(group.runs)}>
+            <Button size="sm" disabled={busy} onClick={dismissGroup}>
               {group.runs.length > 1 ? `Done (${group.runs.length})` : "Done"}
             </Button>
             {latest.chatId ? (
-              <Button size="sm" variant="secondary" disabled={busy} onClick={() => next.mutate(latest)}>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => next.mutate({ result: latest })}
+              >
                 Continue in session
               </Button>
             ) : null}
@@ -375,8 +358,13 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
               Automation
             </Link>
           </div>
-          {dismissGroup.error ? <Failure title="Could not mark done" error={dismissGroup.error} /> : null}
-          {dismissOne.error ? <Failure title="Could not dismiss run" error={dismissOne.error} /> : null}
+          {read.isError ? (
+            <Failure
+              title="Could not mark result read"
+              error={read.error}
+              retry={() => read.mutate(latest.runId)}
+            />
+          ) : null}
           {next.error ? <Failure title="Could not continue in session" error={next.error} /> : null}
 
           {earlier.length > 0 ? (
@@ -409,7 +397,7 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
                       size="icon-xs"
                       aria-label="Dismiss earlier run"
                       disabled={busy}
-                      onClick={() => dismissOne.mutate(run.runId)}
+                      onClick={() => dismiss.mutate(run.runId)}
                     >
                       <Check className="size-3" />
                     </Button>
@@ -420,59 +408,37 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
           ) : null}
         </div>
       ) : null}
+      {dismiss.error ? <Failure title="Could not mark done" error={dismiss.error} /> : null}
     </li>
   );
 }
 
 export function BoardResultPage({ runId }: { runId: string }) {
-  const inbox = useQuery({ ...inboxOptions(), refetchInterval: 10_000 });
+  const results = useQuery(automationResultsOptions());
 
   return (
     <BoardResultDetail
       key={runId}
-      item={inbox.data?.items.find((item) => item.runId === runId)}
-      pending={inbox.isPending}
-      error={inbox.error}
+      item={results.data?.results.find((item) => item.runId === runId)}
+      pending={results.isPending}
+      error={results.error}
     />
   );
 }
 
-function BoardResultDetail({ item, pending, error }: { item?: InboxItem; pending: boolean; error: unknown }) {
+function BoardResultDetail({
+  item,
+  pending,
+  error,
+}: {
+  item?: AutomationResult;
+  pending: boolean;
+  error: unknown;
+}) {
   const navigate = useNavigate();
-  const opened = useRef(false);
-  const continuation = useRef<Continuation | null>(null);
-
-  const read = useMutation({
-    mutationFn: async (runId: string) => {
-      await readInboxItem({ path: { runId }, throwOnError: true });
-      await refreshInbox();
-    },
-  });
-
-  const { mutate: markRead } = read;
-  useEffect(() => {
-    if (item && !item.read && !opened.current) {
-      opened.current = true;
-      markRead(item.runId);
-    }
-  }, [item, markRead]);
-
-  const done = useMutation({
-    mutationFn: async (result: InboxItem) => {
-      await dismissInboxItem({ path: { runId: result.runId }, throwOnError: true });
-      await refreshInbox();
-      await navigate({ to: "/board" });
-    },
-  });
-
-  const next = useMutation({
-    mutationFn: async (result: InboxItem) => {
-      const agentId = result.agentId;
-      const chatId = await continueResult(agentId, result, resultQuote(result), continuation);
-
-      await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chatId) } });
-    },
-  });
+  const read = useReadResultsOnOpen(item ? [item] : []);
+  const done = useDismissResults();
+  const next = useContinueResult();
 
   return (
     <FramedPage
@@ -506,7 +472,7 @@ function BoardResultDetail({ item, pending, error }: { item?: InboxItem; pending
           <MarkdownBody content={item.summary} />
           <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
             <Button
-              onClick={() => done.mutate(item)}
+              onClick={() => done.mutate(item.runId, { onSuccess: () => void navigate({ to: "/board" }) })}
               disabled={item.dismissed || done.isPending || next.isPending}
             >
               Done
@@ -514,7 +480,7 @@ function BoardResultDetail({ item, pending, error }: { item?: InboxItem; pending
             {item.chatId ? (
               <Button
                 variant="secondary"
-                onClick={() => next.mutate(item)}
+                onClick={() => next.mutate({ result: item })}
                 disabled={next.isPending || done.isPending}
               >
                 Continue in session

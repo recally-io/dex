@@ -1,10 +1,5 @@
 import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { remarkStrong } from "../lib/strong";
-
-function safeHref(href?: string) {
-  return href && /^https?:\/\//i.test(href) ? href : undefined;
-}
+import { markdownOptions, webLinksOnly } from "../lib/markdown";
 
 const components: Components = {
   p: ({ children }) => <p className="my-2 leading-relaxed first:mt-0 last:mb-0">{children}</p>,
@@ -29,13 +24,11 @@ const components: Components = {
   ),
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   a: ({ href, children }) => {
-    const safe = safeHref(href);
-
-    if (!safe) return <span>{children}</span>;
+    if (!href) return <span>{children}</span>;
 
     return (
       <a
-        href={safe}
+        href={href}
         target="_blank"
         rel="noreferrer"
         className="font-medium text-foreground underline decoration-muted-foreground/50 underline-offset-2 hover:decoration-foreground"
@@ -77,7 +70,7 @@ const components: Components = {
 export function MarkdownBody({ content }: { content: string }) {
   return (
     <div className="text-[13.5px] text-foreground [overflow-wrap:anywhere]">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkStrong]} components={components}>
+      <ReactMarkdown {...markdownOptions} urlTransform={webLinksOnly} components={components}>
         {content}
       </ReactMarkdown>
     </div>

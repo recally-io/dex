@@ -25,9 +25,9 @@ var (
 )
 
 type ExternalParams struct {
-	Harness, MachineID, Hostname, WorkspacePath, GitBranch, ExternalSessionID string
-	LeaseSeconds                                                              int64
-	DispatchID                                                                string
+	Harness, RunnerID, Hostname, WorkspacePath, GitBranch, ExternalSessionID string
+	LeaseSeconds                                                             int64
+	DispatchID                                                               string
 }
 
 type ExternalIssue struct {
@@ -56,7 +56,7 @@ func (s *Service) ResumeExternalExecution(ctx context.Context, actor Actor, orig
 
 // DispatchExternalExecution checks the Task binding as well as the Runner binding on resume.
 func (s *Service) DispatchExternalExecution(ctx context.Context, actor Actor, origin Origin, key, resumeID string, p ExternalParams) (ExternalIssue, error) {
-	if p.DispatchID == "" || p.MachineID == "" || p.WorkspacePath == "" {
+	if p.DispatchID == "" || p.RunnerID == "" || p.WorkspacePath == "" {
 		return ExternalIssue{}, ErrInvalid
 	}
 	return s.issueExternal(ctx, actor, origin, key, resumeID, p)
@@ -115,13 +115,13 @@ func (s *Service) issueExternal(ctx context.Context, actor Actor, origin Origin,
 				return ErrDispatchExists
 			}
 		}
-		machine := p.MachineID
+		runnerID := p.RunnerID
 		if id != "" {
-			machine = e.MachineID
+			runnerID = e.RunnerID
 		}
 		var enrollment string
-		if machine != "" {
-			enrollment, err = l.q.GetRunnerCredential(ctx, machine)
+		if runnerID != "" {
+			enrollment, err = l.q.GetRunnerCredential(ctx, runnerID)
 			if errors.Is(err, sql.ErrNoRows) || err == nil && enrollment == "" {
 				return ErrConflict
 			}
@@ -137,7 +137,7 @@ func (s *Service) issueExternal(ctx context.Context, actor Actor, origin Origin,
 				return err
 			}
 			e, err = l.q.CreateExternalExecution(ctx, sqlc.CreateExternalExecutionParams{
-				ID: uuid.NewV7().String(), TaskID: task.ID, BotID: task.AssigneeBotID, Harness: p.Harness, MachineID: machine,
+				ID: uuid.NewV7().String(), TaskID: task.ID, BotID: task.AssigneeBotID, Harness: p.Harness, RunnerID: runnerID,
 				HostMetaJson: string(meta), WorkspacePath: p.WorkspacePath, GitBranch: p.GitBranch, ExternalSessionID: p.ExternalSessionID,
 				LeaseExpiresAt: externalTime(now + ttl), At: externalTime(now), DispatchID: p.DispatchID, RunnerEnrollment: enrollment, LeaseTtlMs: ttl,
 			})
@@ -145,12 +145,12 @@ func (s *Service) issueExternal(ctx context.Context, actor Actor, origin Origin,
 				return err
 			}
 		} else {
-			if enrollment != e.RunnerEnrollment || p.MachineID != "" && p.MachineID != machine ||
+			if enrollment != e.RunnerEnrollment || p.RunnerID != "" && p.RunnerID != runnerID ||
 				p.Harness != "" && p.Harness != e.Harness || p.WorkspacePath != "" && p.WorkspacePath != e.WorkspacePath ||
 				p.ExternalSessionID != "" && p.ExternalSessionID != e.ExternalSessionID {
 				return ErrConflict
 			}
-			if p.DispatchID != "" && (p.Harness != e.Harness || p.MachineID != machine || p.WorkspacePath != e.WorkspacePath || p.ExternalSessionID == "" || p.ExternalSessionID != e.ExternalSessionID) {
+			if p.DispatchID != "" && (p.Harness != e.Harness || p.RunnerID != runnerID || p.WorkspacePath != e.WorkspacePath || p.ExternalSessionID == "" || p.ExternalSessionID != e.ExternalSessionID) {
 				return ErrConflict
 			}
 			if p.LeaseSeconds == 0 {
@@ -206,36 +206,49 @@ func taskToken(ctx context.Context, q *sqlc.Queries, bearer string) (sqlc.TaskEx
 	return token, err
 }
 
-func (s *Service) ExternalReadTask(ctx context.Context, bearer string, after, limit int64) (sqlc.Task, []sqlc.TaskEntry, error) {
+type ExternalTaskPage struct {
+	Task       sqlc.Task
+	Entries    []sqlc.TaskEntry
+	NextCursor int64
+}
+
+func (s *Service) ExternalReadTask(ctx context.Context, bearer string, after, limit int64) (ExternalTaskPage, error) {
 	if after < 0 || limit < 0 || limit > 100 {
-		return sqlc.Task{}, nil, ErrInvalid
+		return ExternalTaskPage{}, ErrInvalid
 	}
 	if limit == 0 {
 		limit = 50
 	}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return sqlc.Task{}, nil, err
+		return ExternalTaskPage{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
 	token, err := taskToken(ctx, q, bearer)
 	if err != nil {
-		return sqlc.Task{}, nil, err
+		return ExternalTaskPage{}, err
 	}
 	e, err := q.GetExternalExecution(ctx, token.ExecutionID)
 	if err != nil {
-		return sqlc.Task{}, nil, err
+		return ExternalTaskPage{}, err
 	}
 	if e.TaskID != token.TaskID || e.LeaseEpoch != token.LeaseEpoch || e.State != "running" || e.LeaseExpiresAt.Int64 <= time.Now().UnixMilli() {
-		return sqlc.Task{}, nil, ErrClaimLost
+		return ExternalTaskPage{}, ErrClaimLost
 	}
 	task, err := Lookup(ctx, q, token.TaskID)
 	if err != nil {
-		return task, nil, err
+		return ExternalTaskPage{}, err
 	}
 	entries, err := q.ListExternalTaskEntries(ctx, sqlc.ListExternalTaskEntriesParams{TaskID: task.ID, AfterSeq: after, PageSize: limit})
-	return task, entries, err
+	if err != nil {
+		return ExternalTaskPage{}, err
+	}
+	nextCursor := after
+	if len(entries) > 0 {
+		nextCursor = entries[len(entries)-1].Seq
+	}
+	return ExternalTaskPage{Task: task, Entries: entries, NextCursor: nextCursor}, nil
 }
 
 type ExternalHeartbeat struct {
@@ -350,7 +363,7 @@ func (l *Ledger) recordExternalExecution(ctx context.Context, actor Actor, t sql
 	return err
 }
 
-func (s *Service) ListTaskExecutions(ctx context.Context, key, machine, kind, state string) ([]sqlc.ListTaskExecutionsRow, error) {
+func (s *Service) ListTaskExecutions(ctx context.Context, key, runnerID, kind, state string) ([]sqlc.ListTaskExecutionsRow, error) {
 	var taskID string
 	if key != "" {
 		task, err := Lookup(ctx, s.q, key)
@@ -359,5 +372,5 @@ func (s *Service) ListTaskExecutions(ctx context.Context, key, machine, kind, st
 		}
 		taskID = task.ID
 	}
-	return s.q.ListTaskExecutions(ctx, sqlc.ListTaskExecutionsParams{TaskID: taskID, MachineIDFilter: machine, KindFilter: kind, StateFilter: state})
+	return s.q.ListTaskExecutions(ctx, sqlc.ListTaskExecutionsParams{TaskID: taskID, RunnerIDFilter: runnerID, KindFilter: kind, StateFilter: state})
 }

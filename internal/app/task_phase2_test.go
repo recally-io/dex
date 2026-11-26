@@ -32,11 +32,11 @@ func TestUserSplitsTaskAndFindsOwnerReview(t *testing.T) {
 		t.Fatalf("subtasks = %+v", parentDetail.Subtasks)
 	}
 
-	// Then Build appears in Inbox until approval, which also unblocks Publish.
+	// Then Build appears in Board until approval, which also unblocks Publish.
 	upstreamPath := tasks + "/" + upstream.Key
 	d.must(t, http.MethodPatch, upstreamPath, map[string]string{"status": "in_review"}, &upstream)
-	var work api.InboxSummary
-	d.must(t, http.MethodGet, "/api/inbox/summary", nil, &work)
+	var work api.BoardAttention
+	d.must(t, http.MethodGet, "/api/board/attention", nil, &work)
 	if len(work.TaskReviews) != 1 || work.TaskReviews[0].Key != upstream.Key {
 		t.Fatalf("Owner reviews = %+v", work.TaskReviews)
 	}
@@ -46,10 +46,10 @@ func TestUserSplitsTaskAndFindsOwnerReview(t *testing.T) {
 	if detail.Task.Blocked {
 		t.Fatalf("Publish still blocked after approval: %+v", detail.Blockers)
 	}
-	work = api.InboxSummary{}
-	d.must(t, http.MethodGet, "/api/inbox/summary", nil, &work)
+	work = api.BoardAttention{}
+	d.must(t, http.MethodGet, "/api/board/attention", nil, &work)
 	if len(work.TaskReviews) != 0 {
-		t.Fatalf("completed review still in Inbox: %+v", work.TaskReviews)
+		t.Fatalf("completed review still in Board: %+v", work.TaskReviews)
 	}
 	d.must(t, http.MethodDelete, tasks+"/"+downstream.Key+"/dependencies/"+upstream.Key, nil, nil, http.StatusNoContent)
 }

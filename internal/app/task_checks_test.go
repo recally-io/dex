@@ -32,7 +32,7 @@ func TestUserSeesGitHubCIOnlyAsATimelineEntry(t *testing.T) {
 	deliverGitHub(t, d, secret, "suite-other", "check_suite", suite(7, "2026-11-21T03:30:00Z", `{"number":2,"base":{"repo":{"id":99}}}`))
 	deliverGitHub(t, d, secret, "suite-unlinked", "check_suite", suite(8, "2026-11-21T03:40:00Z", `{"number":3,"base":{"repo":{"id":10}}}`))
 
-	// Then the Task has one entry per completion, the wait stays open, and nothing alerts Main or waits in the Inbox.
+	// Then the Task has one entry per completion, the wait stays open, and nothing alerts Main or waits on Board.
 	var detail api.TaskDetail
 	d.must(t, http.MethodGet, path, nil, &detail)
 	t.Logf("artifact: entries=%+v links=%+v", detail.Entries, detail.Links)
@@ -53,7 +53,7 @@ func TestUserSeesGitHubCIOnlyAsATimelineEntry(t *testing.T) {
 		t.Fatalf("CI alerted Main: %q", got)
 	}
 	var held api.ListHeldEvents200JSONResponse
-	d.must(t, http.MethodGet, "/api/inbox/held-events", nil, &held)
+	d.must(t, http.MethodGet, "/api/sources/held-events", nil, &held)
 	if len(held.Events) != 0 {
 		t.Fatalf("CI on an unlinked PR must not be held: %+v", held.Events)
 	}

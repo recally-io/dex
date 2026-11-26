@@ -145,18 +145,16 @@ read-only Automation transcript. A pre-start skip has no transcript. Its record
 stays in the Outbox of the conversation that owns the row. Automation records do
 not add notification entries to the Main timeline.
 
-`automation_runs.read_at` and `dismissed_at` hold Inbox state. A separate table
-would add a one-to-one record with no independent lifecycle. `GET /api/inbox`
-uses one query across all agents. It joins runs, automations, agents, and inputs.
-Only settled `changed` and `failed` runs without a duplicate mark qualify.
+`automation_runs.read_at` and `dismissed_at` hold result state. `GET /api/automations/results`
+uses one query across all Bots. It joins runs, Automations, Bots, and inputs.
+Settled failed runs and non-duplicate changed runs qualify.
 The query excludes dismissed results unless `includeDismissed=true`.
 Read and dismiss endpoints keep the first timestamp and return 404 for runs
 that do not qualify. Repeated writes are safe.
 
-The web uses the shared list for result details and history links. It refreshes
-the list every 10 seconds while an Inbox page is open. Read and dismiss writes
-invalidate the list and agent activity. Dismissed details remain readable by URL.
-Continue in a session uses the existing create Chat, project, and message APIs in
-that order. Its first message quotes the automation name, outcome, summary, and
+The web uses the shared list for result details and Automation history. It refreshes
+the list every 10 seconds while either page is open. Read and dismiss writes
+invalidate the result list and Board attention. Dismissed details remain readable by URL.
+Continue in a session creates a Chat, sets its Runner and project, and sends a message. Its first message quotes the automation name, outcome, summary, and
 run transcript reference. A retry in the same detail view keeps the Chat and
 message request IDs.

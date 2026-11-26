@@ -68,7 +68,7 @@ func TestUserDecidesHeldEventsInTheInbox(t *testing.T) {
 	}
 	listed, err := s.ListHeld(ctx)
 	if err != nil || len(listed) != 2 || listed[0].ID != conflict.EventID && listed[1].ID != conflict.EventID {
-		t.Fatalf("the Inbox must list the two held events: %+v, %v", listed, err)
+		t.Fatalf("Board must list the two held events: %+v, %v", listed, err)
 	}
 
 	closed, err := s.CreateTask(ctx, Owner, OriginUser, CreateTaskParams{AssigneeBotID: "default", Title: "Done"})
@@ -111,7 +111,7 @@ func TestUserDecidesHeldEventsInTheInbox(t *testing.T) {
 		t.Fatalf("an attach must keep the link of another Task: %+v, %v", owner, err)
 	}
 	if listed, err := s.ListHeld(ctx); err != nil || len(listed) != 0 {
-		t.Fatalf("decided events must leave the Inbox: %+v, %v", listed, err)
+		t.Fatalf("decided events must leave Board: %+v, %v", listed, err)
 	}
 
 	dismissed, err := s.Accept(ctx, event("dismissed", linked, elsewhere))
@@ -125,6 +125,6 @@ func TestUserDecidesHeldEventsInTheInbox(t *testing.T) {
 		t.Fatalf("a dismissed event must not dismiss again: %v", err)
 	}
 	if listed, err := s.ListHeld(ctx); err != nil || len(listed) != 0 {
-		t.Fatalf("a dismissed event must leave the Inbox: %+v, %v", listed, err)
+		t.Fatalf("a dismissed event must leave Board: %+v, %v", listed, err)
 	}
 }

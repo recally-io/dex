@@ -274,7 +274,8 @@ func (q *Queries) LinkTaskObject(ctx context.Context, arg LinkTaskObjectParams) 
 
 const listHeldTaskSourceEvents = `-- name: ListHeldTaskSourceEvents :many
 SELECT e.id, e.namespace, e.event_type, e.objects, e.content, e.source_url, e.occurred_at,
-  e.disposition, e.author_login, e.author_association, h.held_at
+  e.disposition, e.author_login, e.author_association, h.held_at,
+  CAST(count(*) OVER () AS INTEGER) AS total
 FROM task_source_holds h JOIN task_source_events e ON e.id = h.event_id
 WHERE h.decision IS NULL ORDER BY h.held_at DESC, e.id DESC LIMIT 100
 `
@@ -291,6 +292,7 @@ type ListHeldTaskSourceEventsRow struct {
 	AuthorLogin       string `json:"author_login"`
 	AuthorAssociation string `json:"author_association"`
 	HeldAt            int64  `json:"held_at"`
+	Total             int64  `json:"total"`
 }
 
 func (q *Queries) ListHeldTaskSourceEvents(ctx context.Context) ([]ListHeldTaskSourceEventsRow, error) {
@@ -314,6 +316,7 @@ func (q *Queries) ListHeldTaskSourceEvents(ctx context.Context) ([]ListHeldTaskS
 			&i.AuthorLogin,
 			&i.AuthorAssociation,
 			&i.HeldAt,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}
