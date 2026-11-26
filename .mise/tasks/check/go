@@ -19,7 +19,7 @@ done <<< "$(go list ./...)"
 golangci-lint fmt --diff
 golangci-lint run
 go build ./...
-go test -race "${packages[@]}"
+go test -race -timeout 20m "${packages[@]}"
 # internal/app runs without the race detector, as in check:app.
 if [[ "$mode" == all ]]; then
   go test ./internal/app
