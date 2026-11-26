@@ -11,6 +11,14 @@ AND (CAST(@status_filter AS TEXT) = 'all' OR t.status = @status_filter
   OR (@status_filter = 'open' AND t.status NOT IN ('done', 'cancelled')))
 ORDER BY t.updated_at DESC, t.id DESC LIMIT 50;
 
+-- name: ListBotWorkload :many
+SELECT t.* FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+CROSS JOIN (SELECT CAST(@bot_id AS TEXT) AS id) AS caller
+WHERE a.archived_at IS NULL AND t.status NOT IN ('done', 'cancelled')
+AND (t.assignee_bot_id = caller.id OR (t.reviewer_kind = 'bot' AND t.reviewer_id = caller.id))
+ORDER BY (t.status = 'in_review' AND t.reviewer_kind = 'bot' AND t.reviewer_id = caller.id) DESC,
+  t.updated_at DESC, t.number DESC;
+
 -- name: GetBoardTaskByNumber :one
 SELECT t.* FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
 WHERE t.number = ? AND a.archived_at IS NULL;
@@ -60,6 +68,7 @@ SELECT en.id, en.seq, en.kind, en.tag, en.actor_kind, en.actor_bot_id, en.actor_
   CAST(CASE WHEN CAST(@bootstrap AS INTEGER) = 1 THEN -en.seq ELSE en.seq END AS INTEGER) AS sort_seq
 FROM work_task_entries en LEFT JOIN work_source_events ev ON ev.id = en.event_id
 WHERE en.task_id = @task_id AND en.seq > @after_seq AND en.kind <> 'tombstone'
+AND (NOT CAST(@trusted_only AS INTEGER) OR en.trust <> 'external')
 AND (json_array_length(CAST(@tags AS TEXT)) = 0 OR en.tag IN (SELECT value FROM json_each(@tags)))
 AND NOT EXISTS (SELECT 1 FROM work_task_entries r WHERE r.task_id = en.task_id AND r.kind = 'tombstone'
   AND CAST(json_extract(r.meta_json, '$.targetSeq') AS INTEGER) = en.seq)

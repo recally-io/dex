@@ -272,6 +272,10 @@ func TestUserTaskReviewerWakesAssigneeAndRejectsStaleApproval(t *testing.T) {
 	if list, err := s.List(ctx, reviewer, WorkTaskListArgs{Status: "in_review"}); err != nil || len(list) != 1 || list[0].Key != key {
 		t.Fatalf("reviewer list: %+v, %v", list, err)
 	}
+	if items, err := s.MyWorkload(ctx, reviewer, struct{}{}); err != nil || len(items) != 1 || items[0].Key != key ||
+		!items[0].InReview || items[0].PendingAction != "review" || items[0].ReviewSeq != submitted.ReviewSeq {
+		t.Fatalf("reviewer's workload: %+v, %v", items, err)
+	}
 	if d, err := s.Read(ctx, reviewer, WorkTaskReadArgs{ID: key}); err != nil || d.ReviewSeq != submitted.ReviewSeq {
 		t.Fatalf("reviewer read: %+v, %v", d, err)
 	}

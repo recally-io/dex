@@ -171,13 +171,16 @@ func (e BoardStatus) Valid() bool {
 
 // Defines values for BoardTaskBlockerKind.
 const (
-	BoardTaskBlockerKindQuestion BoardTaskBlockerKind = "question"
-	BoardTaskBlockerKindWait     BoardTaskBlockerKind = "wait"
+	BoardTaskBlockerKindDependency BoardTaskBlockerKind = "dependency"
+	BoardTaskBlockerKindQuestion   BoardTaskBlockerKind = "question"
+	BoardTaskBlockerKindWait       BoardTaskBlockerKind = "wait"
 )
 
 // Valid indicates whether the value is a known member of the BoardTaskBlockerKind enum.
 func (e BoardTaskBlockerKind) Valid() bool {
 	switch e {
+	case BoardTaskBlockerKindDependency:
+		return true
 	case BoardTaskBlockerKindQuestion:
 		return true
 	case BoardTaskBlockerKindWait:
@@ -307,6 +310,48 @@ func (e BoardTaskSessionState) Valid() bool {
 	case BoardTaskSessionStateRunning:
 		return true
 	case BoardTaskSessionStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardTaskSplitReviewer.
+const (
+	BoardTaskSplitReviewerCreator BoardTaskSplitReviewer = "creator"
+	BoardTaskSplitReviewerNone    BoardTaskSplitReviewer = "none"
+	BoardTaskSplitReviewerOwner   BoardTaskSplitReviewer = "owner"
+)
+
+// Valid indicates whether the value is a known member of the BoardTaskSplitReviewer enum.
+func (e BoardTaskSplitReviewer) Valid() bool {
+	switch e {
+	case BoardTaskSplitReviewerCreator:
+		return true
+	case BoardTaskSplitReviewerNone:
+		return true
+	case BoardTaskSplitReviewerOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardTaskSplitStatus.
+const (
+	BoardTaskSplitStatusBacklog    BoardTaskSplitStatus = "backlog"
+	BoardTaskSplitStatusInProgress BoardTaskSplitStatus = "in_progress"
+	BoardTaskSplitStatusReady      BoardTaskSplitStatus = "ready"
+)
+
+// Valid indicates whether the value is a known member of the BoardTaskSplitStatus enum.
+func (e BoardTaskSplitStatus) Valid() bool {
+	switch e {
+	case BoardTaskSplitStatusBacklog:
+		return true
+	case BoardTaskSplitStatusInProgress:
+		return true
+	case BoardTaskSplitStatusReady:
 		return true
 	default:
 		return false
@@ -1260,6 +1305,11 @@ type AutomationTarget struct {
 	Title string `json:"title"`
 }
 
+// BoardDependencyCreate defines model for BoardDependencyCreate.
+type BoardDependencyCreate struct {
+	DependsOn string `json:"dependsOn"`
+}
+
 // BoardEntryCreate defines model for BoardEntryCreate.
 type BoardEntryCreate struct {
 	Content string                `json:"content"`
@@ -1304,6 +1354,7 @@ type BoardTaskBlocker struct {
 	Question      *string              `json:"question,omitempty"`
 	QuestionId    *string              `json:"questionId,omitempty"`
 	QueuePosition *int64               `json:"queuePosition,omitempty"`
+	TaskKey       *string              `json:"taskKey,omitempty"`
 	WaitId        *int64               `json:"waitId,omitempty"`
 }
 
@@ -1325,12 +1376,16 @@ type BoardTaskCreateStatus string
 
 // BoardTaskDetail defines model for BoardTaskDetail.
 type BoardTaskDetail struct {
-	Blockers  []BoardTaskBlocker  `json:"blockers"`
-	Entries   []BoardTaskEntry    `json:"entries"`
-	Links     []WorkTaskLink      `json:"links"`
-	Questions []BoardTaskQuestion `json:"questions"`
-	Sessions  []BoardTaskSession  `json:"sessions"`
-	Task      BoardTaskSummary    `json:"task"`
+	Blockers     []BoardTaskBlocker  `json:"blockers"`
+	CanSplit     bool                `json:"canSplit"`
+	Dependencies []BoardTaskRef      `json:"dependencies"`
+	Entries      []BoardTaskEntry    `json:"entries"`
+	Links        []WorkTaskLink      `json:"links"`
+	ParentTask   *BoardTaskRef       `json:"parentTask,omitempty"`
+	Questions    []BoardTaskQuestion `json:"questions"`
+	Sessions     []BoardTaskSession  `json:"sessions"`
+	Subtasks     []BoardTaskRef      `json:"subtasks"`
+	Task         BoardTaskSummary    `json:"task"`
 }
 
 // BoardTaskEntry defines model for BoardTaskEntry.
@@ -1373,6 +1428,14 @@ type BoardTaskQuestion struct {
 	Text           string   `json:"text"`
 }
 
+// BoardTaskRef defines model for BoardTaskRef.
+type BoardTaskRef struct {
+	AssigneeBotId string      `json:"assigneeBotId"`
+	Key           string      `json:"key"`
+	Status        BoardStatus `json:"status"`
+	Title         string      `json:"title"`
+}
+
 // BoardTaskSession defines model for BoardTaskSession.
 type BoardTaskSession struct {
 	AgentId        string                `json:"agentId"`
@@ -1387,6 +1450,22 @@ type BoardTaskSession struct {
 
 // BoardTaskSessionState defines model for BoardTaskSession.State.
 type BoardTaskSessionState string
+
+// BoardTaskSplit defines model for BoardTaskSplit.
+type BoardTaskSplit struct {
+	AssigneeBotId *string                 `json:"assigneeBotId,omitempty"`
+	DependsOn     *[]string               `json:"dependsOn,omitempty"`
+	Note          *string                 `json:"note,omitempty"`
+	Reviewer      *BoardTaskSplitReviewer `json:"reviewer,omitempty"`
+	Status        *BoardTaskSplitStatus   `json:"status,omitempty"`
+	Title         string                  `json:"title"`
+}
+
+// BoardTaskSplitReviewer defines model for BoardTaskSplit.Reviewer.
+type BoardTaskSplitReviewer string
+
+// BoardTaskSplitStatus defines model for BoardTaskSplit.Status.
+type BoardTaskSplitStatus string
 
 // BoardTaskSummary defines model for BoardTaskSummary.
 type BoardTaskSummary struct {
@@ -2483,6 +2562,7 @@ type Work struct {
 	Automations []WorkAutomation `json:"automations"`
 	Inbox       []InboxItem      `json:"inbox"`
 	Sessions    []WorkSession    `json:"sessions"`
+	TaskReviews []BoardTaskRef   `json:"taskReviews"`
 }
 
 // WorkAutomation defines model for WorkAutomation.
@@ -2746,8 +2826,26 @@ type UpdateBoardTaskParams struct {
 	IfMatch *BoardRevision `json:"If-Match,omitempty"`
 }
 
+// AddBoardDependencyParams defines parameters for AddBoardDependency.
+type AddBoardDependencyParams struct {
+	// IfMatch The expected Task revision as a decimal integer.
+	IfMatch *BoardRevision `json:"If-Match,omitempty"`
+}
+
+// RemoveBoardDependencyParams defines parameters for RemoveBoardDependency.
+type RemoveBoardDependencyParams struct {
+	// IfMatch The expected Task revision as a decimal integer.
+	IfMatch *BoardRevision `json:"If-Match,omitempty"`
+}
+
 // CreateBoardEntryParams defines parameters for CreateBoardEntry.
 type CreateBoardEntryParams struct {
+	// IfMatch The expected Task revision as a decimal integer.
+	IfMatch *BoardRevision `json:"If-Match,omitempty"`
+}
+
+// SplitBoardTaskParams defines parameters for SplitBoardTask.
+type SplitBoardTaskParams struct {
 	// IfMatch The expected Task revision as a decimal integer.
 	IfMatch *BoardRevision `json:"If-Match,omitempty"`
 }
@@ -2892,11 +2990,17 @@ type CreateBoardTaskJSONRequestBody = BoardTaskCreate
 // UpdateBoardTaskJSONRequestBody defines body for UpdateBoardTask for application/json ContentType.
 type UpdateBoardTaskJSONRequestBody = BoardTaskUpdate
 
+// AddBoardDependencyJSONRequestBody defines body for AddBoardDependency for application/json ContentType.
+type AddBoardDependencyJSONRequestBody = BoardDependencyCreate
+
 // CreateBoardEntryJSONRequestBody defines body for CreateBoardEntry for application/json ContentType.
 type CreateBoardEntryJSONRequestBody = BoardEntryCreate
 
 // ReviewBoardTaskJSONRequestBody defines body for ReviewBoardTask for application/json ContentType.
 type ReviewBoardTaskJSONRequestBody = BoardReview
+
+// SplitBoardTaskJSONRequestBody defines body for SplitBoardTask for application/json ContentType.
+type SplitBoardTaskJSONRequestBody = BoardTaskSplit
 
 // AttachHeldEventJSONRequestBody defines body for AttachHeldEvent for application/json ContentType.
 type AttachHeldEventJSONRequestBody AttachHeldEventJSONBody
@@ -3703,11 +3807,20 @@ type ServerInterface interface {
 	// (PATCH /api/board/tasks/{taskKey})
 	UpdateBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params UpdateBoardTaskParams)
 
+	// (POST /api/board/tasks/{taskKey}/dependencies)
+	AddBoardDependency(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params AddBoardDependencyParams)
+
+	// (DELETE /api/board/tasks/{taskKey}/dependencies/{depKey})
+	RemoveBoardDependency(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, depKey string, params RemoveBoardDependencyParams)
+
 	// (POST /api/board/tasks/{taskKey}/entries)
 	CreateBoardEntry(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params CreateBoardEntryParams)
 
 	// (POST /api/board/tasks/{taskKey}/review)
 	ReviewBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey)
+
+	// (POST /api/board/tasks/{taskKey}/split)
+	SplitBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params SplitBoardTaskParams)
 
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
@@ -6430,6 +6543,115 @@ func (siw *ServerInterfaceWrapper) UpdateBoardTask(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// AddBoardDependency operation middleware
+func (siw *ServerInterfaceWrapper) AddBoardDependency(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey BoardTaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AddBoardDependencyParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch BoardRevision
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddBoardDependency(w, r, taskKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveBoardDependency operation middleware
+func (siw *ServerInterfaceWrapper) RemoveBoardDependency(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey BoardTaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "depKey" -------------
+	var depKey string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "depKey", r.PathValue("depKey"), &depKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "depKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RemoveBoardDependencyParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch BoardRevision
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveBoardDependency(w, r, taskKey, depKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateBoardEntry operation middleware
 func (siw *ServerInterfaceWrapper) CreateBoardEntry(w http.ResponseWriter, r *http.Request) {
 
@@ -6497,6 +6719,56 @@ func (siw *ServerInterfaceWrapper) ReviewBoardTask(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReviewBoardTask(w, r, taskKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SplitBoardTask operation middleware
+func (siw *ServerInterfaceWrapper) SplitBoardTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey BoardTaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SplitBoardTaskParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch BoardRevision
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SplitBoardTask(w, r, taskKey, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7462,6 +7734,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks", wrapper.CreateBoardTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/tasks/{taskKey}", wrapper.GetBoardTask)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/board/tasks/{taskKey}", wrapper.UpdateBoardTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/split", wrapper.SplitBoardTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/dependencies", wrapper.AddBoardDependency)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/board/tasks/{taskKey}/dependencies/{depKey}", wrapper.RemoveBoardDependency)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/entries", wrapper.CreateBoardEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/review", wrapper.ReviewBoardTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/events", wrapper.WatchBoard)
@@ -12174,6 +12449,126 @@ func (response UpdateBoardTask412JSONResponse) VisitUpdateBoardTaskResponse(w ht
 	return err
 }
 
+type AddBoardDependencyRequestObject struct {
+	TaskKey BoardTaskKey `json:"taskKey"`
+	Params  AddBoardDependencyParams
+	Body    *AddBoardDependencyJSONRequestBody
+}
+
+type AddBoardDependencyResponseObject interface {
+	VisitAddBoardDependencyResponse(w http.ResponseWriter) error
+}
+
+type AddBoardDependency204Response struct {
+}
+
+func (response AddBoardDependency204Response) VisitAddBoardDependencyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AddBoardDependency400JSONResponse struct{ ErrorJSONResponse }
+
+func (response AddBoardDependency400JSONResponse) VisitAddBoardDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddBoardDependency404JSONResponse Error
+
+func (response AddBoardDependency404JSONResponse) VisitAddBoardDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddBoardDependency412JSONResponse Error
+
+func (response AddBoardDependency412JSONResponse) VisitAddBoardDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveBoardDependencyRequestObject struct {
+	TaskKey BoardTaskKey `json:"taskKey"`
+	DepKey  string       `json:"depKey"`
+	Params  RemoveBoardDependencyParams
+}
+
+type RemoveBoardDependencyResponseObject interface {
+	VisitRemoveBoardDependencyResponse(w http.ResponseWriter) error
+}
+
+type RemoveBoardDependency204Response struct {
+}
+
+func (response RemoveBoardDependency204Response) VisitRemoveBoardDependencyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveBoardDependency400JSONResponse struct{ ErrorJSONResponse }
+
+func (response RemoveBoardDependency400JSONResponse) VisitRemoveBoardDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveBoardDependency404JSONResponse Error
+
+func (response RemoveBoardDependency404JSONResponse) VisitRemoveBoardDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveBoardDependency412JSONResponse Error
+
+func (response RemoveBoardDependency412JSONResponse) VisitRemoveBoardDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateBoardEntryRequestObject struct {
 	TaskKey BoardTaskKey `json:"taskKey"`
 	Params  CreateBoardEntryParams
@@ -12301,6 +12696,86 @@ func (response ReviewBoardTask409JSONResponse) VisitReviewBoardTaskResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitBoardTaskRequestObject struct {
+	TaskKey BoardTaskKey `json:"taskKey"`
+	Params  SplitBoardTaskParams
+	Body    *SplitBoardTaskJSONRequestBody
+}
+
+type SplitBoardTaskResponseObject interface {
+	VisitSplitBoardTaskResponse(w http.ResponseWriter) error
+}
+
+type SplitBoardTask201JSONResponse BoardTaskSummary
+
+func (response SplitBoardTask201JSONResponse) VisitSplitBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitBoardTask400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SplitBoardTask400JSONResponse) VisitSplitBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitBoardTask403JSONResponse Error
+
+func (response SplitBoardTask403JSONResponse) VisitSplitBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitBoardTask404JSONResponse Error
+
+func (response SplitBoardTask404JSONResponse) VisitSplitBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitBoardTask412JSONResponse Error
+
+func (response SplitBoardTask412JSONResponse) VisitSplitBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14446,11 +14921,20 @@ type StrictServerInterface interface {
 	// (PATCH /api/board/tasks/{taskKey})
 	UpdateBoardTask(ctx context.Context, request UpdateBoardTaskRequestObject) (UpdateBoardTaskResponseObject, error)
 
+	// (POST /api/board/tasks/{taskKey}/dependencies)
+	AddBoardDependency(ctx context.Context, request AddBoardDependencyRequestObject) (AddBoardDependencyResponseObject, error)
+
+	// (DELETE /api/board/tasks/{taskKey}/dependencies/{depKey})
+	RemoveBoardDependency(ctx context.Context, request RemoveBoardDependencyRequestObject) (RemoveBoardDependencyResponseObject, error)
+
 	// (POST /api/board/tasks/{taskKey}/entries)
 	CreateBoardEntry(ctx context.Context, request CreateBoardEntryRequestObject) (CreateBoardEntryResponseObject, error)
 
 	// (POST /api/board/tasks/{taskKey}/review)
 	ReviewBoardTask(ctx context.Context, request ReviewBoardTaskRequestObject) (ReviewBoardTaskResponseObject, error)
+
+	// (POST /api/board/tasks/{taskKey}/split)
+	SplitBoardTask(ctx context.Context, request SplitBoardTaskRequestObject) (SplitBoardTaskResponseObject, error)
 
 	// (GET /api/directories)
 	ListDirectories(ctx context.Context, request ListDirectoriesRequestObject) (ListDirectoriesResponseObject, error)
@@ -16906,6 +17390,68 @@ func (sh *strictHandler) UpdateBoardTask(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// AddBoardDependency operation middleware
+func (sh *strictHandler) AddBoardDependency(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params AddBoardDependencyParams) {
+	var request AddBoardDependencyRequestObject
+
+	request.TaskKey = taskKey
+	request.Params = params
+
+	var body AddBoardDependencyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddBoardDependency(ctx, request.(AddBoardDependencyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddBoardDependency")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddBoardDependencyResponseObject); ok {
+		if err := validResponse.VisitAddBoardDependencyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveBoardDependency operation middleware
+func (sh *strictHandler) RemoveBoardDependency(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, depKey string, params RemoveBoardDependencyParams) {
+	var request RemoveBoardDependencyRequestObject
+
+	request.TaskKey = taskKey
+	request.DepKey = depKey
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveBoardDependency(ctx, request.(RemoveBoardDependencyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveBoardDependency")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveBoardDependencyResponseObject); ok {
+		if err := validResponse.VisitRemoveBoardDependencyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CreateBoardEntry operation middleware
 func (sh *strictHandler) CreateBoardEntry(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params CreateBoardEntryParams) {
 	var request CreateBoardEntryRequestObject
@@ -16966,6 +17512,40 @@ func (sh *strictHandler) ReviewBoardTask(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReviewBoardTaskResponseObject); ok {
 		if err := validResponse.VisitReviewBoardTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SplitBoardTask operation middleware
+func (sh *strictHandler) SplitBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params SplitBoardTaskParams) {
+	var request SplitBoardTaskRequestObject
+
+	request.TaskKey = taskKey
+	request.Params = params
+
+	var body SplitBoardTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SplitBoardTask(ctx, request.(SplitBoardTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SplitBoardTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SplitBoardTaskResponseObject); ok {
+		if err := validResponse.VisitSplitBoardTaskResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

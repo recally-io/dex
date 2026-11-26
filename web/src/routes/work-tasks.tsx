@@ -32,6 +32,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { TaskLinks } from "../components/task-links";
+import { TaskRelationships } from "../components/task-relationships";
 import { GitHubPullForm } from "../plugins/github/pull-form";
 import { invalidateBoard, useBoardStream } from "../lib/board-stream";
 import { isClosed, nextStatuses, statusLabel } from "../lib/board";
@@ -84,6 +85,7 @@ function TaskDetail({ detail, bots }: { detail: BoardTaskDetail; bots: Agent[] }
       <TaskEditor task={task} bots={bots} />
       {task.status === "in_review" ? <ReviewActions task={task} /> : null}
       <TaskBlockers detail={detail} />
+      <TaskRelationships key={task.key} detail={detail} />
       {detail.sessions.length ? (
         <Section title="Sessions">
           <ul className="divide-y divide-border">
@@ -149,7 +151,7 @@ function TaskEditor({ task, bots }: { task: BoardTaskSummary; bots: Agent[] }) {
       if (error) throw new Error(errorText(error));
     },
     onSuccess: async () => {
-      await invalidateBoard(client);
+      await Promise.all([invalidateBoard(client), refreshWork()]);
       setDraft(undefined);
     },
   });
@@ -324,7 +326,7 @@ function ReviewActions({ task }: { task: BoardTaskSummary }) {
 
       if (error) throw new Error(errorText(error));
     },
-    onSuccess: () => invalidateBoard(client),
+    onSuccess: () => Promise.all([invalidateBoard(client), refreshWork()]),
   });
 
   return (

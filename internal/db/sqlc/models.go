@@ -430,6 +430,12 @@ type SystemSetting struct {
 	UpdateChannel string `json:"update_channel"`
 }
 
+type TaskDependency struct {
+	TaskID          string `json:"task_id"`
+	DependsOnTaskID string `json:"depends_on_task_id"`
+	CreatedAt       int64  `json:"created_at"`
+}
+
 type TaskExecution struct {
 	ID                string        `json:"id"`
 	TaskID            string        `json:"task_id"`

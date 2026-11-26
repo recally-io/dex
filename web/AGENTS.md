@@ -50,7 +50,7 @@ and Settings. Settings has General, Skills, Integrations, and Secrets. Old
 settings page. The right Sessions sidebar starts closed. The global sidebar
 links to Board (`/board`) for Tasks and Inbox (`/inbox`) for owner actions.
 Inbox reads active questions, unhandled failed or changed automation results,
-and missing models from `/api/work`, and reads held events from the held events
+missing models, and Tasks awaiting Owner review from `/api/work`, and reads held events from the held events
 endpoint. The Inbox link counts those items. One-way notifications stay in
 transcripts and channels. `/work` redirects to Board; `/needs-you` redirects to
 Inbox. Queued Task questions remain answerable from Task detail.
@@ -60,7 +60,7 @@ links of an attach. The owner can also dismiss the event.
 Board reads `/api/board/*`. It offers Kanban and List views, an inline
 creation form, and Bot, In Review, Blocked, Source, and closed Task filters.
 The Bot filter uses `/board?bot=<id>`. Task detail opens at
-`/board/$taskKey` with a stable key such as `T-42`. The legacy
+`/board/$taskKey` with a stable key such as `T-42`. Detail links to the parent, subtasks, and sibling dependencies. The Owner can create a subtask or change its dependencies there. Inbox review items link to the same detail route. The legacy
 `/a/{agentId}/inbox/{taskId}` URL redirects to that key.
 
 `src/lib/board-stream.ts` uses EventSource to resume with `Last-Event-ID`.

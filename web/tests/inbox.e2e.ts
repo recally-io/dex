@@ -5,7 +5,9 @@ import { createClient } from "../src/api/generated/client";
 import {
   createAgent,
   createAutomation,
+  createBoardTask,
   createWorkTask,
+  splitBoardTask,
   getMainChat,
   getWorkTask,
   runAutomation,
@@ -44,6 +46,51 @@ test("keeps Tasks on Board and redirects the old Work and Needs you routes", asy
   await expect(screen.getByRole("heading", "Inbox", { exact: true })).toBeVisible();
   await expect(screen.getByRole("textbox", "Task title")).toHaveCount(0);
   await expect(screen.getByRole("link", /Fix the sign-in flow/)).toHaveCount(0);
+});
+
+test("unblocks a subtask by approving its dependency from Inbox", async ({ app, browser, screen }) => {
+  await app.open("/board");
+
+  const origin = new URL(await browser.url());
+
+  if (origin.hostname !== "127.0.0.1") throw new Error("Use the local test server");
+
+  const client = createClient({ baseUrl: origin.origin });
+
+  const { data: parent } = await createBoardTask({
+    client,
+    body: { title: "Release a build", assigneeBotId: "default" },
+    throwOnError: true,
+  });
+
+  const { data: upstream } = await splitBoardTask({
+    client,
+    path: { taskKey: parent.key },
+    body: { title: "Verify the build", status: "in_progress", reviewer: "owner" },
+    throwOnError: true,
+  });
+
+  await app.open(`/board/${parent.key}`);
+  await screen.getByRole("textbox", "Subtask title").fill("Publish the build");
+  await screen.getByRole("button", "Add subtask").tap();
+  await screen.getByRole("link", /Publish the build/).tap();
+  const publishPath = new URL(await browser.url()).pathname;
+  await expect(screen.getByRole("link", /Release a build/)).toBeVisible();
+  await screen.getByLabel("Sibling Task").selectOption({ value: upstream.key });
+  await screen.getByRole("button", "Add dependency").tap();
+  await expect(screen.getByText("Blocked", { exact: true })).toBeVisible();
+  await screen.getByRole("link", /Verify the build/).tap();
+  await screen.getByLabel("Status", { exact: true }).selectOption({ value: "in_review" });
+  await screen.getByRole("button", "Save changes").tap();
+  await expect(screen.getByRole("region", "In Review", { exact: true })).toBeVisible();
+
+  await app.open("/inbox");
+  await screen.getByRole("link", /Verify the build/).tap();
+  await screen.getByRole("button", "Approve").tap();
+  await expect(screen.getByText("Approved", { exact: true })).toBeVisible();
+  await app.open(publishPath);
+  await expect(screen.getByRole("heading", "Publish the build")).toBeVisible();
+  await expect(screen.getByText("Blocked", { exact: true })).toHaveCount(0);
 });
 
 test("opens a collaborator Session from a Board Task", async ({ app, browser, screen }) => {

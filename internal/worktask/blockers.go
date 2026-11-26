@@ -6,10 +6,11 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-// Blocker describes an unresolved external wait or open Task question. A queue
+// Blocker describes an sibling dependency, unresolved wait, or open Task question. A queue
 // position starts at 1 in the question's Main and is 0 outside that queue.
 type Blocker struct {
 	Kind          string `json:"kind"`
+	TaskKey       string `json:"taskKey,omitempty"`
 	WaitID        int64  `json:"waitId,omitzero"`
 	Namespace     string `json:"namespace,omitempty"`
 	ObjectType    string `json:"objectType,omitempty"`
@@ -34,7 +35,16 @@ func ComputeBlockers(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask) (
 	if err != nil {
 		return nil, err
 	}
-	blockers := make([]Blocker, 0, len(waits)+len(questions))
+	dependencies, err := q.ListWorkTaskDependencies(ctx, task.ID)
+	if err != nil {
+		return nil, err
+	}
+	blockers := make([]Blocker, 0, len(waits)+len(questions)+len(dependencies))
+	for _, upstream := range dependencies {
+		if upstream.Status != StatusDone {
+			blockers = append(blockers, Blocker{Kind: "dependency", TaskKey: FormatKey(upstream.Number)})
+		}
+	}
 	for _, w := range waits {
 		blockers = append(blockers, Blocker{Kind: "wait", WaitID: w.ID, Namespace: w.Namespace, ObjectType: w.ObjectType, ObjectKey: w.ObjectKey, EventType: w.EventType})
 	}

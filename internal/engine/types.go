@@ -71,6 +71,8 @@ type Input struct {
 	Automation bool
 	// Child marks an input to a conversation that has a parent.
 	Child bool
+	// ChildHasWorkTask enables scoped Task tools on a linked child Session.
+	ChildHasWorkTask bool
 	// Main input comes from a person who waits for each reply.
 	Main              bool
 	TaskID, TaskTitle string

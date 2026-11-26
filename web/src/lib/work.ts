@@ -17,6 +17,7 @@ type WorkState = {
   sessions: { agentId: string; chat: Pick<Chat, "busy" | "question"> }[];
   automations: { agentId: string; setup: boolean }[];
   inbox: Pick<InboxItem, "agentId" | "outcome" | "dismissed">[];
+  taskReviews?: Pick<Work["taskReviews"][number], "assigneeBotId">[];
 };
 
 /**
@@ -33,7 +34,8 @@ export function botStatus(
   if (
     sessions.some((item) => openQuestion(item.chat)) ||
     work?.inbox.some((item) => item.agentId === agentId && needsReview(item)) ||
-    work?.automations.some((item) => item.agentId === agentId && item.setup)
+    work?.automations.some((item) => item.agentId === agentId && item.setup) ||
+    work?.taskReviews?.some((item) => item.assigneeBotId === agentId)
   )
     return "needs";
 
@@ -56,6 +58,7 @@ export function attentionItems(work: Work | undefined) {
       return question ? [{ agentId, chat, question }] : [];
     }),
     results: (work?.inbox ?? []).filter(needsReview),
+    taskReviews: work?.taskReviews ?? [],
     setup: (work?.automations ?? []).filter((item) => item.setup),
   };
 }

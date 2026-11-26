@@ -106,13 +106,15 @@ func (s *Service) CreateTask(ctx context.Context, actor Actor, origin Origin, p 
 
 // Detail holds a Task and its related records from one snapshot.
 type Detail struct {
-	Task      sqlc.WorkTask
-	Entries   []sqlc.WorkTaskEntry
-	Questions []sqlc.Question
-	Objects   []sqlc.WorkTaskObject
-	Waits     []sqlc.WorkTaskWait
-	Sessions  []sqlc.ListWorkTaskSessionsRow
-	Blockers  []Blocker
+	Task                   sqlc.WorkTask
+	ParentTask             *sqlc.WorkTask
+	Subtasks, Dependencies []sqlc.WorkTask
+	Entries                []sqlc.WorkTaskEntry
+	Questions              []sqlc.Question
+	Objects                []sqlc.WorkTaskObject
+	Waits                  []sqlc.WorkTaskWait
+	Sessions               []sqlc.ListWorkTaskSessionsRow
+	Blockers               []Blocker
 }
 
 // List returns the Owner's Tasks across active Bots.
@@ -175,7 +177,18 @@ func (s *Service) detail(ctx context.Context, agentID, key string) (Detail, erro
 	if err != nil {
 		return Detail{}, err
 	}
-	return Detail{Task: task, Entries: entries, Questions: questions, Objects: objects, Waits: waits, Sessions: sessions, Blockers: blockers}, tx.Commit()
+	out := Detail{Task: task, Entries: entries, Questions: questions, Objects: objects, Waits: waits, Sessions: sessions, Blockers: blockers}
+	if agentID == "" {
+		out.ParentTask, out.Dependencies, err = UpstreamTasks(ctx, q, task)
+		if err != nil {
+			return Detail{}, err
+		}
+		out.Subtasks, err = q.ListWorkSubtasks(ctx, sql.NullString{String: task.ID, Valid: true})
+		if err != nil {
+			return Detail{}, err
+		}
+	}
+	return out, tx.Commit()
 }
 
 // ModelTitle keeps source-provided titles out of model context. An explicit
@@ -328,8 +341,12 @@ func (l *Ledger) Review(ctx context.Context, actor Actor, origin Origin, task sq
 	result, _, err := l.append(ctx, actor, task, status, task.Title, 0, sqlc.InsertWorkTaskEntryParams{
 		Kind: KindReview, Content: feedback, MetaJson: string(meta), CreatedAt: now,
 	})
-	if err == nil && decision == ReviewRequestChanges {
-		_, err = l.queueWake(ctx, task.AssigneeBotID, result, WakeChangesRequested, now)
+	if err == nil {
+		if decision == ReviewRequestChanges {
+			_, err = l.queueWake(ctx, task.AssigneeBotID, result, WakeChangesRequested, now)
+		} else {
+			err = l.notifyDependents(ctx, task, result, now)
+		}
 	}
 	return result, err
 }

@@ -34,7 +34,21 @@ func linkTaskChild(ctx context.Context, q *sqlc.Queries, l *worktask.Ledger, sou
 	if err != nil || !worktask.IsOpenStatus(task.Status) {
 		return err
 	}
-	// The source receipt authorizes the association, including for a child in another Bot.
+	// A queued wake can outlive a handoff. Its old Main must not link new children.
+	source, err := q.GetSubmission(ctx, sourceID)
+	if err != nil {
+		return err
+	}
+	if source.Kind == "task_wake" {
+		main, err := q.GetConversation(ctx, source.ConversationID)
+		if err != nil {
+			return err
+		}
+		if main.AgentID != task.AssigneeBotID {
+			return nil
+		}
+	}
+	// Other source receipts authorize the association, including for a child in another Bot.
 	return l.LinkSession(ctx, worktask.System, task, childID, false, now)
 }
 
