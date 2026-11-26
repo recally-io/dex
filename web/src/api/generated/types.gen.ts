@@ -118,7 +118,10 @@ export type TaskRef = {
 
 export type TaskExecutionAttach = {
     harness?: 'claude-code' | 'codex' | 'opencode' | 'custom';
-    machineId?: string;
+    /**
+     * The ID of the registered Runner.
+     */
+    runnerId?: string;
     hostMeta?: TaskExecutionHost;
     workspacePath?: string;
     gitBranch?: string;
@@ -148,7 +151,10 @@ export type TaskExecution = {
     kind: 'dex_session' | 'external_agent';
     state: 'running' | 'completed' | 'failed' | 'stale' | 'cancelled';
     harness?: string;
-    machineId?: string;
+    /**
+     * The ID of the registered Runner.
+     */
+    runnerId?: string;
     runnerName?: string;
     hostname?: string;
     workspacePath?: string;
@@ -174,7 +180,7 @@ export type TaskExecutionList = {
 export type TaskExternalTask = {
     task: TaskRef;
     entries: Array<TaskEntry>;
-    nextAfterSeq: number;
+    nextCursor: number;
 };
 
 export type TaskDetail = {
@@ -653,48 +659,79 @@ export type Automation = AutomationInput & {
     updatedAt: number;
 };
 
-export type InboxSummary = {
-    taskReviews: Array<TaskRef>;
-    sessions: Array<InboxSummarySession>;
-    automations: Array<InboxSummaryAutomation>;
-    inbox: Array<InboxItem>;
+export type BoardAttention = {
+    sessions: Array<BoardAttentionSession>;
+    automations: Array<BoardAttentionAutomation>;
+    /**
+     * Unhandled failed and changed Automation results.
+     */
+    results: Array<AutomationResultSummary>;
+    taskReviews: Array<BoardAttentionTaskReview>;
 };
 
-export type InboxSummarySession = {
+export type BoardAttentionSession = {
+    id: number;
     agentId: string;
-    chat: Chat;
+    title: string;
+    main: boolean;
+    busy: boolean;
+    question?: BoardAttentionQuestion;
 };
 
-export type InboxSummaryAutomation = {
+/**
+ * An open question that waits for the Owner.
+ */
+export type BoardAttentionQuestion = {
+    id: string;
+    text: string;
+    options: Array<string>;
+};
+
+export type BoardAttentionAutomation = {
+    id: string;
     agentId: string;
-    automation: Automation;
+    name: string;
     setup: boolean;
+    targetConversationId?: number;
 };
 
-export type AutomationList = {
-    automations: Array<Automation>;
-};
-
-export type InboxItem = {
+export type AutomationResultSummary = {
     runId: string;
     agentId: string;
-    agentName: string;
     automationId: string;
     automationName: string;
-    summary: string;
     chatId: number;
-    createdAt: number;
     outcome: 'changed' | 'failed';
+    summary: string;
+    createdAt: number;
     read: boolean;
-    dismissed: boolean;
     /**
-     * The Runner on which the run started. Empty for a run with no message, and for a run from before Dex stored it.
+     * The Runner on which the run started. Empty if no Runner was recorded.
      */
     runnerId: string;
     /**
      * The cwd on the Runner when the run started.
      */
     cwd: string;
+};
+
+export type BoardAttentionTaskReview = {
+    key: string;
+    title: string;
+    assigneeBotId: string;
+};
+
+export type AutomationList = {
+    automations: Array<Automation>;
+};
+
+export type AutomationResultList = {
+    results: Array<AutomationResult>;
+};
+
+export type AutomationResult = AutomationResultSummary & {
+    agentName: string;
+    dismissed: boolean;
 };
 
 export type AutomationRun = {
@@ -2523,7 +2560,7 @@ export type ListTaskExecutionsData = {
     path?: never;
     query?: {
         taskKey?: string;
-        machineId?: string;
+        runnerId?: string;
         kind?: string;
         state?: string;
     };
@@ -2729,65 +2766,63 @@ export type StreamTaskEventsResponses = {
 
 export type StreamTaskEventsResponse = StreamTaskEventsResponses[keyof StreamTaskEventsResponses];
 
-export type GetInboxSummaryData = {
+export type GetBoardAttentionData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/inbox/summary';
+    url: '/api/board/attention';
 };
 
-export type GetInboxSummaryErrors = {
+export type GetBoardAttentionErrors = {
     /**
      * The request failed.
      */
     default: Error;
 };
 
-export type GetInboxSummaryError = GetInboxSummaryErrors[keyof GetInboxSummaryErrors];
+export type GetBoardAttentionError = GetBoardAttentionErrors[keyof GetBoardAttentionErrors];
 
-export type GetInboxSummaryResponses = {
+export type GetBoardAttentionResponses = {
     /**
-     * Inbox summary across Bots.
+     * Board attention across Bots.
      */
-    200: InboxSummary;
+    200: BoardAttention;
 };
 
-export type GetInboxSummaryResponse = GetInboxSummaryResponses[keyof GetInboxSummaryResponses];
+export type GetBoardAttentionResponse = GetBoardAttentionResponses[keyof GetBoardAttentionResponses];
 
-export type ListInboxData = {
+export type ListAutomationResultsData = {
     body?: never;
     path?: never;
     query?: {
         includeDismissed?: boolean;
     };
-    url: '/api/inbox';
+    url: '/api/automations/results';
 };
 
-export type ListInboxErrors = {
+export type ListAutomationResultsErrors = {
     /**
      * The request failed.
      */
     default: Error;
 };
 
-export type ListInboxError = ListInboxErrors[keyof ListInboxErrors];
+export type ListAutomationResultsError = ListAutomationResultsErrors[keyof ListAutomationResultsErrors];
 
-export type ListInboxResponses = {
+export type ListAutomationResultsResponses = {
     /**
-     * Inbox results.
+     * Automation results.
      */
-    200: {
-        items: Array<InboxItem>;
-    };
+    200: AutomationResultList;
 };
 
-export type ListInboxResponse = ListInboxResponses[keyof ListInboxResponses];
+export type ListAutomationResultsResponse = ListAutomationResultsResponses[keyof ListAutomationResultsResponses];
 
 export type ListHeldEventsData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/inbox/held-events';
+    url: '/api/sources/held-events';
 };
 
 export type ListHeldEventsErrors = {
@@ -2805,6 +2840,10 @@ export type ListHeldEventsResponses = {
      */
     200: {
         events: Array<HeldEvent>;
+        /**
+         * The number of all open held events.
+         */
+        total: number;
     };
 };
 
@@ -2819,7 +2858,7 @@ export type AttachHeldEventData = {
         eventId: string;
     };
     query?: never;
-    url: '/api/inbox/held-events/{eventId}/attach';
+    url: '/api/sources/held-events/{eventId}/attach';
 };
 
 export type AttachHeldEventErrors = {
@@ -2850,7 +2889,7 @@ export type DismissHeldEventData = {
         eventId: string;
     };
     query?: never;
-    url: '/api/inbox/held-events/{eventId}/dismiss';
+    url: '/api/sources/held-events/{eventId}/dismiss';
 };
 
 export type DismissHeldEventErrors = {
@@ -2875,16 +2914,16 @@ export type DismissHeldEventResponses = {
 
 export type DismissHeldEventResponse = DismissHeldEventResponses[keyof DismissHeldEventResponses];
 
-export type ReadInboxItemData = {
+export type ReadAutomationResultData = {
     body?: never;
     path: {
         runId: string;
     };
     query?: never;
-    url: '/api/inbox/{runId}/read';
+    url: '/api/automations/results/{runId}/read';
 };
 
-export type ReadInboxItemErrors = {
+export type ReadAutomationResultErrors = {
     /**
      * The request failed.
      */
@@ -2895,27 +2934,27 @@ export type ReadInboxItemErrors = {
     default: Error;
 };
 
-export type ReadInboxItemError = ReadInboxItemErrors[keyof ReadInboxItemErrors];
+export type ReadAutomationResultError = ReadAutomationResultErrors[keyof ReadAutomationResultErrors];
 
-export type ReadInboxItemResponses = {
+export type ReadAutomationResultResponses = {
     /**
      * State saved.
      */
     200: Ok;
 };
 
-export type ReadInboxItemResponse = ReadInboxItemResponses[keyof ReadInboxItemResponses];
+export type ReadAutomationResultResponse = ReadAutomationResultResponses[keyof ReadAutomationResultResponses];
 
-export type DismissInboxItemData = {
+export type DismissAutomationResultData = {
     body?: never;
     path: {
         runId: string;
     };
     query?: never;
-    url: '/api/inbox/{runId}/dismiss';
+    url: '/api/automations/results/{runId}/dismiss';
 };
 
-export type DismissInboxItemErrors = {
+export type DismissAutomationResultErrors = {
     /**
      * The request failed.
      */
@@ -2926,16 +2965,16 @@ export type DismissInboxItemErrors = {
     default: Error;
 };
 
-export type DismissInboxItemError = DismissInboxItemErrors[keyof DismissInboxItemErrors];
+export type DismissAutomationResultError = DismissAutomationResultErrors[keyof DismissAutomationResultErrors];
 
-export type DismissInboxItemResponses = {
+export type DismissAutomationResultResponses = {
     /**
      * State saved.
      */
     200: Ok;
 };
 
-export type DismissInboxItemResponse = DismissInboxItemResponses[keyof DismissInboxItemResponses];
+export type DismissAutomationResultResponse = DismissAutomationResultResponses[keyof DismissAutomationResultResponses];
 
 export type CreateSessionData = {
     body: NewSession;

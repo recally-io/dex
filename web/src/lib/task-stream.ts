@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { getBoardAttentionOptions } from "../api/generated/@tanstack/react-query.gen";
 import { checkSession } from "./session";
 
 export async function invalidateTasks(client: QueryClient) {
@@ -7,6 +8,7 @@ export async function invalidateTasks(client: QueryClient) {
     client.invalidateQueries({ queryKey: [{ _id: "listTasks" }] }),
     client.invalidateQueries({ queryKey: [{ _id: "getTask" }] }),
     client.invalidateQueries({ queryKey: [{ _id: "listTaskExecutions" }] }),
+    client.invalidateQueries({ queryKey: getBoardAttentionOptions().queryKey }),
   ]);
 }
 

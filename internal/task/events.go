@@ -43,7 +43,7 @@ type Receipt struct {
 	ResolvedWaits                int64
 	// Alerted is true when the event added a Task alert to Main.
 	Alerted bool
-	// Held is true when the event waits for the owner in the Inbox.
+	// Held is true when the event waits for the Owner on Board.
 	Held bool
 }
 
@@ -233,7 +233,7 @@ func (s *Service) accept(ctx context.Context, event Event, agentID, title string
 	}
 	receipt := Receipt{EventID: id, TaskID: task.ID, Disposition: disposition}
 	if task.ID == "" {
-		// An outsider can send many unmatched events, so only a trusted author fills the Inbox.
+		// An outsider can send many unmatched events, so only a trusted author can create a hold.
 		receipt.Held = disposition == "conflict" || event.HoldUnmatched && !event.RecordOnly
 		if receipt.Held {
 			if err := q.HoldTaskSourceEvent(ctx, sqlc.HoldTaskSourceEventParams{EventID: id, HeldAt: now}); err != nil {

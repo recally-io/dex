@@ -45,12 +45,12 @@ func (s *Service) DispatchExternal(ctx context.Context, c engine.TaskContext, a 
 	if err != nil {
 		return DispatchResult{}, err
 	}
-	machine := runner.EnrolledRunnerID(settings.Handle)
-	if machine == "" {
+	runnerID := runner.EnrolledRunnerID(settings.Handle)
+	if runnerID == "" {
 		return DispatchResult{}, invalid("select an Outbound Runner for this Session")
 	}
 	issue, err := s.tasks.DispatchExternalExecution(ctx, tasksvc.BotInConversation(conv), taskOrigin(source), a.ID, a.Resume, tasksvc.ExternalParams{
-		Harness: a.Harness, MachineID: machine, WorkspacePath: a.Workspace, ExternalSessionID: a.SessionID, DispatchID: c.Key,
+		Harness: a.Harness, RunnerID: runnerID, WorkspacePath: a.Workspace, ExternalSessionID: a.SessionID, DispatchID: c.Key,
 	})
 	if err != nil {
 		return DispatchResult{}, err
@@ -60,7 +60,7 @@ func (s *Service) DispatchExternal(ctx context.Context, c engine.TaskContext, a 
 	cmd := `/bin/bash -c '` + strings.ReplaceAll(a.Command, `'`, `'\''`) + `' >/dev/null 2>&1`
 	p, err := start(runner.RequireEnrollment(ctx, e.RunnerEnrollment), c, chat.ProcessStartArgs{
 		Command: cmd, Cwd: a.Workspace, Label: "External Task run", Wake: background.WakeNone,
-		RunnerID: machine, EnvKind: runner.KindRunner, Workspace: settings.Handle.Workspace(), InheritEnv: settings.Inherit, BaseEnv: settings.Vars,
+		RunnerID: runnerID, EnvKind: runner.KindRunner, Workspace: settings.Handle.Workspace(), InheritEnv: settings.Inherit, BaseEnv: settings.Vars,
 		Env:        map[string]string{"DEX_TASK_TOKEN": issue.TaskToken, "DEX_TASK_SERVER": a.Server, "DEX_TOKEN": "", "DEX_TASK_EXTERNAL_SESSION_ID": e.ExternalSessionID},
 		MaskOutput: func(output string) string { return strings.ReplaceAll(output, issue.TaskToken, "[redacted]") },
 	})

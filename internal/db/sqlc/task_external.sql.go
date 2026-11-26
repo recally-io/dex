@@ -11,12 +11,12 @@ import (
 )
 
 const createExternalExecution = `-- name: CreateExternalExecution :one
-INSERT INTO task_executions (id, task_id, bot_id, kind, harness, machine_id, host_meta_json,
+INSERT INTO task_executions (id, task_id, bot_id, kind, harness, runner_id, host_meta_json,
   workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at,
   started_at, dispatch_id, runner_enrollment, lease_ttl_ms)
 VALUES (?1, ?2, ?3, 'external_agent', ?4, ?5, ?6,
   ?7, ?8, ?9, 1, ?10, ?11, ?11, ?12, ?13, ?14)
-RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
+RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
 `
 
 type CreateExternalExecutionParams struct {
@@ -24,7 +24,7 @@ type CreateExternalExecutionParams struct {
 	TaskID            string        `json:"task_id"`
 	BotID             string        `json:"bot_id"`
 	Harness           string        `json:"harness"`
-	MachineID         string        `json:"machine_id"`
+	RunnerID          string        `json:"runner_id"`
 	HostMetaJson      string        `json:"host_meta_json"`
 	WorkspacePath     string        `json:"workspace_path"`
 	GitBranch         string        `json:"git_branch"`
@@ -42,7 +42,7 @@ func (q *Queries) CreateExternalExecution(ctx context.Context, arg CreateExterna
 		arg.TaskID,
 		arg.BotID,
 		arg.Harness,
-		arg.MachineID,
+		arg.RunnerID,
 		arg.HostMetaJson,
 		arg.WorkspacePath,
 		arg.GitBranch,
@@ -63,7 +63,7 @@ func (q *Queries) CreateExternalExecution(ctx context.Context, arg CreateExterna
 		&i.TurnRequestID,
 		&i.IsPrimary,
 		&i.Harness,
-		&i.MachineID,
+		&i.RunnerID,
 		&i.HostMetaJson,
 		&i.WorkspacePath,
 		&i.GitBranch,
@@ -85,7 +85,7 @@ const expireExternalExecutions = `-- name: ExpireExternalExecutions :many
 UPDATE task_executions SET state = 'stale', ended_at = ?1
 WHERE id IN (SELECT id FROM task_executions WHERE kind = 'external_agent' AND state = 'running'
   AND lease_expires_at <= ?1 ORDER BY lease_expires_at, id LIMIT 100)
-RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
+RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
 `
 
 func (q *Queries) ExpireExternalExecutions(ctx context.Context, at sql.NullInt64) ([]TaskExecution, error) {
@@ -106,7 +106,7 @@ func (q *Queries) ExpireExternalExecutions(ctx context.Context, at sql.NullInt64
 			&i.TurnRequestID,
 			&i.IsPrimary,
 			&i.Harness,
-			&i.MachineID,
+			&i.RunnerID,
 			&i.HostMetaJson,
 			&i.WorkspacePath,
 			&i.GitBranch,
@@ -145,7 +145,7 @@ func (q *Queries) ExtendActiveExternalLeases(ctx context.Context, expiresAt inte
 }
 
 const getExternalExecution = `-- name: GetExternalExecution :one
-SELECT id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state FROM task_executions WHERE id = ? AND kind = 'external_agent'
+SELECT id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state FROM task_executions WHERE id = ? AND kind = 'external_agent'
 `
 
 func (q *Queries) GetExternalExecution(ctx context.Context, id string) (TaskExecution, error) {
@@ -160,7 +160,7 @@ func (q *Queries) GetExternalExecution(ctx context.Context, id string) (TaskExec
 		&i.TurnRequestID,
 		&i.IsPrimary,
 		&i.Harness,
-		&i.MachineID,
+		&i.RunnerID,
 		&i.HostMetaJson,
 		&i.WorkspacePath,
 		&i.GitBranch,
@@ -287,9 +287,9 @@ func (q *Queries) ListExternalTaskEntries(ctx context.Context, arg ListExternalT
 }
 
 const listTaskExecutions = `-- name: ListTaskExecutions :many
-SELECT e.id, e.task_id, e.bot_id, e.kind, e.conversation_id, e.turn_request_id, e.is_primary, e.harness, e.machine_id, e.host_meta_json, e.workspace_path, e.git_branch, e.external_session_id, e.lease_epoch, e.lease_expires_at, e.last_heartbeat_at, e.started_at, e.ended_at, e.dispatch_id, e.lease_ttl_ms, e.runner_enrollment, e.state, t.number AS task_number, coalesce(r.name, '') AS runner_name
+SELECT e.id, e.task_id, e.bot_id, e.kind, e.conversation_id, e.turn_request_id, e.is_primary, e.harness, e.runner_id, e.host_meta_json, e.workspace_path, e.git_branch, e.external_session_id, e.lease_epoch, e.lease_expires_at, e.last_heartbeat_at, e.started_at, e.ended_at, e.dispatch_id, e.lease_ttl_ms, e.runner_enrollment, e.state, t.number AS task_number, coalesce(r.name, '') AS runner_name
 FROM task_executions e JOIN tasks t ON t.id = e.task_id
-LEFT JOIN runners r ON r.id = e.machine_id AND r.kind = 'runner'
+LEFT JOIN runners r ON r.id = e.runner_id AND r.kind = 'runner'
   AND EXISTS (SELECT 1 FROM runner_pairing p WHERE p.runner_id = r.id
     AND p.credential_digest <> '' AND p.credential_digest = e.runner_enrollment)
 WHERE (CAST(?1 AS TEXT) = '' OR e.task_id = ?1)
@@ -300,10 +300,10 @@ ORDER BY e.started_at DESC, e.id DESC
 `
 
 type ListTaskExecutionsParams struct {
-	TaskID          string `json:"task_id"`
-	MachineIDFilter string `json:"machine_id_filter"`
-	KindFilter      string `json:"kind_filter"`
-	StateFilter     string `json:"state_filter"`
+	TaskID         string `json:"task_id"`
+	RunnerIDFilter string `json:"runner_id_filter"`
+	KindFilter     string `json:"kind_filter"`
+	StateFilter    string `json:"state_filter"`
 }
 
 type ListTaskExecutionsRow struct {
@@ -315,7 +315,7 @@ type ListTaskExecutionsRow struct {
 func (q *Queries) ListTaskExecutions(ctx context.Context, arg ListTaskExecutionsParams) ([]ListTaskExecutionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTaskExecutions,
 		arg.TaskID,
-		arg.MachineIDFilter,
+		arg.RunnerIDFilter,
 		arg.KindFilter,
 		arg.StateFilter,
 	)
@@ -335,7 +335,7 @@ func (q *Queries) ListTaskExecutions(ctx context.Context, arg ListTaskExecutions
 			&i.TaskExecution.TurnRequestID,
 			&i.TaskExecution.IsPrimary,
 			&i.TaskExecution.Harness,
-			&i.TaskExecution.MachineID,
+			&i.TaskExecution.RunnerID,
 			&i.TaskExecution.HostMetaJson,
 			&i.TaskExecution.WorkspacePath,
 			&i.TaskExecution.GitBranch,
@@ -369,7 +369,7 @@ const resumeExternalExecution = `-- name: ResumeExternalExecution :one
 UPDATE task_executions SET state = 'running', bot_id = ?1, lease_epoch = lease_epoch + 1,
   lease_expires_at = ?2, last_heartbeat_at = ?3, ended_at = NULL,
   dispatch_id = ?4, lease_ttl_ms = ?5
-WHERE id = ?6 AND kind = 'external_agent' AND state IN ('running', 'stale') RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
+WHERE id = ?6 AND kind = 'external_agent' AND state IN ('running', 'stale') RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
 `
 
 type ResumeExternalExecutionParams struct {
@@ -400,7 +400,7 @@ func (q *Queries) ResumeExternalExecution(ctx context.Context, arg ResumeExterna
 		&i.TurnRequestID,
 		&i.IsPrimary,
 		&i.Harness,
-		&i.MachineID,
+		&i.RunnerID,
 		&i.HostMetaJson,
 		&i.WorkspacePath,
 		&i.GitBranch,
@@ -443,7 +443,7 @@ UPDATE task_executions SET
   external_session_id = coalesce(?6, external_session_id)
 WHERE id = ?7 AND task_id = ?8 AND state = 'running' AND kind = 'external_agent'
   AND lease_epoch = ?9 AND lease_expires_at > ?2
-RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
+RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
 `
 
 type WriteExternalExecutionParams struct {
@@ -480,7 +480,7 @@ func (q *Queries) WriteExternalExecution(ctx context.Context, arg WriteExternalE
 		&i.TurnRequestID,
 		&i.IsPrimary,
 		&i.Harness,
-		&i.MachineID,
+		&i.RunnerID,
 		&i.HostMetaJson,
 		&i.WorkspacePath,
 		&i.GitBranch,

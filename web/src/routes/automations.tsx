@@ -1,8 +1,8 @@
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Automation, AutomationRun, InboxItem } from "../api/generated/types.gen";
+import type { Automation, AutomationRun, AutomationResult } from "../api/generated/types.gen";
 import {
   listAutomationsOptions,
   getAutomationOptions,
@@ -11,9 +11,14 @@ import {
   deleteAutomationMutation,
   runAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { type Continuation, continueResult, inboxOptions, resultQuote } from "../lib/inbox";
-import { dismissInboxItem, readInboxItem } from "../api/generated/sdk.gen";
-import { refreshAutomations, refreshInbox } from "../lib/queries";
+import {
+  automationResultsOptions,
+  useContinueResult,
+  useDismissResults,
+  useReadResultsOnOpen,
+} from "../lib/automation-results";
+import { boardAttentionOptions } from "../lib/board-attention";
+import { refreshAutomations } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
 import { formatDuration } from "../lib/sessions";
@@ -221,34 +226,28 @@ function ReplyComposer({
   onCancel: () => void;
 }) {
   const agentId = useAgentId();
-  const navigate = useNavigate();
   const [text, setText] = useState("");
-  const continuation = useRef<Continuation | null>(null);
   const outcome = run.outcome || (run.status === "failed" ? "failed" : "unknown");
   const summary = run.summary || run.reason || "";
+  const start = useContinueResult();
 
-  const start = useMutation({
-    mutationFn: async () => {
-      // The quote comes first: the chat takes its title from the start of the message.
-      const quote = resultQuote({
+  const reply = () => {
+    if (!run.chatId) return;
+
+    start.mutate({
+      result: {
         agentId,
         automationName: automation.name,
         runId: run.id,
-        chatId: run.chatId!,
+        chatId: run.chatId,
         summary,
         outcome,
-      });
-
-      const chatId = await continueResult(
-        agentId,
-        run,
-        text.trim() ? `${quote}\n\n${text.trim()}` : quote,
-        continuation,
-      );
-
-      await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chatId) } });
-    },
-  });
+        runnerId: run.runnerId,
+        cwd: run.cwd,
+      },
+      message: text,
+    });
+  };
 
   return (
     <section aria-label="New session" className="flex flex-col gap-2.5 border-2 border-foreground p-3.5">
@@ -277,7 +276,7 @@ function ReplyComposer({
         <span className="flex-1 text-[11px] text-muted-foreground">
           Opens a normal chat. The automation and its instructions do not change.
         </span>
-        <Button size="sm" disabled={start.isPending} onClick={() => start.mutate()}>
+        <Button size="sm" disabled={start.isPending} onClick={reply}>
           {start.isPending ? "Starting…" : "Start chat"}
         </Button>
       </div>
@@ -297,16 +296,11 @@ function RunBlock({
   automation: Automation;
   botName: string;
   now: number;
-  item?: InboxItem;
+  item?: AutomationResult;
 }) {
   const agentId = useAgentId();
 
-  const handle = useMutation({
-    mutationFn: async (runId: string) => {
-      await dismissInboxItem({ path: { runId }, throwOnError: true });
-      await refreshInbox();
-    },
-  });
+  const handle = useDismissResults();
 
   const [replying, setReplying] = useState(false);
   const timeZone = automation.timeZone;
@@ -471,7 +465,8 @@ function PauseButton({ automation }: { automation: Automation }) {
 }
 
 export function AutomationPage({ automationId }: { automationId: string }) {
-  const inbox = useQuery({ ...inboxOptions(), refetchInterval: 10_000 });
+  const results = useQuery(automationResultsOptions());
+  const attention = useQuery(boardAttentionOptions());
   const agentId = useAgentId();
   const navigate = useNavigate();
 
@@ -499,26 +494,22 @@ export function AutomationPage({ automationId }: { automationId: string }) {
     },
   });
 
-  // Opening the page reads every result of this automation once. A failed request is not retried;
-  // the result stays unread and the next visit asks again.
-  const asked = useRef(new Set<string>());
-  const items = inbox.data?.items;
+  const items = results.data?.results;
 
-  useEffect(() => {
-    const unread = (items ?? []).filter(
-      (item) => item.automationId === automationId && !item.read && !asked.current.has(item.runId),
-    );
-
-    if (!unread.length) return;
-
-    for (const item of unread) asked.current.add(item.runId);
-    void Promise.all(unread.map((item) => readInboxItem({ path: { runId: item.runId } }))).then(refreshInbox);
-  }, [items, automationId]);
+  useReadResultsOnOpen(items, automationId);
 
   const history = runs.data?.runs ?? [];
   const latestRun = history.find((h) => h.id === run.data?.id) ?? run.data;
   const busy = history.some((h) => h.status === "running");
-  const blocked = model && !model.ok ? "Choose an available bot model first." : undefined;
+
+  const blocked =
+    automation.data?.session === "session"
+      ? attention.data?.automations.find((item) => item.id === automationId)?.setup
+        ? "Choose an available session model first."
+        : undefined
+      : model && !model.ok
+        ? "Choose an available bot model first."
+        : undefined;
 
   const crumb = (
     <Link to="/a/$agentId/automations" params={{ agentId }} className="hover:underline">

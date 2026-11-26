@@ -7,12 +7,35 @@ import {
   createAutomation,
   createTask,
   splitTask,
+  getBoardAttention,
   getMainChat,
   getTask,
+  listHeldEvents,
   runAutomation,
   sendMessage,
   updateAgent,
+  updateTask,
 } from "../src/api/generated/sdk.gen";
+
+// Tests share a server. Snapshot existing attention before this test adds any work.
+async function attentionBaseline(client: ReturnType<typeof createClient>) {
+  const [{ data: board }, { data: held }] = await Promise.all([
+    getBoardAttention({ client, throwOnError: true }),
+    listHeldEvents({ client, throwOnError: true }),
+  ]);
+
+  return (
+    board.sessions.filter((session) => session.question).length +
+    board.taskReviews.length +
+    board.results.length +
+    board.automations.filter((automation) => automation.setup).length +
+    held.total
+  );
+}
+
+function boardLabel(count: number) {
+  return count === 0 ? "Board" : `Board, ${count} ${count === 1 ? "item needs" : "items need"} attention`;
+}
 
 test("creates, updates, and reviews Tasks from the unified Board", async ({ app, screen }) => {
   await app.open("/board");
@@ -26,15 +49,21 @@ test("creates, updates, and reviews Tasks from the unified Board", async ({ app,
   await screen.getByRole("button", "Note only", { exact: true }).tap();
   await expect(screen.getByText("The change is ready for review.")).toBeVisible();
 
-  await screen.getByRole("button", "Ready", { exact: true }).tap();
+  await screen.getByRole("button", "Reviewer: None", { exact: true }).tap();
+  await screen.getByLabel("Reviewer", { exact: true }).selectOption({ value: "owner" });
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByRole("button", "Reviewer: Owner", { exact: true })).toBeVisible();
+
+  const status = screen.getByRole("button", "Status", { exact: true });
+  await status.tap();
   await screen.getByRole("button", "In Progress", { exact: true }).tap();
-  await screen.getByRole("button", "In Progress", { exact: true }).tap();
+  await status.tap();
   await screen.getByRole("button", "In Review", { exact: true }).tap();
   await expect(screen.getByRole("region", "In Review", { exact: true })).toBeVisible();
   await screen.getByRole("button", "Approve", { exact: true }).tap();
   await expect(screen.getByText(/approved/i)).toBeVisible();
 
-  await screen.getByRole("button", "Done", { exact: true }).tap();
+  await status.tap();
   await screen.getByRole("button", "In Progress", { exact: true }).tap();
   await screen.getByRole("link", "← Board", { exact: true }).tap();
   await expect(screen.getByRole("link", /Fix the sign-in flow/)).toBeVisible();
@@ -49,6 +78,14 @@ test("unblocks a subtask by approving its dependency from Board", async ({ app, 
 
   const client = createClient({ baseUrl: origin.origin });
 
+  const baseline = await attentionBaseline(client);
+
+  const { data: reviewerBot } = await createAgent({
+    client,
+    body: { name: "Dependency fixture", provider: "faux", modelId: "echo" },
+    throwOnError: true,
+  });
+
   const { data: parent } = await createTask({
     client,
     body: { title: "Release a build", assigneeBotId: "default" },
@@ -58,7 +95,12 @@ test("unblocks a subtask by approving its dependency from Board", async ({ app, 
   const { data: upstream } = await splitTask({
     client,
     path: { taskKey: parent.key },
-    body: { title: "Verify the build", status: "in_progress", reviewer: "owner" },
+    body: {
+      title: "Verify the build",
+      assigneeBotId: reviewerBot.id,
+      status: "in_progress",
+      reviewer: "owner",
+    },
     throwOnError: true,
   });
 
@@ -76,16 +118,27 @@ test("unblocks a subtask by approving its dependency from Board", async ({ app, 
   await screen.getByRole("button", "Add dependency", { exact: true }).tap();
   await expect(screen.getByText("Blocked", { exact: true })).toBeVisible();
 
-  await screen.getByRole("link", /Verify the build/).tap();
-  await screen.getByRole("button", "In Progress", { exact: true }).tap();
-  await screen.getByRole("button", "In Review", { exact: true }).tap();
-  await expect(screen.getByRole("region", "In Review", { exact: true })).toBeVisible();
-
   await app.open("/board");
+  const blocked = screen.getByRole("region", "Blocked", { exact: true });
+  await expect(blocked.getByRole("link", /Publish the build/)).toBeVisible();
+  await expect(screen.getByRole("link", boardLabel(baseline), { exact: true })).toBeVisible();
+
+  await updateTask({
+    client,
+    path: { taskKey: upstream.key },
+    body: { status: "in_review" },
+    throwOnError: true,
+  });
   const needsYou = screen.getByRole("region", "Needs you", { exact: true });
-  await expect(needsYou.getByRole("link", /Verify the build/)).toBeVisible();
+  // Review from another client appears before the 10-second polling interval.
+  await expect(needsYou.getByRole("link", /Verify the build/)).toBeVisible({ timeout: 4000 });
+  await expect(screen.getByRole("link", boardLabel(baseline + 1), { exact: true })).toBeVisible();
+  const reviewStatus = screen.getByRole("link", `${reviewerBot.name}, Needs attention`, { exact: true });
+  await expect(reviewStatus).toBeVisible();
   await needsYou.getByRole("button", "Approve", { exact: true }).tap();
   await expect(needsYou.getByRole("link", /Verify the build/)).toHaveCount(0);
+  await expect(screen.getByRole("link", boardLabel(baseline), { exact: true })).toBeVisible();
+  await expect(reviewStatus).toHaveCount(0);
 
   await app.open(publishPath);
   await expect(screen.getByRole("heading", "Publish the build")).toBeVisible();
@@ -167,6 +220,8 @@ test("answers questions and resolves automation updates directly from Board", as
       new Error(`${request.method} ${request.url}: ${response?.status} ${JSON.stringify(error)}`),
   );
 
+  const baseline = await attentionBaseline(client);
+
   const { data: bot } = await createAgent({
     client,
     body: { name: "Board fixture", provider: "faux", modelId: "tool", runnerId: "local" },
@@ -219,9 +274,15 @@ test("answers questions and resolves automation updates directly from Board", as
   await app.open(`/a/${bot.id}`);
   await expect(screen.getByRole("button", "A Blue", { exact: true })).toBeVisible();
 
-  // Allow one 10-second summary refresh if the initial read comes before the result.
+  // Allow one 10-second attention refresh if the initial read comes before the result.
   await app.open("/board");
-  await expect(screen.getByRole("link", /^Board, 3 items need attention$/)).toBeVisible({ timeout: 15_000 });
+
+  const update = screen
+    .getByRole("region", "Updates", { exact: true })
+    .getByRole("button", /^Board changed fixture/);
+
+  await expect(update).toBeVisible({ timeout: 15_000 });
+  await expect(screen.getByRole("link", boardLabel(baseline + 3), { exact: true })).toBeVisible();
 
   // The tool fixture expects a tool call as input. Use echo for the owner's answer.
   await updateAgent({
@@ -235,12 +296,12 @@ test("answers questions and resolves automation updates directly from Board", as
 
   await screen.getByRole("button", "Blue", { exact: true }).tap();
   await expect(screen.getByText("Which color should the bot use?", { exact: true })).toHaveCount(0);
-  await expect(screen.getByRole("link", /^Board, 2 items need attention$/)).toBeVisible();
+  await expect(screen.getByRole("link", boardLabel(baseline + 2), { exact: true })).toBeVisible();
 
-  await screen.getByRole("button", /Board changed fixture/).tap();
+  await update.tap();
   await expect(screen.getByText("A new item appeared", { exact: true })).toBeVisible();
   await screen.getByRole("button", "Done", { exact: true }).tap();
-  await expect(screen.getByRole("link", /^Board, 1 item needs attention$/)).toBeVisible();
+  await expect(screen.getByRole("link", boardLabel(baseline + 1), { exact: true })).toBeVisible();
   await expect(screen.getByText("Board changed fixture", { exact: true })).toHaveCount(0);
 });
 

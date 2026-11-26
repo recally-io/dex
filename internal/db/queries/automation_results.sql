@@ -1,4 +1,4 @@
--- name: ListInbox :many
+-- name: ListAutomationResults :many
 SELECT r.id AS run_id, a.agent_id, b.name AS agent_name,
     a.id AS automation_id, a.name AS automation_name,
     CAST(coalesce(s.conversation_id, 0) AS INTEGER) AS chat_id,
@@ -14,7 +14,7 @@ WHERE (r.outcome = 'failed' OR r.status = 'failed' OR s.status = 'unanswered' OR
     AND (r.dismissed_at IS NULL OR sqlc.arg(include_dismissed) = 1)
 ORDER BY r.created_at DESC, r.id DESC;
 
--- name: ReadInboxItem :execrows
+-- name: ReadAutomationResult :execrows
 UPDATE automation_runs SET read_at = coalesce(read_at, sqlc.arg(now))
 WHERE automation_runs.id = sqlc.arg(id) AND (
     (automation_runs.status = 'failed' AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.id = automation_runs.id)) OR
@@ -22,7 +22,7 @@ WHERE automation_runs.id = sqlc.arg(id) AND (
         AND (outcome = 'failed' OR automation_runs.status = 'failed' OR s.status = 'unanswered' OR (outcome = 'changed' AND duplicate = 0)))
 );
 
--- name: DismissInboxItem :execrows
+-- name: DismissAutomationResult :execrows
 UPDATE automation_runs SET dismissed_at = coalesce(dismissed_at, sqlc.arg(now))
 WHERE automation_runs.id = sqlc.arg(id) AND (
     (automation_runs.status = 'failed' AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.id = automation_runs.id)) OR

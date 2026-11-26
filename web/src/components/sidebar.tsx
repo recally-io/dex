@@ -7,7 +7,7 @@ import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstac
 import { AgentContext } from "../lib/agent-scope";
 import { useApp } from "../lib/app-state";
 import { instructionsDirty } from "../lib/instructions";
-import type { BotStatus } from "../lib/inbox-summary";
+import type { BotStatus } from "../lib/board-attention";
 import { cn } from "../lib/utils";
 import { AgentAvatar } from "./agent-avatar";
 import { AgentCreateDialog } from "./agent-create-dialog";

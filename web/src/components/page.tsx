@@ -5,7 +5,7 @@ import { cn } from "../lib/utils";
 export const ShellContext = createContext<{
   openDrawer: () => void;
   attention: boolean;
-  /** The desktop sidebar. Attention shows that Inbox has items while the sidebar is hidden. */
+  /** The desktop sidebar. Shows Board attention while the sidebar is hidden. */
   sidebar?: { open: boolean; toggle: () => void; attention: boolean };
 }>({ openDrawer: () => {}, attention: false });
 

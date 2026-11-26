@@ -7,34 +7,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/db"
 )
 
-type inboxItem struct {
-	RunID          string `json:"runId"`
-	AgentID        string `json:"agentId"`
-	AgentName      string `json:"agentName"`
-	AutomationID   string `json:"automationId"`
-	AutomationName string `json:"automationName"`
-	ChatID         int64  `json:"chatId"`
-	Outcome        string `json:"outcome"`
-	Summary        string `json:"summary"`
-	Read           bool   `json:"read"`
-	Dismissed      bool   `json:"dismissed"`
+func automationResults(t *testing.T, d *dex, path string) []api.AutomationResult {
+	t.Helper()
+	var list api.AutomationResultList
+	d.must(t, http.MethodGet, path, nil, &list)
+	if list.Results == nil {
+		t.Fatal("results must be an array")
+	}
+	return list.Results
 }
 
-func inbox(t *testing.T, d *dex, path string) []inboxItem {
-	t.Helper()
-	var list struct {
-		Items []inboxItem `json:"items"`
-	}
-	d.must(t, http.MethodGet, path, nil, &list)
-	if list.Items == nil {
-		t.Fatal("inbox must return an array")
-	}
-	return list.Items
-}
 func TestUserCanHandleFailedRunWithoutTranscript(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -49,18 +36,24 @@ func TestUserCanHandleFailedRunWithoutTranscript(t *testing.T) {
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO automation_runs(id,automation_id,status,reason,created_at) VALUES ('failed-before-input',?,'failed','dex stopped',1)`, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	// When the Owner opens Inbox, a failed run without a transcript is visible.
-	items := inbox(t, d, "/api/inbox")
+	// When the Owner opens Board, a failed run without a transcript is visible.
+	var attention api.BoardAttention
+	d.must(t, http.MethodGet, "/api/board/attention", nil, &attention)
+	if len(attention.Results) != 1 || attention.Results[0].RunId != "failed-before-input" {
+		t.Fatalf("failed run missing from Board: %+v", attention.Results)
+	}
+	items := automationResults(t, d, "/api/automations/results")
 	if len(items) != 1 || items[0].RunID != "failed-before-input" || items[0].Outcome != "failed" {
 		t.Fatalf("failed run missing: %+v", items)
 	}
-	d.must(t, http.MethodPost, "/api/inbox/failed-before-input/dismiss", nil, nil)
-	if got := inbox(t, d, "/api/inbox"); len(got) != 0 {
-		t.Fatalf("handled run still visible: %+v", got)
+	d.must(t, http.MethodPost, "/api/automations/results/failed-before-input/dismiss", nil, nil)
+	d.must(t, http.MethodGet, "/api/board/attention", nil, &attention)
+	if len(attention.Results) != 0 {
+		t.Fatalf("handled run still on Board: %+v", attention.Results)
 	}
 }
 
-func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
+func TestUserSeesOnlyActionableAutomationResultsAcrossBots(t *testing.T) {
 	t.Parallel()
 	// Given two bots with real tool routines and an old run without an outcome.
 	data := t.TempDir()
@@ -100,8 +93,8 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 	if _, err = conn.ExecContext(t.Context(), `INSERT INTO automation_runs(id,automation_id,status,created_at) SELECT 'legacy',id,'started',1 FROM automations LIMIT 1`); err != nil {
 		t.Fatal(err)
 	}
-	// When the owner opens the global Inbox.
-	rows := inbox(t, d, "/api/inbox")
+	// When the Owner lists Automation results.
+	rows := automationResults(t, d, "/api/automations/results")
 	// Then both bots have one changed result and both failed results, including repeated failures.
 	if len(rows) != 6 {
 		t.Fatalf("want 6 actionable results, got %+v", rows)
@@ -110,7 +103,7 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 	for _, r := range rows {
 		counts[r.AgentID]++
 		if r.ChatID == 0 || r.Summary != "check result" || r.Read || r.Dismissed || r.AgentName == "" || r.AutomationName == "" || (r.Outcome != "changed" && r.Outcome != "failed") {
-			t.Fatalf("invalid inbox result: %+v", r)
+			t.Fatalf("invalid Automation result: %+v", r)
 		}
 	}
 	if counts["default"] != 3 || counts[bot.ID] != 3 {
@@ -133,16 +126,16 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 	// When the owner reads and dismisses one bot's results, repeated writes are safe.
 	target := rows[0]
 	for range 2 {
-		d.must(t, http.MethodPost, "/api/inbox/"+target.RunID+"/read", nil, nil)
-		d.must(t, http.MethodPost, "/api/inbox/"+target.RunID+"/dismiss", nil, nil)
+		d.must(t, http.MethodPost, "/api/automations/results/"+target.RunID+"/read", nil, nil)
+		d.must(t, http.MethodPost, "/api/automations/results/"+target.RunID+"/dismiss", nil, nil)
 	}
 	// Then read and dismissed state survive restart and other results stay unread.
 	d.stop()
 	d = startDexWith(t, app.Config{DataDir: data, AutomationCheck: time.Hour})
-	if got := inbox(t, d, "/api/inbox"); len(got) != 5 {
+	if got := automationResults(t, d, "/api/automations/results"); len(got) != 5 {
 		t.Fatalf("dismissed result visible: %+v", got)
 	}
-	all := inbox(t, d, "/api/inbox?includeDismissed=true")
+	all := automationResults(t, d, "/api/automations/results?includeDismissed=true")
 	if len(all) != 6 {
 		t.Fatalf("all results: %+v", all)
 	}
@@ -157,7 +150,7 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 	}
 	for _, id := range []string{"missing", "legacy"} {
 		for _, action := range []string{"read", "dismiss"} {
-			status, body := d.call(t, http.MethodPost, "/api/inbox/"+id+"/"+action, nil)
+			status, body := d.call(t, http.MethodPost, "/api/automations/results/"+id+"/"+action, nil)
 			if status != http.StatusNotFound {
 				t.Fatalf("%s %s: %d %s", id, action, status, body)
 			}

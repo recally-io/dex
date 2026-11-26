@@ -493,7 +493,7 @@ paths:
         - name: taskKey
           in: query
           schema: { type: string }
-        - name: machineId
+        - name: runnerId
           in: query
           schema: { type: string }
         - name: kind
@@ -635,39 +635,33 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
 
-  /api/inbox/summary:
+  /api/board/attention:
     get:
-      operationId: getInboxSummary
-      description: Sessions and automation activity across bots.
+      operationId: getBoardAttention
+      description: Owner attention and session activity across Bots.
       responses:
         "200":
-          description: Inbox summary across Bots.
+          description: Board attention across Bots.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/InboxSummary" }
+              schema: { $ref: "#/components/schemas/BoardAttention" }
         default: { $ref: "#/components/responses/Error" }
-  /api/inbox:
+  /api/automations/results:
     get:
-      operationId: listInbox
-      description: Actionable automation results across all bots, newest first.
+      operationId: listAutomationResults
+      description: Actionable Automation results across Bots, newest first.
       parameters:
         - in: query
           name: includeDismissed
           schema: { type: boolean, default: false }
       responses:
         "200":
-          description: Inbox results.
+          description: Automation results.
           content:
             application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: "#/components/schemas/InboxItem" }
+              schema: { $ref: "#/components/schemas/AutomationResultList" }
         default: { $ref: "#/components/responses/Error" }
-  /api/inbox/held-events:
+  /api/sources/held-events:
     get:
       operationId: listHeldEvents
       description: The newest 100 source events that wait for the owner.
@@ -678,13 +672,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [events]
+                required: [events, total]
                 properties:
                   events:
                     type: array
                     items: { $ref: "#/components/schemas/HeldEvent" }
+                  total:
+                    type: integer
+                    format: int64
+                    description: The number of all open held events.
         default: { $ref: "#/components/responses/Error" }
-  /api/inbox/held-events/{eventId}/attach:
+  /api/sources/held-events/{eventId}/attach:
     parameters:
       - in: path
         name: eventId
@@ -707,7 +705,7 @@ paths:
         "204": { description: Event attached. }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
-  /api/inbox/held-events/{eventId}/dismiss:
+  /api/sources/held-events/{eventId}/dismiss:
     parameters:
       - in: path
         name: eventId
@@ -715,20 +713,20 @@ paths:
         schema: { type: string }
     post:
       operationId: dismissHeldEvent
-      description: Remove a held event from the Inbox. Dex keeps the event record.
+      description: Remove a held event from Board. Dex keeps the event record.
       responses:
         "204": { description: Event dismissed. }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
-  /api/inbox/{runId}/read:
+  /api/automations/results/{runId}/read:
     parameters:
       - in: path
         name: runId
         required: true
         schema: { type: string }
     post:
-      operationId: readInboxItem
-      description: Idempotently read one actionable result.
+      operationId: readAutomationResult
+      description: Mark one actionable result as read. Repeated requests keep the first read time.
       responses:
         "200":
           description: State saved.
@@ -737,15 +735,15 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
-  /api/inbox/{runId}/dismiss:
+  /api/automations/results/{runId}/dismiss:
     parameters:
       - in: path
         name: runId
         required: true
         schema: { type: string }
     post:
-      operationId: dismissInboxItem
-      description: Idempotently dismiss one actionable result.
+      operationId: dismissAutomationResult
+      description: Dismiss one actionable result. Repeated requests keep the first dismissal time.
       responses:
         "200":
           description: State saved.
@@ -3061,7 +3059,9 @@ components:
       type: object
       properties:
         harness: { type: string, enum: [claude-code, codex, opencode, custom] }
-        machineId: { type: string }
+        runnerId:
+          type: string
+          description: The ID of the registered Runner.
         hostMeta: { $ref: "#/components/schemas/TaskExecutionHost" }
         workspacePath: { type: string }
         gitBranch: { type: string }
@@ -3112,7 +3112,9 @@ components:
           ],
         }
         harness: { type: string }
-        machineId: { type: string }
+        runnerId:
+          type: string
+          description: The ID of the registered Runner.
         runnerName: { type: string }
         hostname: { type: string }
         workspacePath: { type: string }
@@ -3140,14 +3142,14 @@ components:
         }
     TaskExternalTask:
       type: object
-      required: [task, entries, nextAfterSeq]
+      required: [task, entries, nextCursor]
       properties:
         task: { $ref: "#/components/schemas/TaskRef" }
         entries: {
           type: array,
           items: { $ref: "#/components/schemas/TaskEntry" },
         }
-        nextAfterSeq: { type: integer, format: int64 }
+        nextCursor: { type: integer, format: int64 }
     TaskDetail:
       type: object
       required: [
@@ -3810,35 +3812,88 @@ components:
             createdAt: { type: integer, format: int64 }
             updatedAt: { type: integer, format: int64 }
 
-    InboxSummary:
+    BoardAttention:
       type: object
-      required: [sessions, automations, inbox, taskReviews]
+      required: [sessions, automations, results, taskReviews]
       properties:
-        taskReviews:
-          type: array
-          items: { $ref: "#/components/schemas/TaskRef" }
         sessions:
           type: array
-          items: { $ref: "#/components/schemas/InboxSummarySession" }
+          items: { $ref: "#/components/schemas/BoardAttentionSession" }
         automations:
           type: array
-          items: { $ref: "#/components/schemas/InboxSummaryAutomation" }
-        inbox:
+          items: { $ref: "#/components/schemas/BoardAttentionAutomation" }
+        results:
           type: array
-          items: { $ref: "#/components/schemas/InboxItem" }
-    InboxSummarySession:
+          description: Unhandled failed and changed Automation results.
+          items: { $ref: "#/components/schemas/AutomationResultSummary" }
+        taskReviews:
+          type: array
+          items: { $ref: "#/components/schemas/BoardAttentionTaskReview" }
+    BoardAttentionSession:
       type: object
-      required: [agentId, chat]
+      required: [id, agentId, title, main, busy]
       properties:
+        id: { type: integer, format: int64 }
         agentId: { type: string }
-        chat: { $ref: "#/components/schemas/Chat" }
-    InboxSummaryAutomation:
+        title: { type: string }
+        main: { type: boolean }
+        busy: { type: boolean }
+        question: { $ref: "#/components/schemas/BoardAttentionQuestion" }
+    BoardAttentionQuestion:
       type: object
-      required: [agentId, automation, setup]
+      description: An open question that waits for the Owner.
+      required: [id, text, options]
       properties:
+        id: { type: string }
+        text: { type: string }
+        options: { type: array, items: { type: string } }
+    BoardAttentionAutomation:
+      type: object
+      required: [id, agentId, name, setup]
+      properties:
+        id: { type: string }
         agentId: { type: string }
-        automation: { $ref: "#/components/schemas/Automation" }
+        name: { type: string }
         setup: { type: boolean }
+        targetConversationId: { type: integer, format: int64 }
+    AutomationResultSummary:
+      type: object
+      required: [
+        runId,
+        agentId,
+        automationId,
+        automationName,
+        chatId,
+        outcome,
+        summary,
+        createdAt,
+        read,
+        runnerId,
+        cwd,
+      ]
+      properties:
+        runId: { type: string }
+        agentId: { type: string }
+        automationId: { type: string }
+        automationName: { type: string }
+        chatId: { type: integer, format: int64 }
+        outcome: { type: string, enum: [changed, failed] }
+        summary: { type: string }
+        createdAt: { type: integer, format: int64 }
+        read: { type: boolean }
+        runnerId:
+          type: string
+          description: The Runner on which the run started. Empty if no Runner was recorded.
+        cwd:
+          type: string
+          description: The cwd on the Runner when the run started.
+    BoardAttentionTaskReview:
+      type: object
+      required: [key, title, assigneeBotId]
+      properties:
+        key: { type: string }
+        title: { type: string }
+        assigneeBotId: { type: string }
     AutomationList:
       type: object
       required: [automations]
@@ -3847,44 +3902,24 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Automation" }
 
-    InboxItem:
-      x-go-type: automation.InboxItem
+    AutomationResultList:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/AutomationResult" }
+    AutomationResult:
+      x-go-type: automation.Result
       x-go-type-import:
         path: github.com/recally-io/dex/internal/automation
-      type: object
-      required: [
-        runId,
-        agentId,
-        agentName,
-        automationId,
-        automationName,
-        chatId,
-        outcome,
-        summary,
-        createdAt,
-        read,
-        dismissed,
-        runnerId,
-        cwd,
-      ]
-      properties:
-        runId: { type: string }
-        agentId: { type: string }
-        agentName: { type: string }
-        automationId: { type: string }
-        automationName: { type: string }
-        summary: { type: string }
-        chatId: { type: integer, format: int64 }
-        createdAt: { type: integer, format: int64 }
-        outcome: { type: string, enum: [changed, failed] }
-        read: { type: boolean }
-        dismissed: { type: boolean }
-        runnerId:
-          type: string
-          description: The Runner on which the run started. Empty for a run with no message, and for a run from before Dex stored it.
-        cwd:
-          type: string
-          description: The cwd on the Runner when the run started.
+      allOf:
+        - $ref: "#/components/schemas/AutomationResultSummary"
+        - type: object
+          required: [agentName, dismissed]
+          properties:
+            agentName: { type: string }
+            dismissed: { type: boolean }
 
     AutomationRun:
       x-go-type: automation.Run

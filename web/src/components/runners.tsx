@@ -127,7 +127,7 @@ export function Runners() {
               env={env}
               serverVersion={serverVersion}
               users={usersByEnv.get(env.id) ?? []}
-              externalRuns={externalRuns.data?.executions.filter((run) => run.machineId === env.id) ?? []}
+              externalRuns={externalRuns.data?.executions.filter((run) => run.runnerId === env.id) ?? []}
               externalRunsUnavailable={externalRuns.isError}
               sshHosts={sshHosts}
               onEdit={() => setDialog(env)}

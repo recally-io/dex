@@ -15,7 +15,6 @@ import { useAgentId } from "../../lib/agent-scope";
 import { createContext, memo, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
 import type { Attachment, Item, Retry, TimelineNotification, ToolItem } from "../../api/generated/types.gen";
 import { getChatItemOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { formatSize, isImage } from "../../lib/attachments";
@@ -28,7 +27,8 @@ import {
   type ContentBlock,
   type Step,
 } from "../../lib/tools";
-import { remarkStrong, strongText } from "../../lib/strong";
+import { markdownOptions } from "../../lib/markdown";
+import { strongText } from "../../lib/strong";
 import { retryMessage } from "../../lib/chat-state";
 import { Button } from "../ui/button";
 import {
@@ -1098,7 +1098,7 @@ export function RetryNotice({ retry }: { retry: Retry }) {
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
     <div className="max-w-[680px] text-[15px] leading-[1.75] text-foreground [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkStrong]} components={markdown}>
+      <ReactMarkdown {...markdownOptions} components={markdown}>
         {strongText(text)}
       </ReactMarkdown>
     </div>

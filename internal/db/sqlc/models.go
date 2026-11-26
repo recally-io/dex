@@ -432,7 +432,7 @@ type TaskExecution struct {
 	TurnRequestID     string        `json:"turn_request_id"`
 	IsPrimary         int64         `json:"is_primary"`
 	Harness           string        `json:"harness"`
-	MachineID         string        `json:"machine_id"`
+	RunnerID          string        `json:"runner_id"`
 	HostMetaJson      string        `json:"host_meta_json"`
 	WorkspacePath     string        `json:"workspace_path"`
 	GitBranch         string        `json:"git_branch"`

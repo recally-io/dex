@@ -1,8 +1,8 @@
 import { expect, test } from "vite-plus/test";
-import type { InboxItem } from "../api/generated/types.gen";
-import { continuationRunner, resultQuote } from "./inbox";
+import type { AutomationResult } from "../api/generated/types.gen";
+import { continuationRunner, resultQuote } from "./automation-results";
 
-const result: InboxItem = {
+const result: AutomationResult = {
   runId: "run",
   agentId: "first",
   agentName: "First",

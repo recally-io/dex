@@ -1,8 +1,8 @@
 -- name: CreateExternalExecution :one
-INSERT INTO task_executions (id, task_id, bot_id, kind, harness, machine_id, host_meta_json,
+INSERT INTO task_executions (id, task_id, bot_id, kind, harness, runner_id, host_meta_json,
   workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at,
   started_at, dispatch_id, runner_enrollment, lease_ttl_ms)
-VALUES (@id, @task_id, @bot_id, 'external_agent', @harness, @machine_id, @host_meta_json,
+VALUES (@id, @task_id, @bot_id, 'external_agent', @harness, @runner_id, @host_meta_json,
   @workspace_path, @git_branch, @external_session_id, 1, @lease_expires_at, @at, @at, @dispatch_id, @runner_enrollment, @lease_ttl_ms)
 RETURNING *;
 
@@ -62,11 +62,11 @@ RETURNING *;
 -- name: ListTaskExecutions :many
 SELECT sqlc.embed(e), t.number AS task_number, coalesce(r.name, '') AS runner_name
 FROM task_executions e JOIN tasks t ON t.id = e.task_id
-LEFT JOIN runners r ON r.id = e.machine_id AND r.kind = 'runner'
+LEFT JOIN runners r ON r.id = e.runner_id AND r.kind = 'runner'
   AND EXISTS (SELECT 1 FROM runner_pairing p WHERE p.runner_id = r.id
     AND p.credential_digest <> '' AND p.credential_digest = e.runner_enrollment)
 WHERE (CAST(@task_id AS TEXT) = '' OR e.task_id = @task_id)
-  AND (CAST(@machine_id_filter AS TEXT) = '' OR r.id = @machine_id_filter)
+  AND (CAST(@runner_id_filter AS TEXT) = '' OR r.id = @runner_id_filter)
   AND (CAST(@kind_filter AS TEXT) = '' OR e.kind = @kind_filter)
   AND (CAST(@state_filter AS TEXT) = '' OR e.state = @state_filter)
 ORDER BY e.started_at DESC, e.id DESC;

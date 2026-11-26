@@ -4,51 +4,45 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 import { listAgentsOptions, listTasksOptions } from "../api/generated/@tanstack/react-query.gen";
-import { createTask, dismissInboxItem } from "../api/generated/sdk.gen";
-import type { Agent, InboxItem, TaskSummary } from "../api/generated/types.gen";
+import { createTask } from "../api/generated/sdk.gen";
+import type { Agent, TaskSummary } from "../api/generated/types.gen";
 import { AgentAvatar } from "../components/agent-avatar";
 import { QuestionRow, ResultGroupRow, TaskReviewRow, groupResults } from "../components/board-results";
 import { Failure, Loading } from "../components/feedback";
 import { HeldEventRows } from "../components/held-events";
 import { FramedPage } from "../components/page";
 import { Button, buttonVariants } from "../components/ui/button";
-import { heldEventsOptions } from "../lib/inbox";
-import { attentionItems, inboxSummaryOptions } from "../lib/inbox-summary";
-import { refreshInbox } from "../lib/queries";
-import { invalidateTasks, useTaskStream } from "../lib/task-stream";
+import { useDismissResults } from "../lib/automation-results";
+import { attentionItems, boardAttentionOptions, heldEventsOptions } from "../lib/board-attention";
+import { invalidateTasks } from "../lib/task-stream";
 import { isClosed, statusLabel } from "../lib/tasks";
 
 // Add a Bot filter control here when active tasks routinely exceed 30.
 export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bot?: string) => void }) {
-  useTaskStream();
   const [showCompleted, setShowCompleted] = useState(false);
   const agents = useQuery(listAgentsOptions());
-  const summary = useQuery(inboxSummaryOptions());
+  const summary = useQuery(boardAttentionOptions());
   const held = useQuery(heldEventsOptions());
   const tasks = useQuery(listTasksOptions({ query: { botId: bot, includeClosed: true } }));
 
   const bots = agents.data?.agents ?? [];
   const botById = new Map<string | undefined, Agent>(bots.map((agent) => [agent.id, agent]));
 
-  const botOf = (id: string, fallbackName?: string) => {
-    const found = botById.get(id);
+  const botOf = (id: string) => ({ id, name: botById.get(id)?.name ?? id });
 
-    return { id, name: found?.name ?? fallbackName ?? id };
-  };
+  const {
+    questions,
+    results,
+    setup,
+    taskReviews,
+    held: heldEvents,
+    needsYouCount,
+    count,
+  } = attentionItems(summary.data, held.data, bot);
 
-  const rawAttention = attentionItems(summary.data);
-
-  const questions = bot
-    ? rawAttention.questions.filter((item) => item.agentId === bot)
-    : rawAttention.questions;
-
-  const results = bot ? rawAttention.results.filter((item) => item.agentId === bot) : rawAttention.results;
-  const setup = bot ? rawAttention.setup.filter((item) => item.agentId === bot) : rawAttention.setup;
-  const heldEvents = bot ? [] : (held.data?.events ?? []);
   const resultGroups = groupResults(results);
 
   const allTasks = tasks.data?.tasks ?? [];
-  const reviewTasks: TaskSummary[] = [];
   const blockedTasks: TaskSummary[] = [];
   const activeTasks: TaskSummary[] = [];
   const laterTasks: TaskSummary[] = [];
@@ -58,7 +52,8 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
     if (isClosed(task.status)) {
       completedTasks.push(task);
     } else if (task.status === "in_review" && task.reviewerKind === "owner") {
-      reviewTasks.push(task);
+      // The attention query owns the Owner review rows.
+      continue;
     } else if (task.blocked) {
       blockedTasks.push(task);
     } else if (task.status === "backlog") {
@@ -68,24 +63,14 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
     }
   }
 
-  const needsYouCount =
-    questions.length + reviewTasks.length + blockedTasks.length + setup.length + heldEvents.length;
-
   const hasAnyContent =
-    needsYouCount > 0 ||
+    count > 0 ||
+    blockedTasks.length > 0 ||
     activeTasks.length > 0 ||
-    resultGroups.length > 0 ||
     laterTasks.length > 0 ||
     completedTasks.length > 0;
 
-  const dismissAll = useMutation({
-    mutationFn: async (items: InboxItem[]) => {
-      await Promise.all(
-        items.map((item) => dismissInboxItem({ path: { runId: item.runId }, throwOnError: true })),
-      );
-      await refreshInbox();
-    },
-  });
+  const dismissAll = useDismissResults();
 
   const loading = tasks.isPending && summary.isPending;
 
@@ -116,53 +101,65 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
           {needsYouCount > 0 ? (
             <BoardSection title="Needs you" count={needsYouCount}>
               <ul className="divide-y divide-border">
-                {questions.map(({ agentId, chat, question }) => (
+                {questions.map(({ session, question }) => (
                   <QuestionRow
-                    key={`${agentId}:${chat.id}:${question.id}`}
-                    agent={botOf(agentId)}
-                    chat={chat}
+                    key={`${session.agentId}:${session.id}:${question.id}`}
+                    agent={botOf(session.agentId)}
+                    chat={session}
                     questionId={question.id}
                     text={question.text}
                     options={question.options}
                   />
                 ))}
-                {reviewTasks.map((task) => (
+                {taskReviews.map((task) => (
                   <TaskReviewRow key={task.key} task={task} agent={botOf(task.assigneeBotId)} />
                 ))}
-                {blockedTasks.map((task) => (
-                  <TaskRow key={task.id} task={task} agent={botOf(task.assigneeBotId)} />
-                ))}
-                {setup.map(({ agentId, automation }) => {
+                {setup.map(({ agentId, id, name, targetConversationId }) => {
                   const agent = botOf(agentId);
 
                   return (
-                    <li
-                      key={`${agentId}:${automation.id}`}
-                      className="flex flex-wrap items-center justify-between gap-3 py-3.5"
-                    >
+                    <li key={id} className="flex flex-wrap items-center justify-between gap-3 py-3.5">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <AlertTriangle className="size-4 shrink-0 text-orange" aria-hidden />
                         <AgentAvatar agent={agent} className="size-5 text-[10px]" />
                         <div className="min-w-0">
-                          <p className="truncate text-[14px] font-medium text-foreground">
-                            {automation.name}
-                          </p>
+                          <p className="truncate text-[14px] font-medium text-foreground">{name}</p>
                           <p className="text-[12.5px] text-muted-foreground">
                             {agent.name} · No available model
                           </p>
                         </div>
                       </div>
-                      <Link
-                        className={buttonVariants({ variant: "secondary", size: "sm" })}
-                        to="/a/$agentId/agent"
-                        params={{ agentId }}
-                      >
-                        Configure model
-                      </Link>
+                      {targetConversationId ? (
+                        <Link
+                          className={buttonVariants({ variant: "secondary", size: "sm" })}
+                          to="/a/$agentId/c/$chatId"
+                          params={{ agentId, chatId: String(targetConversationId) }}
+                        >
+                          Configure session model
+                        </Link>
+                      ) : (
+                        <Link
+                          className={buttonVariants({ variant: "secondary", size: "sm" })}
+                          to="/a/$agentId/agent"
+                          params={{ agentId }}
+                        >
+                          Configure model
+                        </Link>
+                      )}
                     </li>
                   );
                 })}
-                <HeldEventRows events={heldEvents} />
+                {heldEvents ? <HeldEventRows {...heldEvents} /> : null}
+              </ul>
+            </BoardSection>
+          ) : null}
+
+          {blockedTasks.length > 0 ? (
+            <BoardSection title="Blocked" count={blockedTasks.length}>
+              <ul className="divide-y divide-border">
+                {blockedTasks.map((task) => (
+                  <TaskRow key={task.id} task={task} agent={botOf(task.assigneeBotId)} />
+                ))}
               </ul>
             </BoardSection>
           ) : null}
@@ -187,7 +184,7 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
                     variant="ghost"
                     size="xs"
                     disabled={dismissAll.isPending}
-                    onClick={() => dismissAll.mutate(results)}
+                    onClick={() => dismissAll.mutate(results.map((result) => result.runId))}
                   >
                     Mark all done
                   </Button>
@@ -197,11 +194,7 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
               {dismissAll.error ? <Failure title="Could not clear updates" error={dismissAll.error} /> : null}
               <ul className="divide-y divide-border">
                 {resultGroups.map((group) => (
-                  <ResultGroupRow
-                    key={group.automationId}
-                    group={group}
-                    agent={botOf(group.agentId, group.agentName)}
-                  />
+                  <ResultGroupRow key={group.automationId} group={group} agent={botOf(group.agentId)} />
                 ))}
               </ul>
             </BoardSection>

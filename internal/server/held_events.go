@@ -13,7 +13,10 @@ func (h *handler) ListHeldEvents(ctx context.Context, _ api.ListHeldEventsReques
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.HeldEvent, 0, len(rows))
+	out := api.ListHeldEvents200JSONResponse{Events: make([]api.HeldEvent, 0, len(rows))}
+	if len(rows) > 0 {
+		out.Total = rows[0].Total
+	}
 	for _, row := range rows {
 		var objects []tasksvc.Object
 		if err := json.Unmarshal([]byte(row.Objects), &objects); err != nil {
@@ -26,13 +29,13 @@ func (h *handler) ListHeldEvents(ctx context.Context, _ api.ListHeldEventsReques
 		for i, object := range objects {
 			refs[i].Key, refs[i].Type = object.Key, object.Type
 		}
-		out = append(out, api.HeldEvent{
+		out.Events = append(out.Events, api.HeldEvent{
 			Id: row.ID, Namespace: row.Namespace, EventType: row.EventType, Objects: refs, Reason: api.HeldEventReason(row.Disposition),
 			Content: row.Content, SourceUrl: row.SourceUrl, AuthorLogin: row.AuthorLogin, AuthorAssociation: row.AuthorAssociation,
 			OccurredAt: row.OccurredAt, HeldAt: row.HeldAt,
 		})
 	}
-	return api.ListHeldEvents200JSONResponse{Events: out}, nil
+	return out, nil
 }
 
 func (h *handler) AttachHeldEvent(ctx context.Context, req api.AttachHeldEventRequestObject) (api.AttachHeldEventResponseObject, error) {

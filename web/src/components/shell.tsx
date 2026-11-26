@@ -1,6 +1,6 @@
 import { AgentContext } from "../lib/agent-scope";
-import { attentionItems, botStatus, inboxSummaryOptions } from "../lib/inbox-summary";
-import { heldEventsOptions } from "../lib/inbox";
+import { attentionItems, boardAttentionOptions, botStatus, heldEventsOptions } from "../lib/board-attention";
+import { useTaskStream } from "../lib/task-stream";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -44,13 +44,11 @@ function useSidebarOpen() {
 }
 
 export function Shell() {
+  useTaskStream();
   const agents = useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
-  const summary = useQuery(inboxSummaryOptions());
+  const summary = useQuery(boardAttentionOptions());
   const held = useQuery(heldEventsOptions());
-  const { questions, results, setup, taskReviews } = attentionItems(summary.data);
-
-  const attentionCount =
-    questions.length + results.length + setup.length + taskReviews.length + (held.data?.events.length ?? 0);
+  const { count: attentionCount } = attentionItems(summary.data, held.data);
 
   const attention = attentionCount > 0;
 

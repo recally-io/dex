@@ -85,7 +85,7 @@ func TestUserResumesManagedExternalRunOnlyOnItsOriginalEnrollment(t *testing.T) 
 		}
 	}
 	enroll()
-	p := tasksvc.ExternalParams{Harness: "custom", MachineID: "runner", WorkspacePath: "/project", ExternalSessionID: "harness-session", DispatchID: "dispatch-first"}
+	p := tasksvc.ExternalParams{Harness: "custom", RunnerID: "runner", WorkspacePath: "/project", ExternalSessionID: "harness-session", DispatchID: "dispatch-first"}
 	call := func(taskID, executionID string, p tasksvc.ExternalParams) (tasksvc.ExternalIssue, error) {
 		return svc.DispatchExternalExecution(ctx, tasksvc.Bot("assignee"), tasksvc.OriginUser, taskID, executionID, p)
 	}

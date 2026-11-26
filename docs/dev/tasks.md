@@ -46,9 +46,10 @@ dependencies in Task detail. Completion wakes open downstream Tasks that
 have no remaining blockers. Cancellation and reopening wake open downstream
 Tasks with a notice and keep or restore the blocker. Their status is unchanged.
 
-Inbox shows items that need Owner action, including Tasks awaiting Owner
-review, held events, and Automation results. `GET /api/inbox/summary` returns
-the summary. Task reviews link to Task detail. The Owner can send a message
+Board shows items that need Owner action. `GET /api/board/attention` returns
+open questions, Tasks awaiting Owner review, Automation setup state, and
+unhandled results. Board lists held events separately. Task reviews link to
+Task detail. The Owner can send a message
 to the Assignee Bot's Main with `taskId` set to the Task key or UUID. The Task link and timeline entry commit with the message receipt. An answer to a
 question inherits the Task of the question's source message. A conflicting
 Task selection does not consume the question. A Task question or `notify_user`
@@ -72,13 +73,14 @@ Dex holds an event for the owner in `task_source_holds` when its links
 conflict. It also holds an unmatched event when the source rule sets
 `HoldUnmatched` and the author is not record-only. Otherwise Dex records an
 unmatched event and ignores it. The hold commits in the same transaction as
-the event, so a replay does not hold it again. `GET /api/inbox/held-events`
-lists the newest 100 open holds. The owner can attach a held event to an open
-Task with `POST /api/inbox/held-events/{eventId}/attach`. The attach adds the
+the event, so a replay does not hold it again. `GET /api/sources/held-events`
+lists the newest 100 open holds and returns the total number of open holds.
+The Owner can attach a held event to an open
+Task with `POST /api/sources/held-events/{eventId}/attach`. The attach adds the
 event to the Task timeline and links each event object that has no Task, so
 later events of those objects route to the Task. An object linked to another
-Task keeps its link. `POST /api/inbox/held-events/{eventId}/dismiss` removes
-the event from the Inbox and keeps the record. Neither decision resolves a
+Task keeps its link. `POST /api/sources/held-events/{eventId}/dismiss` removes
+the event from Board and keeps the record. Neither decision resolves a
 wait or sends a Task alert.
 
 ## Task alerts and tools

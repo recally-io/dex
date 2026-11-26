@@ -8,13 +8,13 @@ Source: [task-board.puml](../assets/src/task-board.puml).
 
 ## Mental model and terminology boundary
 
-dex models a team for one Owner without adding new top-level user objects beyond `Bot`, `Session`, `Task`, and `Automation`, or new views beyond `Board` (`/board`) and `Inbox` (`/inbox`):
+dex models a team for one Owner. The top-level objects are `Bot`, `Session`, `Task`, and `Automation`:
 
 - **Owner** is the single human operator.
 - **Bot** is a team member. Its **Main** session is its working desk and juggles multiple Tasks at once.
 - **Assignee** is the dex Bot currently responsible for a Task (`assignee_bot_id NOT NULL`). Reassigning a Task changes its Assignee without turning `Owner` into a Bot role.
 - **Board** (`/board`) is the global view of all Tasks across Bots. Each Task has a stable key (`T-42`), a status, an Assignee, linked Sessions, external links, and a **Timeline**.
-- **Inbox** (`/inbox`) remains the single Owner attention stream: active `ask_user` questions, unhandled failed or changed Automation results, Automations missing a model, held external events, and Tasks awaiting Owner review.
+- **Board attention** shows active `ask_user` questions, unhandled failed or changed Automation results, Automations missing a model, held external events, and Tasks awaiting Owner review.
 
 Engineering terms in this document—such as **ledger**, **tombstone**, **gate**, **execution**, and **task wake**—describe internal storage and control-plane mechanics only. The Web UI surfaces them in plain canonical terms (`Timeline`, `Blocked`, `Sessions`, and `External runs`).
 
@@ -29,12 +29,12 @@ Four invariants govern the design:
 
 ## Domain model
 
-| Table / entity      | Key fields and semantics                                                                                                                                                                                                                                                                                  |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tasks`             | `id`, `number` (`AUTOINCREMENT` -> global stable key `T-42`), `title`, `status`, `parent_task_id`, `authorized_by_root_id`, `assignee_bot_id` (`NOT NULL`, upgraded from `agent_id`), `creator_kind`/`id`, `reviewer_kind`/`id`, `review_seq`, `next_entry_seq`, `revision`, timestamps.                  |
-| `task_entries`      | `id` (`AUTOINCREMENT` global SSE cursor), `task_id`, `seq` (`UNIQUE(task_id, seq)`), `kind`, optional `tag`, `actor_kind`, `actor_bot_id`, `actor_execution_id`, `trust`, `event_id`, `meta_json`, `content`, `created_at`.                                                                               |
-| `task_executions`   | `id`, `task_id`, `bot_id`, `kind` (`dex_session` \| `external_agent`), `conversation_id`, `turn_request_id`, `is_primary`, `harness`, `machine_id`, `host_meta_json`, `workspace_path`, `git_branch`, `external_session_id`, `state`, `lease_epoch`, `lease_expires_at`, `last_heartbeat_at`, timestamps. |
-| `task_dependencies` | `(task_id, depends_on_task_id)` records a dependency between sibling Tasks that share the same `parent_task_id`. Cycle check and insert run in the same write transaction.                                                                                                                                |
+| Table / entity      | Key fields and semantics                                                                                                                                                                                                                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tasks`             | `id`, `number` (`AUTOINCREMENT` -> global stable key `T-42`), `title`, `status`, `parent_task_id`, `authorized_by_root_id`, `assignee_bot_id` (`NOT NULL`, upgraded from `agent_id`), `creator_kind`/`id`, `reviewer_kind`/`id`, `review_seq`, `next_entry_seq`, `revision`, timestamps.                 |
+| `task_entries`      | `id` (`AUTOINCREMENT` global SSE cursor), `task_id`, `seq` (`UNIQUE(task_id, seq)`), `kind`, optional `tag`, `actor_kind`, `actor_bot_id`, `actor_execution_id`, `trust`, `event_id`, `meta_json`, `content`, `created_at`.                                                                              |
+| `task_executions`   | `id`, `task_id`, `bot_id`, `kind` (`dex_session` \| `external_agent`), `conversation_id`, `turn_request_id`, `is_primary`, `harness`, `runner_id`, `host_meta_json`, `workspace_path`, `git_branch`, `external_session_id`, `state`, `lease_epoch`, `lease_expires_at`, `last_heartbeat_at`, timestamps. |
+| `task_dependencies` | `(task_id, depends_on_task_id)` records a dependency between sibling Tasks that share the same `parent_task_id`. Cycle check and insert run in the same write transaction.                                                                                                                               |
 
 The Task API uses `/api/tasks` and accepts keys or UUIDs. The table rename
 keeps existing data, foreign keys, indexes, and append-only rules.
@@ -124,8 +124,8 @@ Main is a front desk ([Sessions](sessions.md)): queuing one submission per Task 
 
 External coding agents (Claude Code, Codex, OpenCode, or custom scripts) run under an Assignee Bot through two tracks:
 
-1. **Attached mode.** `dex task attach --task T-42 --harness codex` creates an external run. Attach and resume use Owner authorization (`DEX_TOKEN`, if required) and return JSON with a one-time `taskToken`. Use `DEX_TASK_SERVER` or `--server` to select the server. Use HTTPS for a remote server. Send the Task token through `DEX_TASK_TOKEN`, never as a command argument or tool input.
-   - `task_execution_tokens` stores only the SHA-256 digest. It binds the token to one Task, execution, and lease epoch. `dex task read` reads that Task and its non-external Timeline entries. Use `--after-seq` and `--limit` to page the Timeline.
+1. **Attached mode.** `dex task attach --task T-42 --harness codex` creates an external run. Attach and resume use Owner authorization (`DEX_TOKEN`, if required) and return JSON with a one-time `taskToken`. Use `--runner` to bind the run to a registered Runner. Use `DEX_TASK_SERVER` or `--server` to select the server. Use HTTPS for a remote server. Send the Task token through `DEX_TASK_TOKEN`, never as a command argument or tool input.
+   - `task_execution_tokens` stores only the SHA-256 digest. It binds the token to one Task, execution, and lease epoch. `dex task read` reads that Task and its non-external Timeline entries. Pass the returned `nextCursor` to `--after-seq` to read the next page.
    - `dex task post --content <text>` adds a note. Use `--kind artifact` for an artifact. `dex task heartbeat` extends the lease and can update the branch or external session ID. The default lease is 120 seconds. Send heartbeats before it expires.
    - `dex task finish --outcome completed` ends only the run. A failed run sends `execution_failed` to the Assignee's Main. Neither outcome changes Task status.
    - Each scoped write checks the state, epoch, and expiry in SQLite. An expired or replaced claim returns HTTP `409` with `claim_lost`. Unknown tokens return `401`. `dex task attach --resume <execution_id>` replaces the token, increments the epoch, and restarts a running or stale lease.
@@ -139,13 +139,13 @@ External coding agents (Claude Code, Codex, OpenCode, or custom scripts) run und
 
 The Web UI follows [web/AGENTS.md](../../web/AGENTS.md) (stock shadcn components and `web/src/styles.css` tokens), keeps a single global workspace entry (`Board`) alongside `Bots` and `Settings`, and replaces polling with global-cursor SSE (`GET /api/tasks/events`, `Last-Event-ID`):
 
-- **Board (`/board`)**: Single unified command center with the Owner attention badge on the sidebar link, a single-line quick-add bar, optional `?bot=<id>` chip, and grouped sections (`Needs you` → `Active` → `Updates` → `Later` → collapsible `Completed`). Empty sections stay hidden. `Needs you` houses active `ask_user` questions, Tasks awaiting Owner review, blocked Tasks, Automations missing a model, and held external events. `Updates` groups unhandled Automation results by Automation (`×N`) with inline expand, dismiss, and continue-in-session actions (deep links at `/board/results/$runId`).
+- **Board (`/board`)**: Single unified command center with the Owner attention badge on the sidebar link, a single-line quick-add bar, optional `?bot=<id>` chip, and grouped sections (`Needs you` → `Blocked` → `Active` → `Updates` → `Later` → collapsible `Completed`). Empty sections stay hidden. `Needs you` houses active `ask_user` questions, Tasks awaiting Owner review, Automations missing a model, and held external events. `Blocked` lists blocked Tasks outside the Owner attention count. `Updates` groups unhandled Automation results by Automation (`×N`) with inline expand, dismiss, and continue-in-session actions (deep links at `/board/results/$runId`).
 - **Bot workspace**: Keeps `Sessions | Automations | Settings` (`General`, `Skills`, `Integrations`, `Secrets`) without adding a separate Bot Tasks tab; Bot-scoped views open `/board?bot=<id>`.
 - **Task detail (`/board/$taskKey`)**: Single-column workspace with stable key (`T-42`), bordered property strip (clickable Status, Assignee Bot, and Reviewer controls auto-saved with `If-Match`, plus quick actions and `⋯` menu), contextual `In Review` / `Blocked` action card, conditional context cards (linked `Sessions`, external runs with lease state and heartbeat age, parent/subtasks/dependencies, and external links/waits), rail-structured Markdown Timeline, and a bottom composer defaulting to messaging the Assignee Bot's Main (staying on the Task page) with a secondary `Note only` option.
 
 Runner settings list active external Task runs by current enrollment. The Task detail shows the registered Runner separately from the reported host and workspace. Runner registration does not verify attached agent reports.
 
-The Task API serves `/api/tasks/*`, while attention items and Automation updates read `/api/inbox/summary`, `/api/inbox/*`, and the held-events endpoints. The post-commit broker sends bounded wake hints. It does not order entries or keep replay history. The SSE handler reads SQLite by entry ID in bounded batches. Browser reconnects resume at the last received ID. The Owner UI reads only the current projection after a hint.
+The Task API serves `/api/tasks/*`, while attention items and Automation updates read `/api/board/attention`, `/api/automations/results`, and `/api/sources/held-events`. The post-commit broker sends bounded wake hints. It does not order entries or keep replay history. The SSE handler reads SQLite by entry ID in bounded batches. Browser reconnects resume at the last received ID. The Owner UI reads only the current projection after a hint.
 
 ## Phased rollout
 

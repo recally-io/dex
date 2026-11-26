@@ -196,7 +196,7 @@ func taskExtension(agentID string, handlers TaskTools, child bool) *durable.Exte
 				"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
 				"tags":  map[string]any{"type": "array", "items": tags},
 			}), handlers.Read != nil, handlers.Read),
-		engine.JSONTool(agentID, "task_post", "Add a note or artifact to a Task on a user turn, Task wake, or child Session result. The default kind is note.",
+		engine.JSONTool(agentID, "task_post", "Add a Timeline entry to a Task on a user turn, Task wake, or child Session result. The default kind is note. Use kind artifact for a Task deliverable note or reference. To make a file snapshot, use deliver_file.",
 			engine.ObjectSchema([]string{"id", "content"}, map[string]any{"id": id, "content": str, "kind": enum("note", "artifact"), "tag": tags}), handlers.Post != nil, handlers.Post),
 	}
 	if child {

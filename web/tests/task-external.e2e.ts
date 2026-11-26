@@ -54,7 +54,7 @@ test("shows an external run on its Task and registered Runner", async ({ app, br
       path: { taskKey: task.key },
       body: {
         harness: "codex",
-        machineId: runner.id,
+        runnerId: runner.id,
         hostMeta: { hostname: "worker-reported" },
         workspacePath: "/code/build",
         gitBranch: "release-topic",
