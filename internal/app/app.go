@@ -148,6 +148,11 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	workTasks := worktask.New(conn, func(id int64) { chats.WakeConversation(id) })
+	if err := workTasks.ExtendActiveLeasesOnStartup(ctx, time.Now(), worktask.ExternalLeaseTTL); err != nil {
+		cancel()
+		jobs.Close()
+		return nil, errors.Join(err, conn.Close())
+	}
 	boardEvents := new(worktask.Broker)
 	workTasks.SetOnEntry(boardEvents.Publish)
 	plugins, available, pluginErrors, err := startPlugins(ctx, q, cfg.Plugins, plugin.Deps{DB: conn, WorkTasks: workTasks})
@@ -228,7 +233,11 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 					return channelTools.Request(ctx, c, bot, op, target)
 				},
 			})...)
-			optional = append(optional, worktasktools.WorkTaskExtension(id, taskTools), chat.ChildExtension(),
+			mainTaskTools := taskTools
+			mainTaskTools.Dispatch = func(ctx context.Context, c engine.TaskContext, args worktasktools.DispatchArgs) (worktasktools.DispatchResult, error) {
+				return taskToolService.DispatchExternal(ctx, c, args, rt, chats.ToolProcessStart)
+			}
+			optional = append(optional, worktasktools.WorkTaskExtension(id, mainTaskTools), chat.ChildExtension(),
 				worktasktools.ChildWorkTaskExtension(id, taskTools),
 				chat.DreamMessageExtension(id, chats.ToolReadDreamMessage), chat.RoutineCheckInstructions())
 			return engine.ExtensionSet{
@@ -452,6 +461,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Chats:       chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { chats.Run(runCtx) })
+	a.wg.Go(func() { workTasks.RunLeaseWatchdog(runCtx) })
 	a.wg.Go(func() { runReloads(runCtx, native, chats) })
 	a.wg.Go(func() {
 		select {

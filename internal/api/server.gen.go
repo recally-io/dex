@@ -100,6 +100,99 @@ func (e BoardEntryCreateTag) Valid() bool {
 	}
 }
 
+// Defines values for BoardExecutionKind.
+const (
+	DexSession    BoardExecutionKind = "dex_session"
+	ExternalAgent BoardExecutionKind = "external_agent"
+)
+
+// Valid indicates whether the value is a known member of the BoardExecutionKind enum.
+func (e BoardExecutionKind) Valid() bool {
+	switch e {
+	case DexSession:
+		return true
+	case ExternalAgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardExecutionState.
+const (
+	BoardExecutionStateCancelled  BoardExecutionState = "cancelled"
+	BoardExecutionStateCompleted  BoardExecutionState = "completed"
+	BoardExecutionStateDispatched BoardExecutionState = "dispatched"
+	BoardExecutionStateFailed     BoardExecutionState = "failed"
+	BoardExecutionStateIdle       BoardExecutionState = "idle"
+	BoardExecutionStateRunning    BoardExecutionState = "running"
+	BoardExecutionStateStale      BoardExecutionState = "stale"
+)
+
+// Valid indicates whether the value is a known member of the BoardExecutionState enum.
+func (e BoardExecutionState) Valid() bool {
+	switch e {
+	case BoardExecutionStateCancelled:
+		return true
+	case BoardExecutionStateCompleted:
+		return true
+	case BoardExecutionStateDispatched:
+		return true
+	case BoardExecutionStateFailed:
+		return true
+	case BoardExecutionStateIdle:
+		return true
+	case BoardExecutionStateRunning:
+		return true
+	case BoardExecutionStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardExecutionAttachHarness.
+const (
+	ClaudeCode BoardExecutionAttachHarness = "claude-code"
+	Codex      BoardExecutionAttachHarness = "codex"
+	Custom     BoardExecutionAttachHarness = "custom"
+	Opencode   BoardExecutionAttachHarness = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the BoardExecutionAttachHarness enum.
+func (e BoardExecutionAttachHarness) Valid() bool {
+	switch e {
+	case ClaudeCode:
+		return true
+	case Codex:
+		return true
+	case Custom:
+		return true
+	case Opencode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardExecutionFinishOutcome.
+const (
+	BoardExecutionFinishOutcomeCompleted BoardExecutionFinishOutcome = "completed"
+	BoardExecutionFinishOutcomeFailed    BoardExecutionFinishOutcome = "failed"
+)
+
+// Valid indicates whether the value is a known member of the BoardExecutionFinishOutcome enum.
+func (e BoardExecutionFinishOutcome) Valid() bool {
+	switch e {
+	case BoardExecutionFinishOutcomeCompleted:
+		return true
+	case BoardExecutionFinishOutcomeFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BoardReviewDecision.
 const (
 	BoardReviewDecisionApprove        BoardReviewDecision = "approve"
@@ -1328,6 +1421,81 @@ type BoardEvent struct {
 	TaskId string `json:"taskId"`
 }
 
+// BoardExecution defines model for BoardExecution.
+type BoardExecution struct {
+	BotId             string              `json:"botId"`
+	DispatchId        *string             `json:"dispatchId,omitempty"`
+	EndedAt           *int64              `json:"endedAt,omitempty"`
+	ExternalSessionId *string             `json:"externalSessionId,omitempty"`
+	GitBranch         *string             `json:"gitBranch,omitempty"`
+	Harness           *string             `json:"harness,omitempty"`
+	Hostname          *string             `json:"hostname,omitempty"`
+	Id                string              `json:"id"`
+	Kind              BoardExecutionKind  `json:"kind"`
+	LastHeartbeatAt   *int64              `json:"lastHeartbeatAt,omitempty"`
+	LeaseEpoch        int64               `json:"leaseEpoch"`
+	LeaseExpiresAt    *int64              `json:"leaseExpiresAt,omitempty"`
+	MachineId         *string             `json:"machineId,omitempty"`
+	RunnerName        *string             `json:"runnerName,omitempty"`
+	StartedAt         int64               `json:"startedAt"`
+	State             BoardExecutionState `json:"state"`
+	TaskKey           *string             `json:"taskKey,omitempty"`
+	WorkspacePath     *string             `json:"workspacePath,omitempty"`
+}
+
+// BoardExecutionKind defines model for BoardExecution.Kind.
+type BoardExecutionKind string
+
+// BoardExecutionState defines model for BoardExecution.State.
+type BoardExecutionState string
+
+// BoardExecutionAttach defines model for BoardExecutionAttach.
+type BoardExecutionAttach struct {
+	ExternalSessionId *string                      `json:"externalSessionId,omitempty"`
+	GitBranch         *string                      `json:"gitBranch,omitempty"`
+	Harness           *BoardExecutionAttachHarness `json:"harness,omitempty"`
+	HostMeta          *BoardExecutionHost          `json:"hostMeta,omitempty"`
+	LeaseSeconds      *int64                       `json:"leaseSeconds,omitempty"`
+	MachineId         *string                      `json:"machineId,omitempty"`
+	WorkspacePath     *string                      `json:"workspacePath,omitempty"`
+}
+
+// BoardExecutionAttachHarness defines model for BoardExecutionAttach.Harness.
+type BoardExecutionAttachHarness string
+
+// BoardExecutionFinish defines model for BoardExecutionFinish.
+type BoardExecutionFinish struct {
+	Outcome BoardExecutionFinishOutcome `json:"outcome"`
+	Summary *string                     `json:"summary,omitempty"`
+}
+
+// BoardExecutionFinishOutcome defines model for BoardExecutionFinish.Outcome.
+type BoardExecutionFinishOutcome string
+
+// BoardExecutionHeartbeat defines model for BoardExecutionHeartbeat.
+type BoardExecutionHeartbeat struct {
+	ExternalSessionId *string `json:"externalSessionId,omitempty"`
+	GitBranch         *string `json:"gitBranch,omitempty"`
+	LeaseSeconds      *int64  `json:"leaseSeconds,omitempty"`
+}
+
+// BoardExecutionHost defines model for BoardExecutionHost.
+type BoardExecutionHost struct {
+	Hostname *string `json:"hostname,omitempty"`
+}
+
+// BoardExecutionList defines model for BoardExecutionList.
+type BoardExecutionList struct {
+	Executions []BoardExecution `json:"executions"`
+}
+
+// BoardExternalTask defines model for BoardExternalTask.
+type BoardExternalTask struct {
+	Entries      []BoardTaskEntry `json:"entries"`
+	NextAfterSeq int64            `json:"nextAfterSeq"`
+	Task         BoardTaskRef     `json:"task"`
+}
+
 // BoardReview defines model for BoardReview.
 type BoardReview struct {
 	Decision  BoardReviewDecision `json:"decision"`
@@ -1493,6 +1661,12 @@ type BoardTaskUpdate struct {
 	ReviewerKind  *BoardReviewerKind `json:"reviewerKind,omitempty"`
 	Status        *BoardStatus       `json:"status,omitempty"`
 	Title         *string            `json:"title,omitempty"`
+}
+
+// BoardTokenIssue defines model for BoardTokenIssue.
+type BoardTokenIssue struct {
+	BoardToken string         `json:"boardToken"`
+	Execution  BoardExecution `json:"execution"`
 }
 
 // BoundaryItem defines model for BoundaryItem.
@@ -2808,6 +2982,20 @@ type WatchBoardParams struct {
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
 
+// ListBoardExecutionsParams defines parameters for ListBoardExecutions.
+type ListBoardExecutionsParams struct {
+	TaskKey   *string `form:"taskKey,omitempty" json:"taskKey,omitempty"`
+	MachineId *string `form:"machineId,omitempty" json:"machineId,omitempty"`
+	Kind      *string `form:"kind,omitempty" json:"kind,omitempty"`
+	State     *string `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// ReadBoardExternalTaskParams defines parameters for ReadBoardExternalTask.
+type ReadBoardExternalTaskParams struct {
+	AfterSeq *int64 `form:"afterSeq,omitempty" json:"afterSeq,omitempty"`
+	Limit    *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListBoardTasksParams defines parameters for ListBoardTasks.
 type ListBoardTasksParams struct {
 	BotId    *string      `form:"botId,omitempty" json:"botId,omitempty"`
@@ -2984,6 +3172,18 @@ type PutVaultJSONRequestBody PutVaultJSONBody
 // PreviewScheduleJSONRequestBody defines body for PreviewSchedule for application/json ContentType.
 type PreviewScheduleJSONRequestBody = ScheduleInput
 
+// ResumeBoardExecutionJSONRequestBody defines body for ResumeBoardExecution for application/json ContentType.
+type ResumeBoardExecutionJSONRequestBody = BoardExecutionAttach
+
+// PostBoardExternalEntryJSONRequestBody defines body for PostBoardExternalEntry for application/json ContentType.
+type PostBoardExternalEntryJSONRequestBody = BoardEntryCreate
+
+// FinishBoardExecutionJSONRequestBody defines body for FinishBoardExecution for application/json ContentType.
+type FinishBoardExecutionJSONRequestBody = BoardExecutionFinish
+
+// HeartbeatBoardExecutionJSONRequestBody defines body for HeartbeatBoardExecution for application/json ContentType.
+type HeartbeatBoardExecutionJSONRequestBody = BoardExecutionHeartbeat
+
 // CreateBoardTaskJSONRequestBody defines body for CreateBoardTask for application/json ContentType.
 type CreateBoardTaskJSONRequestBody = BoardTaskCreate
 
@@ -2995,6 +3195,9 @@ type AddBoardDependencyJSONRequestBody = BoardDependencyCreate
 
 // CreateBoardEntryJSONRequestBody defines body for CreateBoardEntry for application/json ContentType.
 type CreateBoardEntryJSONRequestBody = BoardEntryCreate
+
+// AttachBoardExecutionJSONRequestBody defines body for AttachBoardExecution for application/json ContentType.
+type AttachBoardExecutionJSONRequestBody = BoardExecutionAttach
 
 // ReviewBoardTaskJSONRequestBody defines body for ReviewBoardTask for application/json ContentType.
 type ReviewBoardTaskJSONRequestBody = BoardReview
@@ -3795,6 +3998,24 @@ type ServerInterface interface {
 	// (GET /api/board/events)
 	WatchBoard(w http.ResponseWriter, r *http.Request, params WatchBoardParams)
 
+	// (GET /api/board/executions)
+	ListBoardExecutions(w http.ResponseWriter, r *http.Request, params ListBoardExecutionsParams)
+
+	// (POST /api/board/executions/{executionId}/resume)
+	ResumeBoardExecution(w http.ResponseWriter, r *http.Request, executionId string)
+
+	// (POST /api/board/external/entries)
+	PostBoardExternalEntry(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/board/external/finish)
+	FinishBoardExecution(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/board/external/heartbeat)
+	HeartbeatBoardExecution(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/board/external/task)
+	ReadBoardExternalTask(w http.ResponseWriter, r *http.Request, params ReadBoardExternalTaskParams)
+
 	// (GET /api/board/tasks)
 	ListBoardTasks(w http.ResponseWriter, r *http.Request, params ListBoardTasksParams)
 
@@ -3815,6 +4036,9 @@ type ServerInterface interface {
 
 	// (POST /api/board/tasks/{taskKey}/entries)
 	CreateBoardEntry(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params CreateBoardEntryParams)
+
+	// (POST /api/board/tasks/{taskKey}/executions/attach)
+	AttachBoardExecution(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey)
 
 	// (POST /api/board/tasks/{taskKey}/review)
 	ReviewBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey)
@@ -6355,6 +6579,192 @@ func (siw *ServerInterfaceWrapper) WatchBoard(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ListBoardExecutions operation middleware
+func (siw *ServerInterfaceWrapper) ListBoardExecutions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBoardExecutionsParams
+
+	// ------------- Optional query parameter "taskKey" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "taskKey", r.URL.Query(), &params.TaskKey, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "taskKey"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "machineId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "machineId", r.URL.Query(), &params.MachineId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "machineId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "machineId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBoardExecutions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResumeBoardExecution operation middleware
+func (siw *ServerInterfaceWrapper) ResumeBoardExecution(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "executionId" -------------
+	var executionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "executionId", r.PathValue("executionId"), &executionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "executionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResumeBoardExecution(w, r, executionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostBoardExternalEntry operation middleware
+func (siw *ServerInterfaceWrapper) PostBoardExternalEntry(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostBoardExternalEntry(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FinishBoardExecution operation middleware
+func (siw *ServerInterfaceWrapper) FinishBoardExecution(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FinishBoardExecution(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// HeartbeatBoardExecution operation middleware
+func (siw *ServerInterfaceWrapper) HeartbeatBoardExecution(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.HeartbeatBoardExecution(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReadBoardExternalTask operation middleware
+func (siw *ServerInterfaceWrapper) ReadBoardExternalTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ReadBoardExternalTaskParams
+
+	// ------------- Optional query parameter "afterSeq" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "afterSeq", r.URL.Query(), &params.AfterSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "afterSeq"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "afterSeq", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReadBoardExternalTask(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListBoardTasks operation middleware
 func (siw *ServerInterfaceWrapper) ListBoardTasks(w http.ResponseWriter, r *http.Request) {
 
@@ -6693,6 +7103,32 @@ func (siw *ServerInterfaceWrapper) CreateBoardEntry(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateBoardEntry(w, r, taskKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AttachBoardExecution operation middleware
+func (siw *ServerInterfaceWrapper) AttachBoardExecution(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey BoardTaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AttachBoardExecution(w, r, taskKey)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7739,6 +8175,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/board/tasks/{taskKey}/dependencies/{depKey}", wrapper.RemoveBoardDependency)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/entries", wrapper.CreateBoardEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/review", wrapper.ReviewBoardTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/executions/attach", wrapper.AttachBoardExecution)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/executions/{executionId}/resume", wrapper.ResumeBoardExecution)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/executions", wrapper.ListBoardExecutions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/external/task", wrapper.ReadBoardExternalTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/external/entries", wrapper.PostBoardExternalEntry)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/external/heartbeat", wrapper.HeartbeatBoardExecution)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/external/finish", wrapper.FinishBoardExecution)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/events", wrapper.WatchBoard)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/tasks", wrapper.ListWorkTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks", wrapper.CreateWorkTask)
@@ -12261,6 +12704,419 @@ func (response WatchBoard401JSONResponse) VisitWatchBoardResponse(w http.Respons
 	return err
 }
 
+type ListBoardExecutionsRequestObject struct {
+	Params ListBoardExecutionsParams
+}
+
+type ListBoardExecutionsResponseObject interface {
+	VisitListBoardExecutionsResponse(w http.ResponseWriter) error
+}
+
+type ListBoardExecutions200JSONResponse BoardExecutionList
+
+func (response ListBoardExecutions200JSONResponse) VisitListBoardExecutionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBoardExecutions400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListBoardExecutions400JSONResponse) VisitListBoardExecutionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBoardExecutions401JSONResponse Error
+
+func (response ListBoardExecutions401JSONResponse) VisitListBoardExecutionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBoardExecutions404JSONResponse Error
+
+func (response ListBoardExecutions404JSONResponse) VisitListBoardExecutionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBoardExecutions409JSONResponse Error
+
+func (response ListBoardExecutions409JSONResponse) VisitListBoardExecutionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBoardExecutionRequestObject struct {
+	ExecutionId string `json:"executionId"`
+	Body        *ResumeBoardExecutionJSONRequestBody
+}
+
+type ResumeBoardExecutionResponseObject interface {
+	VisitResumeBoardExecutionResponse(w http.ResponseWriter) error
+}
+
+type ResumeBoardExecution200JSONResponse BoardTokenIssue
+
+func (response ResumeBoardExecution200JSONResponse) VisitResumeBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBoardExecution400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ResumeBoardExecution400JSONResponse) VisitResumeBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBoardExecution401JSONResponse Error
+
+func (response ResumeBoardExecution401JSONResponse) VisitResumeBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBoardExecution404JSONResponse Error
+
+func (response ResumeBoardExecution404JSONResponse) VisitResumeBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBoardExecution409JSONResponse Error
+
+func (response ResumeBoardExecution409JSONResponse) VisitResumeBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostBoardExternalEntryRequestObject struct {
+	Body *PostBoardExternalEntryJSONRequestBody
+}
+
+type PostBoardExternalEntryResponseObject interface {
+	VisitPostBoardExternalEntryResponse(w http.ResponseWriter) error
+}
+
+type PostBoardExternalEntry201JSONResponse BoardTaskEntry
+
+func (response PostBoardExternalEntry201JSONResponse) VisitPostBoardExternalEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostBoardExternalEntry400JSONResponse struct{ ErrorJSONResponse }
+
+func (response PostBoardExternalEntry400JSONResponse) VisitPostBoardExternalEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostBoardExternalEntry401JSONResponse Error
+
+func (response PostBoardExternalEntry401JSONResponse) VisitPostBoardExternalEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostBoardExternalEntry409JSONResponse Error
+
+func (response PostBoardExternalEntry409JSONResponse) VisitPostBoardExternalEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishBoardExecutionRequestObject struct {
+	Body *FinishBoardExecutionJSONRequestBody
+}
+
+type FinishBoardExecutionResponseObject interface {
+	VisitFinishBoardExecutionResponse(w http.ResponseWriter) error
+}
+
+type FinishBoardExecution200JSONResponse BoardExecution
+
+func (response FinishBoardExecution200JSONResponse) VisitFinishBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishBoardExecution400JSONResponse struct{ ErrorJSONResponse }
+
+func (response FinishBoardExecution400JSONResponse) VisitFinishBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishBoardExecution401JSONResponse Error
+
+func (response FinishBoardExecution401JSONResponse) VisitFinishBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishBoardExecution409JSONResponse Error
+
+func (response FinishBoardExecution409JSONResponse) VisitFinishBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartbeatBoardExecutionRequestObject struct {
+	Body *HeartbeatBoardExecutionJSONRequestBody
+}
+
+type HeartbeatBoardExecutionResponseObject interface {
+	VisitHeartbeatBoardExecutionResponse(w http.ResponseWriter) error
+}
+
+type HeartbeatBoardExecution200JSONResponse BoardExecution
+
+func (response HeartbeatBoardExecution200JSONResponse) VisitHeartbeatBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartbeatBoardExecution400JSONResponse struct{ ErrorJSONResponse }
+
+func (response HeartbeatBoardExecution400JSONResponse) VisitHeartbeatBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartbeatBoardExecution401JSONResponse Error
+
+func (response HeartbeatBoardExecution401JSONResponse) VisitHeartbeatBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartbeatBoardExecution409JSONResponse Error
+
+func (response HeartbeatBoardExecution409JSONResponse) VisitHeartbeatBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadBoardExternalTaskRequestObject struct {
+	Params ReadBoardExternalTaskParams
+}
+
+type ReadBoardExternalTaskResponseObject interface {
+	VisitReadBoardExternalTaskResponse(w http.ResponseWriter) error
+}
+
+type ReadBoardExternalTask200JSONResponse BoardExternalTask
+
+func (response ReadBoardExternalTask200JSONResponse) VisitReadBoardExternalTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadBoardExternalTask400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ReadBoardExternalTask400JSONResponse) VisitReadBoardExternalTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadBoardExternalTask401JSONResponse Error
+
+func (response ReadBoardExternalTask401JSONResponse) VisitReadBoardExternalTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadBoardExternalTask409JSONResponse Error
+
+func (response ReadBoardExternalTask409JSONResponse) VisitReadBoardExternalTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListBoardTasksRequestObject struct {
 	Params ListBoardTasksParams
 }
@@ -12631,6 +13487,85 @@ func (response CreateBoardEntry412JSONResponse) VisitCreateBoardEntryResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachBoardExecutionRequestObject struct {
+	TaskKey BoardTaskKey `json:"taskKey"`
+	Body    *AttachBoardExecutionJSONRequestBody
+}
+
+type AttachBoardExecutionResponseObject interface {
+	VisitAttachBoardExecutionResponse(w http.ResponseWriter) error
+}
+
+type AttachBoardExecution201JSONResponse BoardTokenIssue
+
+func (response AttachBoardExecution201JSONResponse) VisitAttachBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachBoardExecution400JSONResponse struct{ ErrorJSONResponse }
+
+func (response AttachBoardExecution400JSONResponse) VisitAttachBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachBoardExecution401JSONResponse Error
+
+func (response AttachBoardExecution401JSONResponse) VisitAttachBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachBoardExecution404JSONResponse Error
+
+func (response AttachBoardExecution404JSONResponse) VisitAttachBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachBoardExecution409JSONResponse Error
+
+func (response AttachBoardExecution409JSONResponse) VisitAttachBoardExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14909,6 +15844,24 @@ type StrictServerInterface interface {
 	// (GET /api/board/events)
 	WatchBoard(ctx context.Context, request WatchBoardRequestObject) (WatchBoardResponseObject, error)
 
+	// (GET /api/board/executions)
+	ListBoardExecutions(ctx context.Context, request ListBoardExecutionsRequestObject) (ListBoardExecutionsResponseObject, error)
+
+	// (POST /api/board/executions/{executionId}/resume)
+	ResumeBoardExecution(ctx context.Context, request ResumeBoardExecutionRequestObject) (ResumeBoardExecutionResponseObject, error)
+
+	// (POST /api/board/external/entries)
+	PostBoardExternalEntry(ctx context.Context, request PostBoardExternalEntryRequestObject) (PostBoardExternalEntryResponseObject, error)
+
+	// (POST /api/board/external/finish)
+	FinishBoardExecution(ctx context.Context, request FinishBoardExecutionRequestObject) (FinishBoardExecutionResponseObject, error)
+
+	// (POST /api/board/external/heartbeat)
+	HeartbeatBoardExecution(ctx context.Context, request HeartbeatBoardExecutionRequestObject) (HeartbeatBoardExecutionResponseObject, error)
+
+	// (GET /api/board/external/task)
+	ReadBoardExternalTask(ctx context.Context, request ReadBoardExternalTaskRequestObject) (ReadBoardExternalTaskResponseObject, error)
+
 	// (GET /api/board/tasks)
 	ListBoardTasks(ctx context.Context, request ListBoardTasksRequestObject) (ListBoardTasksResponseObject, error)
 
@@ -14929,6 +15882,9 @@ type StrictServerInterface interface {
 
 	// (POST /api/board/tasks/{taskKey}/entries)
 	CreateBoardEntry(ctx context.Context, request CreateBoardEntryRequestObject) (CreateBoardEntryResponseObject, error)
+
+	// (POST /api/board/tasks/{taskKey}/executions/attach)
+	AttachBoardExecution(ctx context.Context, request AttachBoardExecutionRequestObject) (AttachBoardExecutionResponseObject, error)
 
 	// (POST /api/board/tasks/{taskKey}/review)
 	ReviewBoardTask(ctx context.Context, request ReviewBoardTaskRequestObject) (ReviewBoardTaskResponseObject, error)
@@ -17273,6 +18229,184 @@ func (sh *strictHandler) WatchBoard(w http.ResponseWriter, r *http.Request, para
 	}
 }
 
+// ListBoardExecutions operation middleware
+func (sh *strictHandler) ListBoardExecutions(w http.ResponseWriter, r *http.Request, params ListBoardExecutionsParams) {
+	var request ListBoardExecutionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBoardExecutions(ctx, request.(ListBoardExecutionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBoardExecutions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBoardExecutionsResponseObject); ok {
+		if err := validResponse.VisitListBoardExecutionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResumeBoardExecution operation middleware
+func (sh *strictHandler) ResumeBoardExecution(w http.ResponseWriter, r *http.Request, executionId string) {
+	var request ResumeBoardExecutionRequestObject
+
+	request.ExecutionId = executionId
+
+	var body ResumeBoardExecutionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResumeBoardExecution(ctx, request.(ResumeBoardExecutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResumeBoardExecution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResumeBoardExecutionResponseObject); ok {
+		if err := validResponse.VisitResumeBoardExecutionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostBoardExternalEntry operation middleware
+func (sh *strictHandler) PostBoardExternalEntry(w http.ResponseWriter, r *http.Request) {
+	var request PostBoardExternalEntryRequestObject
+
+	var body PostBoardExternalEntryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostBoardExternalEntry(ctx, request.(PostBoardExternalEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostBoardExternalEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostBoardExternalEntryResponseObject); ok {
+		if err := validResponse.VisitPostBoardExternalEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// FinishBoardExecution operation middleware
+func (sh *strictHandler) FinishBoardExecution(w http.ResponseWriter, r *http.Request) {
+	var request FinishBoardExecutionRequestObject
+
+	var body FinishBoardExecutionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.FinishBoardExecution(ctx, request.(FinishBoardExecutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "FinishBoardExecution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(FinishBoardExecutionResponseObject); ok {
+		if err := validResponse.VisitFinishBoardExecutionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// HeartbeatBoardExecution operation middleware
+func (sh *strictHandler) HeartbeatBoardExecution(w http.ResponseWriter, r *http.Request) {
+	var request HeartbeatBoardExecutionRequestObject
+
+	var body HeartbeatBoardExecutionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.HeartbeatBoardExecution(ctx, request.(HeartbeatBoardExecutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "HeartbeatBoardExecution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(HeartbeatBoardExecutionResponseObject); ok {
+		if err := validResponse.VisitHeartbeatBoardExecutionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReadBoardExternalTask operation middleware
+func (sh *strictHandler) ReadBoardExternalTask(w http.ResponseWriter, r *http.Request, params ReadBoardExternalTaskParams) {
+	var request ReadBoardExternalTaskRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReadBoardExternalTask(ctx, request.(ReadBoardExternalTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReadBoardExternalTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReadBoardExternalTaskResponseObject); ok {
+		if err := validResponse.VisitReadBoardExternalTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListBoardTasks operation middleware
 func (sh *strictHandler) ListBoardTasks(w http.ResponseWriter, r *http.Request, params ListBoardTasksParams) {
 	var request ListBoardTasksRequestObject
@@ -17479,6 +18613,39 @@ func (sh *strictHandler) CreateBoardEntry(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateBoardEntryResponseObject); ok {
 		if err := validResponse.VisitCreateBoardEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AttachBoardExecution operation middleware
+func (sh *strictHandler) AttachBoardExecution(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey) {
+	var request AttachBoardExecutionRequestObject
+
+	request.TaskKey = taskKey
+
+	var body AttachBoardExecutionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AttachBoardExecution(ctx, request.(AttachBoardExecutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AttachBoardExecution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AttachBoardExecutionResponseObject); ok {
+		if err := validResponse.VisitAttachBoardExecutionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

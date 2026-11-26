@@ -68,6 +68,39 @@ func (b runnerBackend) identity(ctx context.Context, envID string) (string, erro
 	return b.runners.identity(ctx, envID)
 }
 
+type enrollmentKey struct{}
+
+// RequireEnrollment pins Runner operations to the enrollment recorded by the caller.
+func RequireEnrollment(ctx context.Context, digest string) context.Context {
+	return context.WithValue(ctx, enrollmentKey{}, digest)
+}
+
+// EnrolledRunnerID returns the Outbound Runner ID of the opened lease.
+func EnrolledRunnerID(h Handle) string {
+	if machine := outboundHandle(h); machine != nil {
+		return machine.id
+	}
+	return ""
+}
+
+func outboundHandle(h Handle) *runnerHandle {
+	wrapped, _ := h.(stampedHandle)
+	machine, _ := wrapped.lease.(*runnerHandle)
+	return machine
+}
+
+// CheckEnrollment rejects a handle that does not match the pinned enrollment.
+func CheckEnrollment(ctx context.Context, h Handle) error {
+	expected, _ := ctx.Value(enrollmentKey{}).(string)
+	if expected == "" {
+		return nil
+	}
+	if machine := outboundHandle(h); machine == nil || machine.digest != expected {
+		return fmt.Errorf("%w: the Runner enrollment changed", ErrUnavailable)
+	}
+	return nil
+}
+
 // runnerHandle is a lease on the enrollment of a machine. It finds the live session at each
 // call, so a reconnect does not make the lease stale.
 type runnerHandle struct {

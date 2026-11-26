@@ -456,6 +456,19 @@ type TaskExecution struct {
 	LastHeartbeatAt   sql.NullInt64 `json:"last_heartbeat_at"`
 	StartedAt         int64         `json:"started_at"`
 	EndedAt           sql.NullInt64 `json:"ended_at"`
+	DispatchID        string        `json:"dispatch_id"`
+	LeaseTtlMs        int64         `json:"lease_ttl_ms"`
+	RunnerEnrollment  string        `json:"runner_enrollment"`
+}
+
+type TaskExecutionToken struct {
+	TokenHash   string        `json:"token_hash"`
+	TaskID      string        `json:"task_id"`
+	ExecutionID string        `json:"execution_id"`
+	LeaseEpoch  int64         `json:"lease_epoch"`
+	RevokedAt   sql.NullInt64 `json:"revoked_at"`
+	CreatedAt   int64         `json:"created_at"`
+	DispatchID  string        `json:"dispatch_id"`
 }
 
 type TaskWakeAdmissionSnapshot struct {

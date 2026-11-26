@@ -102,7 +102,7 @@ func New(cfg Config) http.Handler {
 				return
 			}
 			// Decoder errors can quote a value with the wrong JSON type.
-			if strings.HasSuffix(r.URL.Path, "/vault") || strings.HasSuffix(r.URL.Path, "/oauth") {
+			if boardExternalPath(r) || boardTokenResponse(r) || strings.HasSuffix(r.URL.Path, "/vault") || strings.HasSuffix(r.URL.Path, "/oauth") {
 				writeError(w, http.StatusBadRequest, "the request is not valid")
 				return
 			}
@@ -117,7 +117,9 @@ func New(cfg Config) http.Handler {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
 				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrEnvironmentInvalid):
 				status = http.StatusBadRequest
-			case errors.Is(err, artifact.ErrConflict), errors.Is(err, sysops.ErrBusy), errors.Is(err, sysops.ErrUnsupported), errors.Is(err, worktask.ErrConflict):
+			case errors.Is(err, worktask.ErrBoardToken):
+				status = http.StatusUnauthorized
+			case errors.Is(err, worktask.ErrClaimLost), errors.Is(err, artifact.ErrConflict), errors.Is(err, sysops.ErrBusy), errors.Is(err, sysops.ErrUnsupported), errors.Is(err, worktask.ErrConflict):
 				status = http.StatusConflict
 			case errors.Is(err, worktask.ErrRevision):
 				status = http.StatusPreconditionFailed

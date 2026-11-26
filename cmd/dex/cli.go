@@ -61,7 +61,7 @@ func parseInstallConfig(m service.Manager, args []string) (service.Config, error
 	return c, err
 }
 func usage() {
-	fmt.Fprintln(os.Stderr, "Usage: dex [serve|version|service|update|open|doctor|token] [options]\n  No command: serve in the foreground.\n  dex service install: start now and at login.\n  Use dex <command> --help for options.")
+	fmt.Fprintln(os.Stderr, "Usage: dex [serve|version|service|update|open|doctor|token|board] [options]\n  No command: serve in the foreground.\n  dex service install: start now and at login.\n  Use dex <command> --help for options.")
 }
 func runFlags(f *flag.FlagSet, c *service.Config) {
 	f.StringVar(&c.Host, "host", c.Host, "Host IP; a host that is not loopback requires the access token")
@@ -96,6 +96,8 @@ func dispatch(args []string) error {
 		return serveCommand(ctx, args)
 	case "service":
 		return serviceCommand(ctx, args)
+	case "board":
+		return boardCommand(ctx, args)
 	case "update":
 		return updateCommand(ctx, args)
 	case "open", "doctor", "token":

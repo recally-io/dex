@@ -150,6 +150,23 @@ Stop, restart and limits:
   limit as omitted. dex cuts a line longer than 64 KiB and continues with the
   next line.
 
+### External Task runs
+
+`task_dispatch_external` uses the Session Process path on the Assignee's
+Outbound Runner. It ties the launch to a Runner enrollment and an external
+Task lease. The Process receives a scoped Board Token through its environment.
+The tool arguments, Process record, and result contain no token. The Process
+discards harness output. Use the Board Timeline for progress and the Process
+exit status for launch diagnostics. The Process sends no wake on exit. The
+command must report its outcome.
+Dex does not infer Task status from the exit status.
+
+A current Outbound Runner can run another Bot's tool while a Process uses
+the same socket. Both use the normal Runner operation limit. There are no
+harness-specific Runner methods. See
+[external agents and Runners](task-board.md#external-agents-and-runners-phase-3)
+for lease and resume rules.
+
 ## Transcript subscriptions and history
 
 The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas

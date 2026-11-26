@@ -1,10 +1,12 @@
 import { useRef, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getBoardTaskOptions,
   getHealthOptions,
   listAgentsOptions,
+  listBoardExecutionsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import {
   createBoardEntry,
@@ -116,6 +118,7 @@ function TaskDetail({ detail, bots }: { detail: BoardTaskDetail; bots: Agent[] }
           </ul>
         </Section>
       ) : null}
+      <ExternalRuns taskKey={task.key} />
       <TaskLinks links={detail.links} open={open}>
         {open && health.data?.plugins.includes("github") ? (
           <GitHubPullForm path={{ agentId: task.assigneeBotId, taskId: task.id }} />
@@ -123,6 +126,55 @@ function TaskDetail({ detail, bots }: { detail: BoardTaskDetail; bots: Agent[] }
       </TaskLinks>
       <Timeline task={task} entries={detail.entries} botNames={botNames} />
     </>
+  );
+}
+
+function ExternalRuns({ taskKey }: { taskKey: string }) {
+  const query = useQuery({
+    ...listBoardExecutionsOptions({ query: { taskKey, kind: "external_agent" } }),
+    refetchInterval: ({ state }) =>
+      state.data?.executions.some((run) => run.state === "running") ? 5000 : false,
+  });
+
+  if (query.isError) {
+    return (
+      <Failure title="Could not load external runs" error={query.error} retry={() => void query.refetch()} />
+    );
+  }
+
+  const runs = query.data?.executions ?? [];
+
+  if (!runs.length) return null;
+
+  return (
+    <Section title="External runs">
+      <ul className="divide-y divide-border">
+        {runs.map((run) => (
+          <li key={run.id} className="flex flex-col gap-1 py-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{run.harness ?? "External agent"}</span>
+              <Badge variant="outline" className="capitalize">
+                {run.state}
+              </Badge>
+              {run.gitBranch ? <span className="font-mono">{run.gitBranch}</span> : null}
+              {run.lastHeartbeatAt ? (
+                <span className="text-muted-foreground">
+                  Heartbeat {formatDistanceToNow(run.lastHeartbeatAt, { addSuffix: true })}
+                </span>
+              ) : null}
+            </div>
+            <span className="text-muted-foreground">
+              {run.runnerName ? `Registered Runner: ${run.runnerName}` : "No registered Runner"}
+            </span>
+            {run.hostname || run.workspacePath ? (
+              <span className="break-all font-mono text-muted-foreground">
+                Reported host: {run.hostname ?? "unknown"} · Workspace: {run.workspacePath ?? "unknown"}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }
 
