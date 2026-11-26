@@ -20,14 +20,14 @@ import (
 )
 
 func TestUserRunsAnotherBotsToolDuringAnOutboundProcess(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-	defer cancel()
 	data := t.TempDir()
-	dbConn, err := db.Open(ctx, filepath.Join(data, "control.sqlite"))
+	dbConn, err := db.Open(t.Context(), filepath.Join(data, "control.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer dbConn.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
 	q := sqlc.New(dbConn)
 	seed := func(query string) {
 		t.Helper()
