@@ -70,9 +70,9 @@ type Config struct {
 	AutomationCheck time.Duration
 	// Background sets the limits of background commands; a zero field takes its default.
 	Background background.Limits
-	// ExecEnv overrides the agent execution environment backend; nil uses the multi-driver manager.
+	// ExecEnv overrides the Bot's Runner backend. A nil value uses the default manager.
 	ExecEnv runner.Provider
-	// SSHProgram replaces the ssh executable used by pi-env in tests.
+	// SSHProgram replaces the ssh executable used by the SSH Runner in tests.
 	SSHProgram string
 	// E2BAPIURL and E2BEnvdURL replace the E2B Cloud and sandbox envd endpoints in tests.
 	E2BAPIURL  string
@@ -287,8 +287,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	chats.ConfigureBackground(bg)
 	automations := automation.New(q, chats, time.Now)
 	automations.ConfigureRunnerStatus(envs.Status)
-	// Check admits due routines one at a time, so a dead host delays the others by this timeout;
-	// probe in parallel if many routines use SSH hosts.
+	// Check admits due Automations one at a time. An offline SSH host can delay
+	// the others by this timeout. Probe in parallel if many Automations use SSH.
 	automations.ConfigureProbe(func(ctx context.Context, agentID, runnerID string) error {
 		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
@@ -341,7 +341,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	agentsService.OnRunnerChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
 		_ = native.CloseAgent(changeCtx, agentID)
 		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID, oldSandboxID); err != nil {
-			slog.Warn("release the earlier execution environment of a bot", "agent", agentID, "err", err)
+			slog.Warn("release the earlier Runner of a bot", "agent", agentID, "err", err)
 		}
 	}
 	*botTools = agent.BotTools{Agents: agentsService, Chats: chats, Extensions: native.Extensions}
@@ -425,7 +425,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		bots, err := q.ListActiveAgentsByRunner(ctx, id)
 		if err != nil {
 			if ctx.Err() == nil {
-				slog.Warn("find bots that use the environment", "environment", id, "err", err)
+				slog.Warn("find bots that use the Runner", "runner", id, "err", err)
 			}
 			return
 		}
@@ -447,7 +447,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Envs:   envs,
 		RunnerChanged: func(ctx context.Context, id string) {
 			forRunnerBots(context.WithoutCancel(ctx), id, func(agentID string) {
-				native.MarkStale(agentID, "execution environment settings")
+				native.MarkStale(agentID, "Runner settings")
 			})
 			native.MarkRunnerChanged(id)
 		},

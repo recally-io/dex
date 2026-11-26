@@ -63,7 +63,7 @@ func TestUserWorkspaceHelpersStageReadSyncAndListDirectories(t *testing.T) {
 	remoteHome := t.TempDir()
 	remoteRoot := t.TempDir()
 	localWS := t.TempDir()
-	provider := runnertest.NewProvider(runner.KindPiEnv, remoteRoot, remoteHome, nil)
+	provider := runnertest.NewProvider(runner.KindSSH, remoteRoot, remoteHome, nil)
 
 	h, err := provider.Open(t.Context(), "bot1", "")
 	if err != nil {

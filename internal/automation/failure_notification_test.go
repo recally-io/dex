@@ -39,7 +39,7 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 				in.Schedule.Time, in.Schedule.Minutes = "09:00", 0
 			}
 			if tc.name == "unavailable Runner" {
-				if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','Box','pi-env','{"host":"fixture.invalid"}','',0,0)`); err != nil {
+				if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','Box','ssh','{"host":"fixture.invalid"}','',0,0)`); err != nil {
 					t.Fatal(err)
 				}
 				in.RunnerID = "box"

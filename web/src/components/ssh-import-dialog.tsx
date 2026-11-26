@@ -22,7 +22,7 @@ export function ImportSshConfigDialog({
   const existingSshHosts = new Set<string>();
 
   for (const env of existing) {
-    if (env.kind === "pi-env" && env.config.host) existingSshHosts.add(env.config.host);
+    if (env.kind === "ssh" && env.config.host) existingSshHosts.add(env.config.host);
   }
 
   const [selected, setSelected] = useState<string[]>([]);
@@ -46,7 +46,7 @@ export function ImportSshConfigDialog({
       for (const alias of selected) {
         // eslint-disable-next-line no-await-in-loop
         await createRunner({
-          body: { name: alias, kind: "pi-env", config: { host: alias } },
+          body: { name: alias, kind: "ssh", config: { host: alias } },
           throwOnError: true,
         });
       }

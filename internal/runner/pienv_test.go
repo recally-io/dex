@@ -34,7 +34,7 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 
 	now := time.Now().UnixMilli()
 	envRow, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
-		ID: "env-ssh", Name: "Dev SSH", Kind: string(runner.KindPiEnv),
+		ID: "env-ssh", Name: "Dev SSH", Kind: string(runner.KindSSH),
 		Config: `{"host":"devbox.internal","workspaceDir":"~/workspaces"}`, CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -112,7 +112,7 @@ func TestUserProbesUnsavedPiEnvWithoutPollutingKnownHosts(t *testing.T) {
 	// When probing an unsaved SSH environment (saved == nil), connectivity succeeds
 	// without writing into <dataDir>/ssh_known_hosts.
 	probe, err := mgr.Probe(t.Context(), nil, runner.Spec{
-		Kind:   runner.KindPiEnv,
+		Kind:   runner.KindSSH,
 		Config: `{"host":"preview.internal","workspaceDir":"~/work"}`,
 	})
 	if err != nil || !probe.OK || probe.Home != sshFix.RemoteHome {
@@ -141,13 +141,13 @@ func TestUserPiEnvUsesLoginShellByDefaultAndRespectsOptOut(t *testing.T) {
 
 	now := time.Now().UnixMilli()
 	if _, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
-		ID: "env-login-default", Name: "Default Login", Kind: string(runner.KindPiEnv),
+		ID: "env-login-default", Name: "Default Login", Kind: string(runner.KindSSH),
 		Config: `{"host":"login.internal"}`, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
-		ID: "env-login-off", Name: "No Login", Kind: string(runner.KindPiEnv),
+		ID: "env-login-off", Name: "No Login", Kind: string(runner.KindSSH),
 		Config: `{"host":"nologin.internal","loginShell":false}`, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -221,7 +221,7 @@ func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
 	// Given two bots on one SSH environment.
 	now := time.Now().UnixMilli()
 	envRow, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
-		ID: "env-shared", Name: "Shared SSH", Kind: string(runner.KindPiEnv),
+		ID: "env-shared", Name: "Shared SSH", Kind: string(runner.KindSSH),
 		Config: `{"host":"shared.internal","workspaceDir":"~/one"}`, CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -328,7 +328,7 @@ func TestUserPiEnvOpenFailsWhenDexStopsDuringTheFirstConnect(t *testing.T) {
 	q := sqlc.New(conn)
 	now := time.Now().UnixMilli()
 	if _, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
-		ID: "env-slow", Name: "Slow SSH", Kind: string(runner.KindPiEnv), Config: `{"host":"slow.internal"}`, CreatedAt: now, UpdatedAt: now,
+		ID: "env-slow", Name: "Slow SSH", Kind: string(runner.KindSSH), Config: `{"host":"slow.internal"}`, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +395,7 @@ func TestUserPiEnvBuildsDaemonOutsideModuleCheckout(t *testing.T) {
 
 	now := time.Now().UnixMilli()
 	envRow, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
-		ID: "env-standalone", Name: "MacMini", Kind: string(runner.KindPiEnv),
+		ID: "env-standalone", Name: "MacMini", Kind: string(runner.KindSSH),
 		Config: `{"host":"macmini.local","user":"vaayne","workspaceDir":"~/.dex/agents"}`, CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {

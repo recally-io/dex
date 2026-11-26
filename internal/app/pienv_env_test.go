@@ -42,7 +42,7 @@ type apiRunnerTestResult struct {
 	Error          string   `json:"error"`
 }
 
-func TestUserManagesPiEnvRunnerAndExecutesBotRemotely(t *testing.T) {
+func TestUserManagesSSHRunnerAndExecutesBotRemotely(t *testing.T) {
 	t.Setenv("HOST_PIENV_SECRET", "do-not-leak")
 	dataDir := t.TempDir()
 	localHome := t.TempDir()
@@ -61,14 +61,14 @@ func TestUserManagesPiEnvRunnerAndExecutesBotRemotely(t *testing.T) {
 		},
 	})
 
-	// When creating and testing a pi-env SSH environment via Settings API.
+	// When creating and testing an SSH Runner with the Settings API.
 	var created apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
 		"name":   "Remote Box",
-		"kind":   "pi-env",
+		"kind":   "ssh",
 		"config": map[string]any{"host": "remote.internal", "user": "dev"},
 	}, &created, http.StatusCreated)
-	if created.Kind != "pi-env" || created.Config.Host != "remote.internal" {
+	if created.Kind != "ssh" || created.Config.Host != "remote.internal" {
 		t.Fatalf("unexpected created environment: %+v", created)
 	}
 
@@ -78,7 +78,7 @@ func TestUserManagesPiEnvRunnerAndExecutesBotRemotely(t *testing.T) {
 		t.Fatalf("unexpected probe: %+v", probe)
 	}
 
-	// Binding the default bot to the pi-env environment runs tools remotely and blocks deletion while in use (409).
+	// The default bot runs tools on its SSH Runner and blocks deletion of that Runner (409).
 	var defAgent apiAgent
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &defAgent)
 	defAgent.Provider = "faux"
@@ -195,7 +195,7 @@ func TestUserDiscoversSSHConfigProbesAndRecoversHostKey(t *testing.T) {
 	// Pre-save probe verifies connectivity without creating <dataDir>/ssh_known_hosts.
 	var preProbe apiRunnerTestResult
 	d.must(t, http.MethodPost, "/api/settings/runners/probe", map[string]any{
-		"kind":   "pi-env",
+		"kind":   "ssh",
 		"config": map[string]any{"host": "buildbox"},
 	}, &preProbe, http.StatusOK)
 	if !preProbe.OK || preProbe.Home != sshFix.RemoteHome {
@@ -209,7 +209,7 @@ func TestUserDiscoversSSHConfigProbesAndRecoversHostKey(t *testing.T) {
 	var saved apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
 		"name":   "Build Box",
-		"kind":   "pi-env",
+		"kind":   "ssh",
 		"config": map[string]any{"host": "buildbox"},
 	}, &saved, http.StatusCreated)
 
@@ -230,7 +230,7 @@ func TestUserDiscoversSSHConfigProbesAndRecoversHostKey(t *testing.T) {
 	var editProbe apiRunnerTestResult
 	d.must(t, http.MethodPost, "/api/settings/runners/probe", map[string]any{
 		"runnerId": saved.ID,
-		"kind":     "pi-env",
+		"kind":     "ssh",
 		"config":   map[string]any{"host": "buildbox"},
 	}, &editProbe, http.StatusOK)
 	if editProbe.OK || !editProbe.HostKeyChanged {

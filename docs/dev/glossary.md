@@ -76,7 +76,7 @@ They do not share a runtime abstraction.
 | Input Queue    | Durable input intents (submissions) in `control.sqlite`.                                                          |
 | Native Inbox   | PiG's durable queue inside `agents/<id>/state.sqlite`.                                                            |
 | Outbox         | Durable channel delivery queue (`outbox_messages`, `outbox_files`). Explicit Web notices use `web_notifications`. |
-| Webhook Queue  | Durable buffer for inbound Channel webhooks (`channel_webhook_inbox`).                                            |
+| Webhook Queue  | Durable buffer for inbound Channel webhooks (`channel_webhook_queue`).                                            |
 | Native run     | One PiG execution pass. PiG calls it a task. It is separate from a Board Task and an Automation run.              |
 | Automation run | A business record in `automation_runs`. A skipped run need not start a native run.                                |
 | Scheduler      | The ticker loop that checks Automations, Monitors, and Dreams.                                                    |

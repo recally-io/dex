@@ -321,8 +321,8 @@ func TestUserAnswersQuestionsFromTwoBotsWithTheSameRemoteMessageID(t *testing.T)
 		eventually(t, "question delivery recorded", func() (bool, any) {
 			var delivered bool
 			err := conn.QueryRowContext(t.Context(), `SELECT EXISTS (
-				SELECT 1 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
-				WHERE c.agent_id = ? AND s.delivered_at IS NOT NULL
+				SELECT 1 FROM outbox_messages
+				WHERE agent_id = ? AND kind = 'question' AND status = 'sent'
 			)`, entry.agent).Scan(&delivered)
 			return err == nil && delivered, fmt.Sprintf("delivered=%t err=%v", delivered, err)
 		})

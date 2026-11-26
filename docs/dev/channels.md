@@ -230,7 +230,7 @@ changes. Check the platform's event logs after a switch. See the
 
 ### Intake and recovery
 
-Dex commits each authenticated event to the Webhook Queue in
+Dex commits each authenticated event to `channel_webhook_queue` in
 `control.sqlite` before it returns HTTP 200. A failed commit gets HTTP 503.
 The ACK does not wait for message processing, downloads, or agent execution.
 Telegram uses the bot ID and update ID. Feishu uses the app ID and
@@ -387,6 +387,10 @@ WHERE id = :outbox_id;
   request and Dex stops before it saves the receipt, a retry can send again.
 
 ### Pairing and pending deliveries
+
+Replies to one peer follow input order. Earlier pending inputs and replies
+waiting for retry hold later replies. A terminal reply in `outbox_messages`, a
+revoked input, or a settled input with no reply does not hold the queue.
 
 The channel settings hold the current pairing. Unpairing marks pending deliveries to the removed destination `failed` in the same transaction. A new pairing for the same account has no generation ID. It does not revive cancelled deliveries. A request already in flight can still reach the platform.
 

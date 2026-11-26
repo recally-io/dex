@@ -317,20 +317,6 @@ func (q *Queries) MarkChannelCommandDelivered(ctx context.Context, arg MarkChann
 	return err
 }
 
-const markChannelReplyDelivered = `-- name: MarkChannelReplyDelivered :exec
-UPDATE submissions SET delivered_at = ? WHERE id = ?
-`
-
-type MarkChannelReplyDeliveredParams struct {
-	DeliveredAt sql.NullInt64 `json:"delivered_at"`
-	ID          string        `json:"id"`
-}
-
-func (q *Queries) MarkChannelReplyDelivered(ctx context.Context, arg MarkChannelReplyDeliveredParams) error {
-	_, err := q.db.ExecContext(ctx, markChannelReplyDelivered, arg.DeliveredAt, arg.ID)
-	return err
-}
-
 const saveChannelCommandAnswer = `-- name: SaveChannelCommandAnswer :exec
 UPDATE channel_commands SET answer = ? WHERE source_key = ?
 `

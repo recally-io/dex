@@ -86,7 +86,7 @@ func (q *Queries) CreateTelegramCallback(ctx context.Context, arg CreateTelegram
 }
 
 const getChildWorkflowSource = `-- name: GetChildWorkflowSource :one
-SELECT s.id, s.conversation_id, s.content, s.status, s.answer, s.reason, s.created_at, s.settled_at, s.source_key, s.attachments, s.delivered_at, s.origin, s.admitted_at, s.when_busy, s.parent_request_id, s.result_child_id, s.native_answer_id, s.channel_context, s.channel_revoked, s.required_reply_id, s.stop_requested, s.producer, s.reply_channel, s.reply_peer, s.exit_action, s.kind FROM submissions s
+SELECT s.id, s.conversation_id, s.content, s.status, s.answer, s.reason, s.created_at, s.settled_at, s.source_key, s.attachments, s.origin, s.admitted_at, s.when_busy, s.parent_request_id, s.result_child_id, s.native_answer_id, s.channel_context, s.channel_revoked, s.required_reply_id, s.stop_requested, s.producer, s.reply_channel, s.reply_peer, s.exit_action, s.kind FROM submissions s
 WHERE s.conversation_id = ?1 AND s.parent_request_id IS NOT NULL
 ORDER BY s.rowid LIMIT 1
 `
@@ -105,7 +105,6 @@ func (q *Queries) GetChildWorkflowSource(ctx context.Context, childID int64) (Su
 		&i.SettledAt,
 		&i.SourceKey,
 		&i.Attachments,
-		&i.DeliveredAt,
 		&i.Origin,
 		&i.AdmittedAt,
 		&i.WhenBusy,

@@ -107,7 +107,7 @@ func TestUserTelegramQueuedAcknowledgementDoesNotReplayUnknownOutcome(t *testing
 	waitTelegramQueueAck(t, conn, 1, "unknown")
 	_ = f.next(t)
 	eventually(t, "reply delivery confirmed before restart", func() (bool, any) {
-		return count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL") == 1, nil
+		return count(t, conn, "SELECT count(*) FROM outbox_messages o JOIN submissions s ON s.id = o.source_submission_id WHERE s.source_key='telegram:123:1' AND o.kind = 'reply' AND o.status = 'sent'") == 1, nil
 	})
 	d.stop()
 

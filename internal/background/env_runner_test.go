@@ -20,7 +20,7 @@ func TestUserRunsBackgroundCommandsInRemoteEnv(t *testing.T) {
 	t.Setenv("CONTROL_BG_SECRET", "host-secret")
 	remoteHome := t.TempDir()
 	remoteRoot := t.TempDir()
-	provider := runnertest.NewProvider(runner.KindPiEnv, remoteRoot, remoteHome, map[string]string{
+	provider := runnertest.NewProvider(runner.KindSSH, remoteRoot, remoteHome, map[string]string{
 		"REMOTE_BG_MARKER": "remote-bg-ok",
 	})
 	handle, err := provider.Open(t.Context(), "bot", "")
@@ -51,7 +51,7 @@ func TestUserRunsBackgroundCommandsInRemoteEnv(t *testing.T) {
 			DefaultCwd:      handle.Workspace(),
 			Env:             map[string]string{"EXPLICIT_BG": "exp-ok"},
 			InheritEnv:      true,
-			EnvKind:         runner.KindPiEnv,
+			EnvKind:         runner.KindSSH,
 		})
 		if err != nil {
 			t.Fatal(err)

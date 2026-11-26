@@ -58,7 +58,7 @@ func routineCanceled(status, reason string) bool {
 }
 
 // Native settlement uses stable codes. Admission errors can also reach this path as raw text;
-// do not put their provider or environment details in the Routine result or its alert.
+// omit provider and Runner details from the Automation result and its alert.
 func routineExecutionReason(reason string) string {
 	switch reason {
 	case "model_error", "no_model", "interrupted", "restart_limit", "nothing_to_answer",
@@ -69,7 +69,7 @@ func routineExecutionReason(reason string) string {
 	}
 }
 
-// settleInput commits the receipt, the routine result, and the result for the parent session in one
+// settleInput commits the receipt, the Automation result, and the result for the parent Session in one
 // control transaction. It returns the parent session that got a result (or zero) and any channel
 // peer woken by an Outbox write.
 func (s *Service) settleInput(ctx context.Context, id string, event engine.Outcome) (changed, parent int64, outboxPeer string, err error) {

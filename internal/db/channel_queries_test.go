@@ -22,10 +22,9 @@ func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
 		`INSERT INTO agents (id,name,model_provider,model_id,created_at) VALUES ('default','Dex','faux','echo',1),('other','Other','faux','echo',1)`,
 		`INSERT INTO conversations (id,agent_id,channel_key,created_at) VALUES (1,'default','main',1),(2,'other','main',1)`,
 		`WITH RECURSIVE history(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM history WHERE n<10000)
-		INSERT INTO submissions (id,conversation_id,content,status,answer,created_at,origin,delivered_at)
+		INSERT INTO submissions (id,conversation_id,content,status,answer,created_at,origin)
 		SELECT 'history-'||n,1,'old input','done','old answer',1,
-		CASE WHEN n%3=0 THEN 'telegram:7' ELSE 'web' END,
-		CASE WHEN n%3=0 THEN 2 ELSE NULL END FROM history`,
+		CASE WHEN n%3=0 THEN 'telegram:7' ELSE 'web' END FROM history`,
 	} {
 		if _, err := conn.ExecContext(t.Context(), stmt); err != nil {
 			t.Fatal(err)
@@ -67,11 +66,11 @@ func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
 
 	// Then the pending count includes only the exact peer and agent.
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO submissions
-		(id,conversation_id,content,status,created_at,origin,kind,delivered_at) VALUES
-		('pending',1,'wait','pending',1,'telegram:7','message',NULL),
-		('near-peer',1,'wait','pending',1,'telegram:70','message',NULL),
-		('other-pending',2,'wait','pending',1,'telegram:7','message',NULL),
-		('wechat-pending',1,'wait','pending',1,'wechat:owner','message',NULL)`); err != nil {
+		(id,conversation_id,content,status,created_at,origin,kind) VALUES
+		('pending',1,'wait','pending',1,'telegram:7','message'),
+		('near-peer',1,'wait','pending',1,'telegram:70','message'),
+		('other-pending',2,'wait','pending',1,'telegram:7','message'),
+		('wechat-pending',1,'wait','pending',1,'wechat:owner','message')`); err != nil {
 		t.Fatal(err)
 	}
 	count, err := q.CountChannelPending(t.Context(), sqlc.CountChannelPendingParams{AgentID: "default", Peer: "telegram:7"})

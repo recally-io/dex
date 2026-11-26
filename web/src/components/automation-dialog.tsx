@@ -72,7 +72,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
 
   // An automation can select only Local or an SSH Machine. Keep a saved Runner in the list
   // even if it is no longer a choice, so a schedule edit does not move the automation.
-  const choices = runnerList.filter((env) => !env.default && (env.kind === "local" || env.kind === "pi-env"));
+  const choices = runnerList.filter((env) => !env.default && (env.kind === "local" || env.kind === "ssh"));
 
   const kept = runnerId !== "" && !choices.some((env) => env.id === runnerId);
 

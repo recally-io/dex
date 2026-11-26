@@ -57,7 +57,7 @@ type SaveGitHubReviewPullJSONBody struct {
 
 // SaveGitHubWebhookJSONBody defines parameters for SaveGitHubWebhook.
 type SaveGitHubWebhookJSONBody struct {
-	// HoldUnmatched Hold Webhook and Pull events that match no Task in the Inbox. The default ignores them.
+	// HoldUnmatched Hold Webhook and Pull events that match no Task on Board. The default ignores them.
 	HoldUnmatched *bool `json:"holdUnmatched,omitempty"`
 
 	// IssueAgentId Create Tasks for opened Issues under this agent. Omit to disable creation.

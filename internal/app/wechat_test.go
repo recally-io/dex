@@ -744,7 +744,7 @@ func TestUserWechatUnpairDoesNotSendAnOldPendingReply(t *testing.T) {
 	conn := wxConn(t, dir)
 	eventually(t, "paused pending delivery", func() (bool, any) {
 		var n int
-		err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions, wechat_runtime WHERE status = 'done' AND delivered_at IS NULL AND pause_until > ?", time.Now().UnixMilli()).Scan(&n)
+		err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM outbox_messages, wechat_runtime WHERE kind = 'reply' AND status = 'pending' AND pause_until > ?", time.Now().UnixMilli()).Scan(&n)
 		return err == nil && n == 1, fmt.Sprintf("pending=%d err=%v", n, err)
 	})
 	// When the owner unpairs and scans again, the old reply stays failed.

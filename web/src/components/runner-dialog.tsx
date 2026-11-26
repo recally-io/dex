@@ -51,7 +51,7 @@ const machineAccess: readonly {
   subtitle: string;
 }[] = [
   {
-    kind: "pi-env",
+    kind: "ssh",
     title: "SSH",
     subtitle: "The machine runs sshd and Dex can reach it",
   },
@@ -74,11 +74,9 @@ export function RunnerDialog({
   onClose: () => void;
 }) {
   const { notify } = useApp();
-  const [kind, setKind] = useState<RunnerKind>(existing?.kind ?? "pi-env");
+  const [kind, setKind] = useState<RunnerKind>(existing?.kind ?? "ssh");
 
-  const [machineKind, setMachineKind] = useState<RunnerKind>(
-    existing?.kind === "runner" ? "runner" : "pi-env",
-  );
+  const [machineKind, setMachineKind] = useState<RunnerKind>(existing?.kind === "runner" ? "runner" : "ssh");
 
   const [tried, setTried] = useState(false);
   const [serviceName, setServiceName] = useState(existing?.kind === "runner" ? existing.name : "");
@@ -94,7 +92,7 @@ export function RunnerDialog({
     setProbeResult(null);
   };
 
-  const ssh = useSshRunnerForm(existing?.kind === "pi-env" ? existing : undefined, sshHosts, resetProbe);
+  const ssh = useSshRunnerForm(existing?.kind === "ssh" ? existing : undefined, sshHosts, resetProbe);
 
   const sandbox = useSandboxRunnerForm(existing?.kind === "e2b" ? existing : undefined, resetProbe);
 
@@ -143,7 +141,7 @@ export function RunnerDialog({
 
   const pending = create.isPending || update.isPending;
   const mutationError = create.error ?? update.error;
-  const active = kind === "pi-env" ? ssh : sandbox;
+  const active = kind === "ssh" ? ssh : sandbox;
   const place: Place = kind === "e2b" ? "sandbox" : "machine";
 
   const showSsh = (key: keyof typeof ssh.errors) => (tried ? ssh.errors[key] : undefined);
@@ -296,7 +294,7 @@ export function RunnerDialog({
           </div>
         ) : null}
 
-        {kind === "pi-env" ? (
+        {kind === "ssh" ? (
           <SshRunnerFields
             controller={ssh}
             sshHosts={sshHosts}
@@ -360,7 +358,7 @@ export function RunnerDialog({
           probe={probeResult}
           forgetting={forgetHostKey.isPending}
           onForgetHostKey={
-            existing && kind === "pi-env" && probeResult.hostKeyChanged
+            existing && kind === "ssh" && probeResult.hostKeyChanged
               ? () => forgetHostKey.mutate({ path: { runnerId: existing.id } })
               : undefined
           }

@@ -170,7 +170,7 @@ WHERE id = ? AND status = 'pending';
 -- that reason also qualifies. The receipt and its source key stay, so a redelivery does not run
 -- the input. A withdrawn input has no reply to deliver to a channel.
 UPDATE submissions SET status = 'unanswered', answer = NULL, reason = 'withdrawn',
-    settled_at = coalesce(settled_at, @now), delivered_at = coalesce(delivered_at, @now)
+    settled_at = coalesce(settled_at, @now)
 WHERE id = @id AND kind IN ('message', 'session_result', 'wake')
 AND (status = 'pending' OR (status = 'unanswered' AND reason = 'aborted'));
 

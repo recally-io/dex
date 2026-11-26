@@ -14,8 +14,8 @@ type Kind string
 const (
 	// KindLocal runs tools and shell commands directly on the control host.
 	KindLocal Kind = "local"
-	// KindPiEnv runs tools and shell commands over a PiG pipe daemon connection.
-	KindPiEnv Kind = "pi-env"
+	// KindSSH runs tools and shell commands over a PiG pipe daemon connection.
+	KindSSH Kind = "ssh"
 	// KindE2B runs tools and shell commands inside an E2B sandbox.
 	KindE2B Kind = "e2b"
 	// KindRunner identifies an Outbound Machine. The host connects through dex-agent.
@@ -25,7 +25,7 @@ const (
 
 // IsRegisteredKind reports whether a stored environment kind can be selected.
 func IsRegisteredKind(kind Kind) bool {
-	return kind == KindPiEnv || kind == KindE2B || kind == KindRunner
+	return kind == KindSSH || kind == KindE2B || kind == KindRunner
 }
 
 // ErrInvalidPath is returned when a requested project or directory path fails validation.

@@ -65,7 +65,7 @@ func TestUserExecutesToolsInRemotePipeEnvironment(t *testing.T) {
 		}
 	}
 
-	provider := runnertest.NewProvider(runner.KindPiEnv, remoteRoot, remoteHome, map[string]string{
+	provider := runnertest.NewProvider(runner.KindSSH, remoteRoot, remoteHome, map[string]string{
 		"REMOTE_DAEMON_VAR": "remote-pipe-ready",
 	})
 	t.Cleanup(func() { _ = provider.Close(context.Background()) })

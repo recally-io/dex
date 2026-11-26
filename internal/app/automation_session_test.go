@@ -247,7 +247,7 @@ func TestUserBoundAutomationUsesTheSessionRunnerAndProject(t *testing.T) {
 	d.setModel(t, "bash")
 	var remote apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
-		"name": "not-the-target", "kind": "pi-env", "config": map[string]string{"host": "fixture.internal", "user": "dev"},
+		"name": "not-the-target", "kind": "ssh", "config": map[string]string{"host": "fixture.internal", "user": "dev"},
 	}, &remote, http.StatusCreated)
 	var bot apiAgent
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)

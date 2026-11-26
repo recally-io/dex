@@ -30,7 +30,7 @@ test("Continue quotes the stored result and identifies the exact run transcript"
 
 test("a continuation chat pins the environment where the result ran", () => {
   const runners = [
-    { id: "box", name: "box", kind: "pi-env", default: true, status: "available" },
+    { id: "box", name: "box", kind: "ssh", default: true, status: "available" },
     { id: "local", name: "local", kind: "local", default: false, status: "available" },
     { id: "runner", name: "runner", kind: "runner", default: false, status: "available" },
   ];

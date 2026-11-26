@@ -68,7 +68,7 @@ func TestUserGetsUndeliveredTelegramReplyAfterRestart(t *testing.T) {
 	defer deadline.Stop()
 	for {
 		var n int
-		err = conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE delivered_at IS NOT NULL").Scan(&n)
+		err = conn.QueryRowContext(t.Context(), "SELECT count(*) FROM outbox_messages WHERE kind = 'reply' AND status = 'sent'").Scan(&n)
 		if err != nil {
 			t.Fatal(err)
 		}

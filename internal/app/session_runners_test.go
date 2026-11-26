@@ -41,7 +41,7 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 
 	var remoteEnv, sandbox apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
-		"name": "remote-box", "kind": "pi-env", "config": map[string]any{"host": "remote.internal", "user": "dev"},
+		"name": "remote-box", "kind": "ssh", "config": map[string]any{"host": "remote.internal", "user": "dev"},
 	}, &remoteEnv, http.StatusCreated)
 	d.must(t, http.MethodPost, "/api/settings/runners/"+remoteEnv.ID+"/test", nil, nil)
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
@@ -58,7 +58,7 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 	}
 	d.must(t, http.MethodGet, "/api/agents/default/runners", nil, &listed)
 	if len(listed.Runners) != 3 || listed.Runners[0].ID != "local" || !listed.Runners[0].Default ||
-		listed.Runners[1] != (apiSessionRunner{ID: remoteEnv.ID, Name: "remote-box", Kind: "pi-env", Status: "available"}) ||
+		listed.Runners[1] != (apiSessionRunner{ID: remoteEnv.ID, Name: "remote-box", Kind: "ssh", Status: "available"}) ||
 		listed.Runners[2] != (apiSessionRunner{ID: sandbox.ID, Name: "sandbox-a", Kind: "e2b", Status: "available"}) {
 		t.Fatalf("environments=%+v", listed.Runners)
 	}
@@ -161,7 +161,7 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), Home: t.TempDir(), SSHProgram: sshFix.SSHProgram, E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()})
 	var remoteEnv, sandbox apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
-		"name": "remote-box", "kind": "pi-env", "config": map[string]any{"host": "remote.internal", "user": "dev"},
+		"name": "remote-box", "kind": "ssh", "config": map[string]any{"host": "remote.internal", "user": "dev"},
 	}, &remoteEnv, http.StatusCreated)
 	d.must(t, http.MethodPost, "/api/settings/runners/"+remoteEnv.ID+"/test", nil, nil)
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
@@ -411,7 +411,7 @@ func TestUserRecoversBotDefaultRunnerAfterDialFailure(t *testing.T) {
 	const host = "recovery.internal"
 	var saved apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
-		"name": "Recovery SSH", "kind": "pi-env", "config": map[string]any{"host": host, "user": "dev"},
+		"name": "Recovery SSH", "kind": "ssh", "config": map[string]any{"host": host, "user": "dev"},
 	}, &saved, http.StatusCreated)
 	ssh.Refuse(t, host)
 	var bot apiAgent

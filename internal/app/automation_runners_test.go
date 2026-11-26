@@ -24,7 +24,7 @@ func TestUserRunsAutomationsInSelectedRunners(t *testing.T) {
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), Home: t.TempDir(), SSHProgram: sshFix.SSHProgram, E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()})
 	var remoteEnv, sandbox apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
-		"name": "remote-box", "kind": "pi-env", "config": map[string]any{"host": "remote.internal", "user": "dev"},
+		"name": "remote-box", "kind": "ssh", "config": map[string]any{"host": "remote.internal", "user": "dev"},
 	}, &remoteEnv, http.StatusCreated)
 	d.must(t, http.MethodPost, "/api/settings/runners/"+remoteEnv.ID+"/test", nil, nil)
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
@@ -135,7 +135,7 @@ func TestUserRunsAutomationsInSelectedRunners(t *testing.T) {
 	// that names it, and no chat starts.
 	var deadEnv apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
-		"name": "dead-box", "kind": "pi-env", "config": map[string]any{"host": "dead.internal", "user": "dev"},
+		"name": "dead-box", "kind": "ssh", "config": map[string]any{"host": "dead.internal", "user": "dev"},
 	}, &deadEnv, http.StatusCreated)
 	sshFix.Refuse(t, "dead.internal")
 	var dead routineRunner

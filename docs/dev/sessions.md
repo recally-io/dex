@@ -419,7 +419,7 @@ cancellation. It does not prove that the remote job stopped. Before another
 turn, the parent must check artifacts and prior actions.
 
 Tools run through [`internal/runner`](../../internal/runner) using the
-built-in `local` provider, a remote `pi-env` SSH connection, an `e2b`
+built-in `local` provider, a remote `ssh` connection, an `e2b`
 sandbox endpoint, or a machine service connection. The
 [remote machine](../remote-machines.md) opens an outbound WebSocket to Dex
 behind the same HTTPS front as the web UI, and uses the public PiG execution API

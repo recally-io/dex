@@ -181,7 +181,7 @@ func applyPatch(in *Input, p ToolPatch) {
 	if p.Enabled != nil {
 		in.Enabled = *p.Enabled
 	}
-	// A cwd of one environment means nothing in another, so a new environment drops it.
+	// A change of Runner clears the working directory.
 	if p.RunnerID != nil {
 		if *p.RunnerID != in.RunnerID {
 			in.Cwd = ""
@@ -199,7 +199,7 @@ func (s *ToolService) Create(ctx context.Context, c engine.TaskContext, p ToolPa
 		if p.ID != "" || p.Name == nil || p.Prompt == nil || p.Schedule == nil || p.TimeZone == nil {
 			return nil, invalid("name, prompt, schedule and explicit timeZone are required")
 		}
-		// The routine runs where this conversation runs, with its cwd.
+		// The Automation uses the Session's Runner and working directory.
 		in := Input{Enabled: true, Session: "new", Cwd: conv.Cwd, RunnerID: conv.RunnerID, Notification: &Notification{Mode: "default"}}
 		applyPatch(&in, p)
 		a, err := local.Create(ctx, c.AgentID, in)
@@ -265,9 +265,9 @@ func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p ToolPa
 
 func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) (ToolRun, error) {
 	var out ToolRun
-	// The environment check does network I/O, so it comes before the tool transaction. The input
-	// transaction compares the environment again.
-	// A missing routine is left to the transaction, so a retry of a stored call still replays.
+	// The Runner check does network I/O. The tool does it before the transaction
+	// and the input transaction compares the Runner again. The transaction checks
+	// if the Automation exists so a retry of a stored call can still replay.
 	var pre *Target
 	var preRow sqlc.Automation
 	if row, err := s.service.get(ctx, c.AgentID, id); err == nil {
@@ -282,7 +282,7 @@ func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) 
 		if err != nil {
 			return nil, err
 		}
-		// The writer can confirm the environment, but two sessions can share it. Do not
+		// The writer can confirm the Runner, but two sessions can share it. Do not
 		// redirect a tool run to a replacement target selected during preflight.
 		if row.Session == "session" && pre != nil && row.TargetConversationID.Valid && (preRow.Session != row.Session || preRow.TargetConversationID != row.TargetConversationID) {
 			return nil, fmt.Errorf("%w: the automation target changed during its check; run it again", engine.ErrBusy)

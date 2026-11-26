@@ -241,9 +241,6 @@ func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.OutboxMessage, par
 		if err := m.rememberQuestionMessage(ctx, q, r.SourceSubmissionID.String, r.Peer, remoteID); err != nil {
 			return err
 		}
-		if err := q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: r.SourceSubmissionID.String, DeliveredAt: now}); err != nil {
-			return err
-		}
 	}
 	if len(part.Buttons) != 0 {
 		if err := q.BindTelegramCallbackMessage(ctx, sqlc.BindTelegramCallbackMessageParams{SourceID: cmp.Or(r.SourceSubmissionID.String, r.ID), MessageID: remoteID}); err != nil {

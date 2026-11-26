@@ -175,7 +175,7 @@ func TestUserWithdrawnMessageIsNotSettledByTheWorkerBeforeTheWithdrawal(t *testi
 		t.Fatal(err)
 	}
 	sub, err := r.q.GetSubmission(t.Context(), "second")
-	if err != nil || sub.Status != "unanswered" || sub.Reason.String != "withdrawn" || !sub.DeliveredAt.Valid {
+	if err != nil || sub.Status != "unanswered" || sub.Reason.String != "withdrawn" {
 		t.Fatalf("receipt: %+v %v", sub, err)
 	}
 }

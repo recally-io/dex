@@ -59,7 +59,7 @@ type Manager struct {
 
 var _ Provider = (*Manager)(nil)
 
-// NewManager constructs an execution environment Manager supporting local, SSH (pi-env), E2B, and machine backends.
+// NewManager supports Local, SSH, E2B, and Outbound Runners.
 func NewManager(cfg ManagerConfig) *Manager {
 	dataDir := filepath.Clean(cfg.DataDir)
 	pienv := newPiEnvRuntime(dataDir, cfg.SSHProgram)
@@ -73,7 +73,7 @@ func NewManager(cfg ManagerConfig) *Manager {
 		runners: runners,
 		e2b:     e2b,
 		backends: map[Kind]backend{
-			KindPiEnv:  pienv,
+			KindSSH:    pienv,
 			KindE2B:    e2b,
 			KindRunner: runnerBackend{runners: runners},
 		},
@@ -125,7 +125,7 @@ func (m *Manager) Changed(ctx context.Context, old Spec, cur *Spec) error {
 
 // ForgetHostKey removes saved SSH host trust entries for spec so the next connect re-trusts via TOFU.
 func (m *Manager) ForgetHostKey(spec Spec) error {
-	if spec.Kind != KindPiEnv {
+	if spec.Kind != KindSSH {
 		return fmt.Errorf("%w: host key reset applies only to SSH environments", ErrInvalidConfig)
 	}
 	return m.pienv.forgetHostKey(spec)

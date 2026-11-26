@@ -29,6 +29,10 @@ LIMIT 1;
 -- name: GetOutboxMessage :one
 SELECT * FROM outbox_messages WHERE id = ?;
 
+-- name: GetPendingAutomationOutboxPeer :one
+-- The event ID stays the same across upgrades and retries.
+SELECT peer FROM outbox_messages WHERE event_id = ? AND kind = 'automation' AND status = 'pending';
+
 -- name: CreateFileDeliveries :exec
 INSERT INTO outbox_messages (id, event_id, agent_id, conversation_id, source_submission_id,
     kind, peer, channel_context, body, created_at)
@@ -68,6 +72,8 @@ SELECT body FROM outbox_files WHERE operation_key = ? AND submission_id = ?;
 SELECT operation_key, name, mime_type, length(body) AS size, body FROM outbox_files WHERE outbox_id = ?;
 
 -- name: ListPendingOutboxMessages :many
+-- Pending Outbox rows are sent in input order. An earlier input without a terminal
+-- reply can also hold the queue before it has an Outbox row.
 SELECT o.*
 FROM outbox_messages o
 JOIN conversations c ON c.id = o.conversation_id
@@ -80,8 +86,13 @@ WHERE o.status = 'pending' AND c.channel_key NOT LIKE 'retired-telegram:%'
           SELECT 1 FROM submissions p JOIN conversations pc ON pc.id = p.conversation_id
           WHERE p.status = 'pending' AND p.origin = o.peer
             AND p.rowid < coalesce(src.rowid, o.rowid)
-            AND p.kind = 'message' AND p.delivered_at IS NULL AND p.channel_revoked = 0
+            AND p.kind = 'message' AND p.channel_revoked = 0
             AND pc.agent_id = o.agent_id
+            AND NOT EXISTS (
+                SELECT 1 FROM outbox_messages prior
+                WHERE prior.source_submission_id = p.id
+                  AND prior.kind IN ('reply', 'question') AND prior.status IN ('sent', 'failed')
+            )
       )
   )
 ORDER BY (o.kind IN ('control', 'feedback')) DESC, coalesce(src.rowid, o.rowid), o.rowid;

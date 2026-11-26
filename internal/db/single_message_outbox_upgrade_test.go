@@ -68,7 +68,7 @@ FROM (
 		t.Fatalf("legacy unbound Telegram files = %d, error = %v; want 0", unboundFiles, err)
 	}
 	var payload []byte
-	if err := upgraded.QueryRowContext(ctx, `SELECT payload FROM channel_webhook_inbox WHERE event_id = 'evt-1'`).Scan(&payload); err != nil || string(payload) != `{"update_id":1}` {
+	if err := upgraded.QueryRowContext(ctx, `SELECT payload FROM channel_webhook_queue WHERE event_id = 'evt-1'`).Scan(&payload); err != nil || string(payload) != `{"update_id":1}` {
 		t.Fatalf("pending webhook payload = %q, error = %v; want preserved payload", payload, err)
 	}
 	var removedTables int

@@ -38,7 +38,7 @@ type TaskKey = string
 
 // SaveWebhookSourceJSONBody defines parameters for SaveWebhookSource.
 type SaveWebhookSourceJSONBody struct {
-	// HoldUnmatched Hold other unmatched events in the Inbox. The default ignores them.
+	// HoldUnmatched Hold other unmatched events on Board. The default ignores them.
 	HoldUnmatched *bool   `json:"holdUnmatched,omitempty"`
 	Secret        *string `json:"secret,omitempty"`
 
