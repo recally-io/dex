@@ -31,9 +31,9 @@ and dismissed state live in `control.sqlite`, not browser storage. The unsaved a
 memory (`src/lib/app-state.tsx`), so a draft stays when the user opens another page, and a reload discards it.
 `src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
 agent first, so a model change does not overwrite the instructions.
-Main and ordinary Chat sessions default to the agent's model and thinking level.
-Saved session overrides apply from the next input, including channel input on Main.
-Ended task conversations can also use model and project overrides.
+Main defaults to the Bot's model and thinking level. The composer offers model
+overrides in writable Chats, including child Sessions. Main and Chats can
+select a project directory.
 New session sends `POST /api/agents/{agentId}/chats` with no request body.
 When a registered Runner exists, a session with no messages shows Local and
 the registered Runners (`GET /api/agents/{agentId}/runners`). Offline Runners are visible
@@ -47,8 +47,8 @@ it; a message sends only upload IDs.
 Bot links open Main. The bot header offers New session, Sessions, Automations,
 and Settings. Settings has General, Skills, Integrations, and Secrets.
 The right Sessions sidebar starts closed. The global sidebar
-links to Board (`/board`) with the Owner attention count badge.
-Board unifies Tasks and Owner attention items in one grouped list:
+opens Bots, [Board](../docs/dev/tasks.md#board), and Settings. Board (`/board`)
+shows the Owner attention count and groups Tasks with other work:
 
 - **Needs you**: active questions (answerable inline), Tasks awaiting Owner review (approvable inline), enabled Automations without an available model, and held external events (attach to an open Task or dismiss).
 - **Blocked**: open Tasks with blockers. These Tasks do not add to the Owner attention badge.
@@ -61,7 +61,8 @@ Board unifies Tasks and Owner attention items in one grouped list:
 Task detail opens at `/board/$taskKey` with a stable key such as `T-42`. It combines a structured property strip (clickable Status, Assignee Bot, and Reviewer controls that auto-save with `If-Match`, plus quick `+ Subtask` / `+ Dependency` / `+ Link PR` actions and an overflow `⋯` menu), a contextual action card when in review or blocked, dedicated context cards shown only when data exists (Sessions, external runs, parent/subtasks/dependencies, and external links/waits), a rail-structured Markdown Timeline, and a bottom composer defaulting to sending a message to the Assignee Bot's Main (staying on the Task page) with a secondary `Note only` action.
 Active external runs refresh every five seconds because heartbeats do not add Timeline entries. `/settings/runners` also lists active external Task runs by Runner from `/api/tasks/executions`.
 
-The shell uses `src/lib/task-stream.ts` to resume Task events with `Last-Event-ID`.
+The shell uses `src/lib/board-attention.ts` for the Board badge and Bot status.
+It uses `src/lib/task-stream.ts` to resume Task events with `Last-Event-ID`.
 Task events invalidate the Task list, Task detail, and Board attention queries.
 Board attention also polls every 10 seconds for changes outside the Task stream.
 Task edits keep the revision from the start of the edit. A conflict
@@ -94,8 +95,9 @@ parent, and a result line. The result has a "View session" link when the saved
 result names a Session that the parent Bot can read.
 A `session_report` call shows as a "Reported to parent" step. A click opens the
 child as a read-only panel on the right, which covers the transcript on a narrow
-screen. Task conversations are read-only while queued or running and writable
-after they end.
+screen. The full child Session page stays writable while the child runs.
+Transcript items distinguish `session_result`, `wake`, and `task_wake`.
+A Runner change in a fork projects as `boundary: "runner"`.
 The bot header opens the Sessions page and creates new sessions.
 Main shows Stop only for its own native run target on a connected stream. A
 retry sends the original target. A child can be active while Main sends an
@@ -125,7 +127,8 @@ set or clear an optional plain-text description.
 Global Secrets (`/settings/secrets`) edits shared Vault entries and 1Password.
 A bot's Secrets page edits its own Vault entries. The vault API returns metadata
 only. The editor clears the value after submit and does not store it in the browser.
-Skills and Integrations read `/api/agents/{agentId}/integrations` and both offer
+[Skills and Integrations](../docs/dev/skills-and-integrations.md) read
+`/api/agents/{agentId}/integrations` and both offer
 Reload. In Integrations, an OAuth MCP row starts authorization with an
 authenticated POST. The browser follows the returned URL in the same tab. The
 callback returns to `/a/{agentId}/integrations`. The browser does not receive provider tokens.

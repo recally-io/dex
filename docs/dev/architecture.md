@@ -23,7 +23,7 @@ for the web UI; the installed service needs neither runtime.
 The [module index](../../.agents/rules/implementation.md#modules) defines
 package ownership. `internal/app` connects the services. Business services call
 `internal/engine`. Platform adapters implement the `internal/channel` contract.
-`internal/channel/delivery` owns commands, the durable webhook inbox, and
+`internal/channel/delivery` owns commands, the durable Webhook Queue, and
 reply delivery. Telegram accepts only private chats. The engine uses one
 native store per agent.
 Optional [inbound webhooks](channels.md#inbound-webhooks) commit events before
@@ -33,7 +33,7 @@ not import dex business packages. Each business package defines its model tools.
 and selects which sessions can use them.
 
 Tools and stdio MCP servers can start child processes. Bash has a default
-120-second timeout. An omitted or null `timeout` uses the default. An explicit
+600-second timeout. An omitted or null `timeout` uses the default. An explicit
 `timeout` in seconds replaces it. PiG stops the shell process group and waits for it on timeout or cancellation.
 Use `process_start` for supervised long work. It has its own timeout defaults.
 Other tools do not receive the bash or background timeout defaults. MCP calls have
@@ -99,7 +99,7 @@ See [service commands and recovery](../../README.md#run-and-manage-dex).
 ## Data ownership
 
 `control.sqlite` holds business facts: settings, agents, conversations, input
-receipts, channel pairings, the channel webhook inbox and Outbox, Tasks and their ledger (`tasks` and `task_entries`),
+receipts, channel pairings, the Webhook Queue and Outbox, Tasks and their ledger (`tasks` and `task_entries`),
 and plugin tables. Core migrations own
 the core tables. Each enabled plugin applies its own `plugin_<name>_` tables at
 start ([plugins](plugins.md#plugin-migrations)). Each agent has
@@ -183,18 +183,17 @@ reconciliation cover the gap between their commits.
 
 Each subsystem has its own document. This overview gives only the boundaries.
 
-| Document                      | Covers                                                                    |
-| ----------------------------- | ------------------------------------------------------------------------- |
-| [Agents](agents.md)           | Agents and the HTTP API, settings, memory, and bot tools                  |
-| [Sessions](sessions.md)       | Main, Chats, child sessions, internal delegation, and Runner selection    |
-| [Tasks](tasks.md)             | Board, Task Session links, the event store, holds, alerts, and Task tools |
-| [Task Board](task-board.md)   | Append-only Task Board, access rules, and rollout (#291)                  |
-| [Plugins](plugins.md)         | Optional Task sources: GitHub, Webhook, email, and the plugin boundary    |
-| [Execution](execution.md)     | The native engine boundary, background commands, and transcripts          |
-| [Files](files.md)             | Artifacts, file results, channel file delivery, and attachments           |
-| [Channels](channels.md)       | Telegram, shared channels, Feishu and Lark, and WeChat                    |
-| [Integrations](extensions.md) | Skills, MCP servers, the secret vault, `AGENTS.md`, and reload            |
-| [Automations](automations.md) | Routines, schedules, and results                                          |
+| Document                                              | Covers                                                                 |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- |
+| [Agents](agents.md)                                   | Agents and the HTTP API, settings, memory, and bot tools               |
+| [Sessions](sessions.md)                               | Main, Chats, child sessions, internal delegation, and Runner selection |
+| [Tasks](tasks.md)                                     | Board, the Task ledger, access rules, Sources, and external runs       |
+| [Plugins](plugins.md)                                 | Optional Task sources: GitHub, Webhook, email, and the plugin boundary |
+| [Execution](execution.md)                             | The native engine boundary, background commands, and transcripts       |
+| [Files](files.md)                                     | Artifacts, file results, channel file delivery, and attachments        |
+| [Channels](channels.md)                               | Telegram, shared channels, Feishu and Lark, and WeChat                 |
+| [Skills and Integrations](skills-and-integrations.md) | Skills, MCP servers, the secret vault, `AGENTS.md`, and reload         |
+| [Automations](automations.md)                         | Schedules, runs, and results                                           |
 
 ## Failure behavior
 
@@ -239,7 +238,7 @@ Each subsystem has its own document. This overview gives only the boundaries.
 
 In `local` mode, agent tools (`read`, `write`, `edit`, `bash`) run on the host
 without a sandbox, inside the selected project directory or agent workspace.
-Bots bound to a remote environment use that host or sandbox's environment.
+Bots that use a remote Runner inherit its process environment.
 dex sends the configured 1Password credentials and only the vault values that
 an individual command requests. The HTTP server listens on
 `127.0.0.1:8787` by default. On loopback without DEX_TOKEN it has no
@@ -256,7 +255,7 @@ pages require a web session cookie.
 
 `control.sqlite` holds provider keys, manual channel tokens, WeChat context
 tokens, plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain
-text. Telegram manager and managed bot tokens stay in the private [vault](extensions.md#secret-vault).
+text. Telegram manager and managed bot tokens stay in the private [vault](skills-and-integrations.md#secret-vault).
 WeChat logs exclude credentials and remote error text. Dex creates the data
 directory with mode 0700. The API never returns a key or a token.
 
@@ -277,7 +276,7 @@ tool names, and the unresolved references. `mcp_server_get` hides plain
 environment and header values and URL queries. A failed server shows a safe
 error, such as an HTTP status or the name of a missing secret. To see the full
 error, run the server by hand. Remote HTTP MCP connections can use
-[browser OAuth](extensions.md#mcp-browser-authorization). Dex stores those
+[browser OAuth](skills-and-integrations.md#mcp-browser-authorization). Dex stores those
 grants in private vault files and sends bearer tokens only to the authorized
 MCP endpoint.
 
@@ -293,7 +292,7 @@ can override variables explicitly. The engine does not change the dex process
 environment. The login shell starts from six process keys, so dex settings
 such as `DEX_TOKEN` do not reach tools unless a shell rc file exports them.
 
-The [vault](extensions.md#secret-vault) encrypts shared and agent-level
+The [vault](skills-and-integrations.md#secret-vault) encrypts shared and agent-level
 secrets with age. Only the control host resolves references. It passes values
 in the process environment, not in command arguments. It masks exact values
 in final tool results and Process wake-ups. Local tools run as the dex
@@ -336,8 +335,8 @@ it is not the source of execution state.
 Keep one transcript projection in the engine. History, snapshots, and live
 events use durable entries and the native Inbox. The live hub owns transport
 and empty-chat attachment, with no second transcript or execution model.
-The Web client also displays [explicit Web notifications](sessions.md#web-notifications)
-for explicit Web notifications. That projection does not write native entries.
+The Web client also displays [explicit Web notifications](sessions.md#web-notifications).
+That projection does not write native entries.
 
 The tests cover separate behavior and failure cases. Keep restart, duplicate
 message, multiple browser streams, model errors, tool results, and DST cases.
@@ -345,12 +344,9 @@ Do not remove these cases to reduce the test file size. The schedule iterator te
 
 ## Session Monitors
 
-The scheduler reads due rows in `control.sqlite` (`monitors`). The upgrade
-renames the original Timer table in place and treats its rows as one-run
-prompt Monitors. The existing due time, submission IDs, deduplication key,
-and one-hour grace rule stay. There are no old tool or API aliases.
+The scheduler reads due rows in `control.sqlite` (`monitors`).
 
-Main, Chat, child sessions, and tasks can set Monitors and start Processes.
+Main and writable Chats, including child Sessions, can set Monitors and start Processes.
 Dreams have neither tool group. Both groups use the same `monitors` extension.
 `monitor_list` lists only scheduled and check Monitors in the calling session.
 `monitor_cancel` accepts the `schedule-` ID from the tool or the raw ID from
@@ -389,10 +385,12 @@ the Monitor intent as a follow-up. Session cancellation, Clear, Monitor
 cancellation, archive, and changed target authority block stale results.
 The engine's Stop entry point applies task or Session cancellation. A task
 Stop uses the exact native task ID and leaves Monitors alone. See
-[Sessions](sessions.md) for the task handoff and Inbox recovery rules. Monitor
+[Sessions](sessions.md) for child results and native input recovery.
+Child results use `session_result`, Monitor and Process wakes use `wake`, and
+[Task wakes](tasks.md#coalesced-main-wakes) use `task_wake`. Monitor
 cancellation is a separate action. Dex rechecks the target before native admission. Cancellation
 withdraws any Monitor inputs that are still queued. It does not interrupt a
 prompt that already started. An in-flight check can finish within its time
 limit, but it cannot queue a new prompt after cancellation. Dex does not move
-a scheduled check to a different session, environment, or project directory.
-Routines use their own existing path.
+a scheduled check to a different Session, Runner, or project directory.
+[Automations](automations.md) use a separate scheduling path.

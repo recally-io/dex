@@ -26,7 +26,7 @@ the agent's fallback model.
 
 Agent resources are under `/api/agents/{agentId}`: main, chats and their
 settings, messages, clear, history, abort and events; turn lookup; uploads;
-extensions and reload; automations and their run and runs endpoints. An unknown
+integrations and reload; automations and their run and runs endpoints. An unknown
 agent or a resource owned by another agent returns `404`. Upload storage uses
 `<data dir>/agents/<agentId>/`. Control builds the path store for each request.
 Each live stream uses `engine.Ref{AgentID, ID}` for watches and history.
@@ -34,14 +34,14 @@ Execution IDs can be equal in different agents.
 
 An agent can be archived. `agents.archived_at` holds the time. The
 filter is in SQL, not in the `enabled` flags: `ListAgents`, startup channel
-start, dreams, `ListDueAutomations`, the activity query and the inbox all skip an
+start, dreams, `ListDueAutomations`, the activity query and Board attention all skip an
 archived agent, so a restore needs no state to rebuild. `GET /api/archived-agents`
 lists archived agents. `DELETE /api/agents/{agentId}/archive` restores. There is
 no archive route: only an approved `bot_delete` question archives (see
 [Bot tools](#bot-tools)). Every other agent route returns `404` for an archived
 agent. The archive guard is one `UPDATE ... WHERE` in `internal/db`: the agent
 exists, is not `default`, is not archived, and has no pending input in any
-conversation, which covers queued tasks, automation runs and dreams. Every input
+conversation, which covers queued inputs, Automation runs, and Dreams. Every input
 writer (user and channel input, a context reset, an automation run, a child session
 turn and a child result) calls `db.RequireActive` after it takes the SQLite
 writer, in the transaction that stores the input. Input first makes the archive
@@ -63,16 +63,14 @@ The lock order is agent, then settings. Settings never takes the agent
 lock. Each service writes separate rows. Creating or selecting an agent does
 not configure providers.
 One scheduler job checks automations across all agents and posts each prompt
-with the saved agent ID. See [Integrations](extensions.md) for the reload lifecycle.
+with the saved agent ID. See [Skills and Integrations](skills-and-integrations.md) for the reload lifecycle.
 
 The web UI uses the nested agent routes, including live events and upload
 links. Agent resources require an explicit ID, including the default agent.
-The old un-nested API routes return 404. `GET /api/settings` returns global
-providers, built-ins, and APIs. `/settings/general` edits the `default` agent
+`GET /api/settings` returns global providers, built-ins, and APIs. `/settings/general` edits the `default` agent
 through `PUT /api/agents/default`; there is no separate defaults table. Channel
 setup and status use `/api/agents/{agentId}/channels`, with `/telegram`,
-`/wechat`, and `/feishu` for changes. The old `/api/settings/{platform}` routes
-return 404.
+`/wechat`, and `/feishu` for changes.
 
 ## Settings
 
@@ -93,11 +91,11 @@ chat settings with an injected validator. Each change stays in `control.sqlite`:
 The API trims spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in
 the sidebar, the timeline header, and the composer.
 
-Main and Chat sessions default to the agent's model and thinking level. Saved
-session overrides apply from the next input, including channel input on Main.
-Child sessions also accept overrides. `chat.Service` resolves settings
-at each `submit`. Old channel chats cannot change their settings (403). An automation chat can; an automation that
-reuses its chat then runs with the chat's settings. The thinking levels and
+Sessions default to the Bot's model and thinking level. A saved Session
+override applies at the next admission, including channel input on Main. The
+Main Web page has no Session model control. The API accepts settings on
+writable Sessions and Automation transcripts. An Automation that reuses its
+Session uses those settings. The thinking levels and
 the `reasoning` and `input` of a model come from PiG AI model definitions; the model adapter sends the nearest level that the model
 supports, and `off` to a model without reasoning.
 
@@ -179,14 +177,10 @@ guard, so a count above zero means `bot_delete` refuses the bot. The sidebar's
 `activeSessions` is a different count and leaves Main out.
 
 Main and Chat conversations have `bot_list` and `bot_get`, and the three change
-tools `bot_create`, `bot_update` and `bot_delete`. The automation conversation
-has only the read tools. Extension edits persist on the conversation, and each
-user-input `Submit` adds them again, so a conversation that existed before the
-tools gets them on its next user input. The persisted tools do not authorize a
-call: `ToolBotCaller` checks the source input of every call. The engine installs the read
-extension (`bots`) and the change extension (`bot-manage`) through the same `Add`
-lists as `ask_user`, so a task, a dream and a child session never get the change
-tools. `internal/agent.BotTools` maps each call to the same service methods as the
+tools `bot_create`, `bot_update` and `bot_delete`. An Automation conversation
+has only the read tools. The app selects the `bots` and `bot-manage` extensions
+at admission. A child Session or Dream does not get the change tools. Tool
+visibility does not grant authorization. `internal/agent.BotTools` maps each call to the same service methods as the
 web (`CreateAgent`, `PatchAgent`). `chat.Service.ToolBotCaller` checks the caller
 again in control: the conversation is Main or a Chat, and the source input is a
 `message` with a user origin in that conversation. A user origin is an allow-list:

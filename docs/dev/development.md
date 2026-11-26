@@ -62,18 +62,6 @@ dex-agent archive. The server embeds `internal/server/install-machine.sh` and
 serves it at `/install-machine.sh`. The root `install.sh` is the public raw
 GitHub entry point for installing dex. Run repository tasks through mise.
 
-## Legacy checkout cleanup
-
-An old checkout can retain the ignored `worker/node_modules/` directory after
-migration to the native engine. Go examples in that directory can appear in
-`go list ./...`, even though dex does not depend on them.
-
-If the removed worker directory remains, inspect it for local files first.
-Remove only the obsolete `worker/node_modules/` dependency cache. Keep agent
-data, `.env` files, credentials, and other local files. Do not use
-`git clean -fdx` for this cleanup. The web install task adds a Go module
-boundary to the current `web/node_modules/`; it does not clean old caches.
-
 ## Tasks
 
 Run `mise tasks` for the full list. The main tasks:

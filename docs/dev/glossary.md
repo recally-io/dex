@@ -1,89 +1,102 @@
 # Glossary
 
-This document defines the canonical domain terms of dex. Use one word for one concept within each boundary, and map explicitly across boundaries.
+Use one term for one concept. The mapping below gives the names at the API,
+storage, and execution boundaries.
 
-> **Status tags**: `current` marks the terminology in use. A term can still have no dedicated UI.
+## Core objects
 
-## Core objects (the 4 things a user learns first)
+- **Owner**: The person who operates the Dex instance, its Bots, and its paired
+  Channels.
+- **Bot**: An assistant with its own model, instructions, skills, default
+  Runner, Channels, and Automations. The API and storage use `agent` for this
+  object. A Telegram bot token belongs to a Channel.
+- **Session**: A Bot's conversation and execution context. **Main** is shared
+  by Web and Channels. A **Chat** is a separate writable Session. A **child
+  Session** is a Chat with a parent, possibly in another Bot. A separate
+  Automation transcript is read-only.
+- **Task**: A work item with a stable key, status, and Timeline. The
+  **Assignee** is the Bot responsible for it. A **Reviewer** can be the Owner
+  or another Bot. Tasks can have subtasks, sibling dependencies, and linked
+  Sessions across Bots. See [Tasks](tasks.md).
+- **Automation**: A recurring schedule that sends a prompt to its own Session
+  or a bound Session. A run requires an explicit outcome report.
+- **Project**: The selected working directory (`cwd`) for a Session or
+  Automation. It provides project skills and `<cwd>/AGENTS.md`.
 
-First, two foundational nouns used in scopes:
+## Views and navigation
 
-- **Owner** (`current`): The single person who owns the dex instance, all its bots, and its paired channels.
-- **Project** (`current`): The working directory (`cwd`) selected for a session or automation, where tools run and `<cwd>/AGENTS.md` and project skills load.
+- **Bots**: Select a Bot. Its workspace has **Sessions**, **Automations**, and
+  Bot **Settings** (General, Skills, Integrations, Secrets).
+- **Board** (`/board`): The single global workspace across Bots. It shows Tasks,
+  **Needs you**, and grouped Automation **Updates**. **Board attention** covers
+  active questions, Owner reviews, Automations that need a model, held Source
+  events, and unhandled Automation results. Queued Task questions stay in Task
+  detail until active. One-way notices stay in transcripts and Channels.
+- **Settings**: Global General, Providers, Runners, Secrets, Integrations,
+  Archived, and About pages.
 
-| Term           | Status    | Definition                                                                                                                                                                                                                                                                                                                     | Scope                                    | Retire / avoid                                                                                                                                                  |
-| -------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Bot**        | `current` | An AI assistant instance with its own model, instructions, memory, skills, default runner, channels, and automations.                                                                                                                                                                                                          | Owner                                    | `Agent` in user-facing text (code keeps `internal/agent`, `/api/agents`, `agents` table; call Telegram credentials `Telegram Channel` or `Telegram bot token`). |
-| **Session**    | `current` | A conversation and execution context of a bot. Kinds: `main` (shared by web and channels), `chat` (standalone), and `automation` (read-only transcript of an automation run). A **child session** is a `chat` session with a `parent_id` relation, not a separate kind.                                                        | Bot                                      | `Conversation` (UI/docs), `Thread`, legacy background `Task` (`spawn_task`, `/tasks/<id>`, `origin='task'`).                                                    |
-| **Task**       | `current` | A Jira-style work item with a title, status, timeline, and external object links (such as a GitHub PR or email thread). A Task can have subtasks, depend on sibling Tasks, and link Sessions across Bots. The **Assignee** is the Bot responsible for the Task. A **Reviewer** is the Owner or a Bot who reviews a submission. | Owner (global view), assigned to one Bot | `Task` in user-facing text.                                                                                                                                     |
-| **Automation** | `current` | A persistent, recurring schedule rule and its run history. An automation runs on a schedule in its own session or in a bound session, and requires an explicit outcome report.                                                                                                                                                 | Bot                                      | `Routine` (`*_routine`, `report_check`); do not expose `Scheduler` as a user concept.                                                                           |
+## Session features
 
-## Views (projections, not independent entities)
-
-| View                | Status    | Definition                                                                                                                                       | Notes                                                                                                                       |
-| ------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| **Board**           | `current` | The global list and board view of all **Tasks** across bots.                                                                                     | Shows Tasks and Owner attention without changing Task ownership or permissions.                                             |
-| **Board attention** | `current` | The Owner actions on Board: open questions, unhandled Automation results, missing models, held external events, and Tasks awaiting Owner review. | Queued Task questions stay in Task detail until they become active. One-way notifications stay in transcripts and channels. |
-
-## Session features (scoped inside one Session)
-
-| Feature     | Status                 | Definition                                                                                                                                                                                                                                                                                              | Notes                                                                                                                                                                                                                                 |
-| ----------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Monitor** | `current`              | A short-lived, bounded schedule or script-polling check attached to one session (one-shot delay or up to 7 days / 100 runs, optional `checkCommand` SHA-256 check). It wakes its session and ends automatically without adding a Board attention item.                                                  | Keeps the `Monitor` name exclusively for schedule/check (`monitors` table). Replaces `Followup Timer`.                                                                                                                                |
-| **Process** | `current` (tools only) | A long-running background shell command started via `process_start` (with `wake: exit \| lines \| none`) and managed via `process_list` / `process_stop`. Bound to its session (`background_commands` table); stops with session cancellation, not Main foreground Stop; shows `unknown` after a crash. | Separated from `Monitor` and kept outside PiG's built-in `bash` tool so engine/business boundaries, schemas, and replay semantics stay clean. Monitor and Process share the session's active cap (32) and wake chain depth limit (6). |
-| **Files**   | `current`              | Two directional concepts: **Attachment** (mutable file or image sent by the owner to a session) and **Artifact** (immutable snapshot delivered by a bot via `deliver_file`).                                                                                                                            | Use `Artifact` instead of `Delivery`; keep `Upload` internal to HTTP/storage.                                                                                                                                                         |
+- **Monitor**: A bounded scheduled prompt or script check that wakes its own
+  Session. It does not add a Board attention item.
+- **Process**: A supervised background shell command managed with `process_*`.
+  It can wake its Session on exit or output. Session cancellation stops it.
+  Main foreground Stop does not.
+- **Attachment**: A file or image the Owner sends to a Session.
+- **Artifact**: A Bot file delivered through `deliver_file`. The Bot artifact
+  is editable through file operations. A queued channel delivery keeps its
+  own immutable byte snapshot.
 
 ## Setup and connections
 
-| Term           | Status    | Definition                                                                                                                                                                                                                                                                       | Scope                                                | Notes                                                                                                                                                                                                                                                                                               |
-| -------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Runner**     | `current` | Where tools and commands execute. Types: `Local` (the control host), `Machine` (SSH or Outbound via `dex-agent`), and `Sandbox` (E2B, Local Docker / VM, or Custom).                                                                                                             | Owner (global), bound by Bot, Session, or Automation | Changing a Runner changes which machine receives resolved secrets. `runner.KindRunner` is the stored `runner` kind and displays as an Outbound Machine. The `background.executor` interface runs Process commands. Do not rename the `dex-agent` binary without a dedicated release migration plan. |
-| **Secrets**    | `current` | Credential configuration separated from Runner pages: encrypted **Vault** secrets (global shared and bot-level overrides, resolved and masked on the control host) and **1Password** credential forwarding (evaluated by `op read` on the runner; dex does not mask its output). | Owner (global) + Bot                                 | Current tool name: `secret_list`. Note that some channel, provider, and source credentials currently remain plaintext in `control.sqlite` (see [Security](architecture.md#security)).                                                                                                               |
-| **Skills**     | `current` | Reusable Markdown instructions, workflows, and helper scripts in the bot knowledge layer alongside instructions and memory. Skills may reference secret names (`vault:NAME`) but never store secret values.                                                                      | Global, Bot, or Project                              | Bot Settings → Skills lists skills and file levels.                                                                                                                                                                                                                                                 |
-| **Channel**    | `current` | Owner chat entry point (`Telegram`, `WeChat`, `Feishu / Lark`). Produces owner-authorized session inputs and receives outbound replies.                                                                                                                                          | Bot                                                  | Grouped under the `Integrations` UI section, but remains a distinct domain concept.                                                                                                                                                                                                                 |
-| **MCP Server** | `current` | Outbound external tool server loaded via `.agents/` declarations and applied on agent Reload.                                                                                                                                                                                    | Global or Bot                                        | Grouped under `Integrations` in UI; shares reload lifecycle with Skills.                                                                                                                                                                                                                            |
-| **Source**     | `current` | Inbound external event feed (`GitHub`, `Webhook`, `Email`) that creates or updates Tasks under trust rules and applies on server restart.                                                                                                                                        | Owner (global)                                       | Grouped under `Integrations` in UI. Keep **Plugin** as the internal term for a Source's modular implementation.                                                                                                                                                                                     |
+- **Runner**: Where tools and commands execute. **Local** uses the control
+  host. A **Machine** uses SSH or an Outbound connection from `dex-agent`.
+  A **Sandbox** uses E2B Cloud, Local Docker / VM, or a custom endpoint.
+- **Secrets**: Shared or Bot-level Vault entries and 1Password configuration.
+  Dex decrypts Vault references on the control host. The Runner's `op` tool
+  resolves 1Password references. See [Security](architecture.md#security).
+- **Skills**: Reusable instructions and scripts from global, Bot, and Project
+  `.agents/skills/` directories.
+- **Channel**: An Owner chat entry point such as Telegram, WeChat, or Feishu /
+  Lark. It sends Owner-authorized input and receives replies.
+- **MCP Server**: An outbound tool server. Dex and Bot declarations live in
+  `control.sqlite` in `mcp_servers` and apply on reload. See
+  [Skills and Integrations](skills-and-integrations.md#mcp-declarations).
+- **Source**: An inbound event feed, such as GitHub, Webhook, or Email. Its
+  **Plugin** implements routing to Tasks through the core event store. Source
+  switches apply at server restart.
 
-> **UI grouping (`Integrations`)**: `Integrations` is a navigation label only (covering Channels, MCP Servers, and Sources), not a unified runtime abstraction. Retire `Extensions` and user-facing `Plugins`.
+**Integrations** is a navigation label for Channels, MCP servers, and Sources.
+They do not share a runtime abstraction.
 
-## Internal architecture terms (engineering docs and code only)
+## Internal terms
 
-| Term                  | Definition                                                                                                                                | Notes                                                                                                   |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Submission**        | One durable inbound input intent in `control.sqlite` (`submissions`).                                                                     | Refer to this table as the **Input Queue**, not `Inbox` or `Receipt`.                                   |
-| **Automation run**    | One business record in `automation_runs` (can settle as `changed`, `unchanged`, `failed`, or `skipped` without ever invoking the engine). | Distinct from a PiG **Run**.                                                                            |
-| **Run / native task** | One PiG engine execution pass (`native task` in engine code and Stop APIs).                                                               | Keep PiG's `task` naming inside `internal/engine`; write `native task` when disambiguating from `Task`. |
-| **native Inbox**      | PiG's durable per-conversation queued input store inside `agents/<id>/state.sqlite`.                                                      | Always qualify with `native` to identify PiG storage.                                                   |
-| **Outbox**            | Durable outbound channel delivery queue (`outbox_messages`, `outbox_files`).                                                              | Channel delivery only; explicit web notices use `web_notifications`.                                    |
-| **Webhook Queue**     | Durable inbound channel webhook buffer (`channel_webhook_inbox`).                                                                         | Call it a queue, not an inbox.                                                                          |
-| **Scheduler**         | The `internal/scheduler` ticker loop that triggers periodic checks for Automations, Monitors, and Dreams.                                 | Infrastructure only.                                                                                    |
-| **Plugin**            | Optional modular backend unit (`internal/plugin`, `plugin_<name>_*` tables, `enabled_plugins`) implementing a **Source**.                 | Retained internally; do not retire in code.                                                             |
-| **Dream**             | Hidden periodic memory-consolidation session (`dreams` table).                                                                            | Not visible in user session lists or `session_*` tools.                                                 |
-
-## Navigation
-
-- **Global navigation**: `Bots`, `Board` (Tasks and Owner attention), and global `Settings` (`General`, `Providers`, `Runners`, `Secrets`, `Integrations`, `Archived`, `About`).
-- **Bot workspace**: `Sessions`, `Automations`, and Bot `Settings` (`General`, `Skills`, `Integrations`, `Secrets`).
+| Term           | Meaning                                                                                                           |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Input Queue    | Durable input intents (submissions) in `control.sqlite`.                                                          |
+| Native Inbox   | PiG's durable queue inside `agents/<id>/state.sqlite`.                                                            |
+| Outbox         | Durable channel delivery queue (`outbox_messages`, `outbox_files`). Explicit Web notices use `web_notifications`. |
+| Webhook Queue  | Durable buffer for inbound Channel webhooks (`channel_webhook_inbox`).                                            |
+| Native run     | One PiG execution pass. PiG calls it a task. It is separate from a Board Task and an Automation run.              |
+| Automation run | A business record in `automation_runs`. A skipped run need not start a native run.                                |
+| Scheduler      | The ticker loop that checks Automations, Monitors, and Dreams.                                                    |
+| Dream          | A hidden Session for periodic memory consolidation.                                                               |
 
 ## Cross-layer mapping
 
-| Canonical term             | UI                                    | Bot tools                                                                                                                         | Current API / DB / Go package (kept unless noted)                                                                                                  |
-| -------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Bot**                    | `Bots`                                | `bot_list`, `bot_get`, `bot_create`, `bot_update`, `bot_delete`                                                                   | `/api/agents/*`, `agents`, `internal/agent`                                                                                                        |
-| **Session**                | `Sessions`                            | `session_new`, `session_send`, `session_list`, `session_read`, `session_search`, `session_stop`, `session_fork`, `session_report` | `/api/agents/{id}/chats/*`, `conversations`, `internal/chat` (keep `task_result` submission/outbox kind where used by Task alerts and DB enums)    |
-| **Automation**             | `Automations`                         | `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_run`, `automation_report`              | `/api/agents/{id}/automations/*`, `automations`, `automation_runs`, `internal/automation`                                                          |
-| **Task**                   | `Board` (`/board`, `/board/$taskKey`) | `task_list`, `task_read`, `task_new`, `task_update`, `task_post`, `task_review`, `task_link_github_pull`                          | `/api/tasks/*`, `tasks`, related `task_*` tables, `internal/task`, `dex task`                                                                      |
-| **Board attention**        | `Board` (`/board`)                    | `ask_user` (plus Automation reports and held events)                                                                              | `/api/board/attention`, `/api/automations/results`, `/api/sources/held-events`, `questions`, `task_source_holds`                                   |
-| **Monitor**                | Session `Monitors`                    | `monitor_set`, `monitor_list`, `monitor_cancel`                                                                                   | `/chats/{id}/monitors`, `monitors`                                                                                                                 |
-| **Process**                | Session `Processes`                   | `process_start`, `process_list`, `process_stop`                                                                                   | No HTTP endpoint. `background_commands`, `internal/background`                                                                                     |
-| **Runner**                 | `Runners`                             | —                                                                                                                                 | `/api/settings/runners`, `/api/agents/{id}/runners`, `runners`, `runner_id`, `runner_pairing` (`Outbound` only), `internal/runner`                 |
-| **Secrets**                | `Secrets`                             | `secret_list`                                                                                                                     | `/api/agents/{id}/vault`, `/api/settings/onepassword`, `one_password`, `internal/vault`                                                            |
-| **Skills**                 | `Skills`                              | `skill_list`, `skill_read`, `skill_write`, `skill_edit`, `skill_delete`, `skill_import`                                           | `/api/agents/{id}/integrations`, `internal/engine/skills.go`                                                                                       |
-| **Channel / MCP / Source** | `Integrations`                        | `mcp_server_*`, owner channel tools, `task_link_github_pull`                                                                      | `/channels/*`, `/api/agents/{id}/integrations*`, `/api/settings/sources*`, `mcp_servers`, `enabled_plugins`, `internal/channel`, `internal/plugin` |
-
-## Rollout phases and non-goals
-
-1. **Phase 1 complete — Glossary, UI labels, and view split**: Board and Inbox are separate views. Settings uses Runners, Secrets, Skills, and Integrations. The changes keep Task ownership, tools, and schemas.
-2. **Phase 2 complete — Bot tools**: `automation_*`, `secret_list`, `monitor_*`, and `process_*` are current. Pending PiG calls under retired names cannot resume after an upgrade. Committed changes stay saved. Legacy Task alerts keep the `task_result` kind. Task wakes use `task_wake`.
-3. **Phase 3 complete — Multi-Bot Task collaboration**: A Task can link Sessions across Bots. Its Assignee handles `Send to Main` and alert routing. Task tools check the caller's role and Session links. The migration keeps existing links as primary.
-4. **Non-goals (won't do)**: Keep `agents`, `conversations`, `internal/agent`, `internal/chat`, and the `dex-agent` binary and its machine protocol. Maintain one meaning per boundary and use this table to map across boundaries.
+| Concept                         | Web or tool surface                                  | API, storage, or engine                                                                                                   |
+| ------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Bot                             | Bots; `bot_*`                                        | `/api/agents/*`, `agents`, `internal/agent`                                                                               |
+| Session                         | Sessions; `session_*`                                | `/api/agents/{id}/chats/*`, `conversations`, `internal/chat`                                                              |
+| Child result                    | Result mark                                          | `session_result` submission, `dex.session_result` native entry                                                            |
+| Monitor or Process wake         | Wake mark; `monitor_*`, `process_*`                  | `wake` submission, `dex.wake` native entry; `monitors`, `background_commands`                                             |
+| Task wake                       | Task wake mark                                       | `task_wake` submission, `dex.task_wake` native entry                                                                      |
+| Automation                      | Automations; `automation_*`                          | `/api/agents/{id}/automations/*`, `automations`, `automation_runs`, `internal/automation`                                 |
+| Task                            | `/board/$taskKey`; `task_*`, `dex task`              | `/api/tasks/*`, `tasks` and related tables, `internal/task`                                                               |
+| Board attention                 | `/board`; Needs you and Updates                      | `/api/board/attention`, `/api/sources/held-events*`; `questions`, `task_source_holds`                                     |
+| Automation result               | `/board/results/$runId`                              | `/api/automations/results*`                                                                                               |
+| Runner                          | Runners; `runner_list`                               | `/api/settings/runners`, `/api/agents/{id}/runners`, `runners`, `runner_id`, Outbound `runner_pairing`, `internal/runner` |
+| Runner change in copied history | Runner boundary                                      | `dex.runner` entry; `boundary: "runner"` in the transcript                                                                |
+| Secrets                         | Secrets; `secret_list`                               | Vault APIs, `/api/settings/onepassword`, `internal/vault`                                                                 |
+| Skills                          | Bot Skills; `skill_*`                                | `/api/agents/{id}/integrations`, `internal/engine/skills.go`                                                              |
+| Channel, MCP Server, Source     | Integrations; `mcp_server_*` and Owner channel tools | Channel APIs, `/api/agents/{id}/integrations*`, `/api/settings/sources*`, `mcp_servers`, `enabled_plugins`                |

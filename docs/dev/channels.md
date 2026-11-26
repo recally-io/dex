@@ -10,9 +10,7 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
 
 - Paired private chats share Main. The adapter ignores all non-private messages,
   edits, and callbacks before it handles commands or downloads files. A saved
-  token without allowed users waits for pairing. After an upgrade, old group
-  sessions stay hidden. Dex stops their saved work in the shared agent store
-  before it resumes that store. Dex does not open separate group stores.
+  token without allowed users waits for pairing.
 - The Telegram channel page creates a link with the bot username from `getMe` and a
   random code. The code expires after 10 minutes. `telegram_settings` stores
   the code and expiry. Pairing is available only while the allowlist is empty. One atomic SQLite
@@ -232,13 +230,13 @@ changes. Check the platform's event logs after a switch. See the
 
 ### Intake and recovery
 
-Dex commits each authenticated event to the channel webhook inbox in
+Dex commits each authenticated event to the Webhook Queue in
 `control.sqlite` before it returns HTTP 200. A failed commit gets HTTP 503.
 The ACK does not wait for message processing, downloads, or agent execution.
 Telegram uses the bot ID and update ID. Feishu uses the app ID and
 `header.event_id`. The unique key also includes the platform. Valid retries
 within the deduplication window get HTTP 200 without adding another item, even
-after a restart. A URL verification challenge does not enter the inbox.
+after a restart. A URL verification challenge does not enter the queue.
 
 One worker per integration processes committed events in intake order. The
 worker calls the same receive function as polling or WebSocket. The current
@@ -255,9 +253,9 @@ checks `header.create_time` when present. Token-only mode requires
 once the deduplication record expires. Keep the secret private and rotate it
 if exposed.
 
-The inbox, not platform replay, recovers accepted events
-after restart. The default transport drains an existing inbox before it starts
-receiving from the platform. It skips events already processed from the inbox
+The Webhook Queue recovers accepted events without platform replay
+after restart. The default transport drains the existing queue before it starts
+receiving from the platform. It skips events already processed from the queue
 when the platform sends the same event ID again. Pending payloads stay bound to the agent that
 accepted them and are not transferred when credentials move to another agent.
 Back up and restrict access to `control.sqlite`: it can contain pending
@@ -274,8 +272,7 @@ is a limit: route notifications by agent if wakeups become costly.
 Channel settings use `agent_id` as their primary key. Telegram bot IDs, WeChat bot IDs,
 and Feishu app IDs cannot be assigned to multiple agents. A duplicate returns 409 and names the
 agent that owns the credential. QR login and registration sessions are also per agent.
-Migration maps old settings, peers, and commands to `default`. Rollback keeps only
-that agent's channel data. WeChat runtime remains keyed by bot ID and owner.
+WeChat runtime state is keyed by bot ID and owner.
 
 [`delivery.Manager`](../../internal/channel/delivery/manager.go) owns bot lifetime,
 commands, and reply delivery. Settings changes stop the old bot
@@ -316,10 +313,9 @@ reset request ID.
 A crash after reset admission but before command completion reuses that reset.
 A busy refusal is saved in the command receipt; replay cannot clear it later.
 The command sends one short notice. Reset submissions have no model reply.
-An incomplete command with an old peer channel key gets a notice with no action.
 `/stop` requests Session cancellation on Main. It withdraws queued input and
 pending results. The command saves its answer in the same transaction as the
-withdrawal. For the distinction from task Stop, see [Sessions](sessions.md). If command completion fails,
+withdrawal. For the distinction from Main foreground Stop, see [Sessions](sessions.md). If command completion fails,
 replay uses that answer without another withdrawal or native abort. The reply
 confirms the cancellation request and states that processes and remote
 work can continue. A stop error does not block later messages or other replies.
@@ -353,7 +349,7 @@ reset a message's status. Dex can drop reactions under load or when the bot stop
 Only Telegram private-chat queued acknowledgements retry. Telegram must return a
 429 that confirms rejection. Dex makes at most 3 attempts, with backoff of 1 s
 and 2 s. Telegram's `retry_after` can extend either delay. No retry starts after
-30 s or after the input leaves the native inbox. Each retry checks current
+30 s or after the input leaves the native Inbox. Each retry checks current
 sender authorization and the private reaction setting. If a request has an
 unknown outcome, Dex stops sending reactions for that input. Dex does not replay
 reactions after restart.
@@ -369,10 +365,10 @@ in milliseconds.
 
 ### Background results and delivery diagnostics
 
-Child session results, monitors, and background completions enter Main as internal
-non-user inputs with no inherited channel destination. Pure background runs never
-auto-send to channels; Main decides whether to call `notify_user` to reach the owner
-through the single-message Outbox.
+Child results enter the parent Session as `session_result`. Monitors and
+Processes send `wake` to their own Session. [Task wakes](tasks.md#coalesced-main-wakes)
+enter Main as `task_wake`. These inputs have no automatic channel reply route.
+Main can use `notify_user` to send an explicit notification.
 
 For delivery diagnostics, read `control.sqlite`:
 
@@ -383,7 +379,7 @@ WHERE id = :outbox_id;
 ```
 
 - `platform_confirmed`: Dex saved at least one provider-returned remote ID
-  for the recorded peer. The upgrade keeps earlier remote receipts for diagnosis.
+  for the recorded peer.
 - `revoked_or_skipped_unconfirmed`: the send was revoked or skipped and
   there is no provider receipt.
 - `unconfirmed`: there is no terminal evidence. Neither a pending send nor
@@ -393,8 +389,6 @@ WHERE id = :outbox_id;
 ### Pairing and pending deliveries
 
 The channel settings hold the current pairing. Unpairing marks pending deliveries to the removed destination `failed` in the same transaction. A new pairing for the same account has no generation ID. It does not revive cancelled deliveries. A request already in flight can still reach the platform.
-
-The single-message migration keeps terminal history and safe pending messages that fit one platform delivery. A legacy multipart entry with an incomplete or uncertain delivery becomes `failed`. Dex keeps its recorded platform receipts. Restore a pre-upgrade database backup to downgrade.
 
 ## Owner channel tools
 

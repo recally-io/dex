@@ -8,6 +8,8 @@ the core path. The core works the same with every plugin off.
 
 Source: [plugins.puml](../assets/src/plugins.puml).
 
+See [Tasks](tasks.md#sources-and-held-events) for routing, waits, and holds.
+
 ## Boundary
 
 | Part              | Owns                                                                      |
@@ -106,16 +108,7 @@ differences:
 in the shared table, so the versions of two plugins do not mix. Goose runs each
 file in a transaction, so a failed file leaves no table and no version. Turning
 a plugin off keeps its tables and rows. When it is on again, dex applies only
-the new versions. dex has no uninstall step. To go back to a build from before
-plugin migrations, restore the data backup from before the upgrade with that
-executable. The core migration that adds `applied_plugin_migrations` refuses to
-roll back after a plugin has migrated.
-
-The first version of each current plugin adopts the tables that a core
-migration made before plugin migrations existed. It creates each table only
-if it does not exist, and then renames it with the `plugin_<name>_` prefix, so
-an old database keeps its rows. A new plugin creates its tables with the
-prefix directly.
+the new versions. dex has no uninstall step.
 
 ## Add a plugin
 

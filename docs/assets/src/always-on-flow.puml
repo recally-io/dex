@@ -14,35 +14,35 @@ skinparam NoteBackgroundColor #dfe5fb
 skinparam NoteBorderColor #5b6b8c
 skinparam NoteFontColor #1f2937
 skinparam BackgroundColor #ffffff
-title dex: always-on agent inbox, run exit modes, outbox, and monitors
+title dex: User and System Turns
 top to bottom direction
 
 rectangle "User inputs\nWeb / Telegram / Feishu / WeChat" as user_in
-rectangle "Internal producers\nChild results + Process wakes + Automations" as sys_in
+rectangle "Internal producers\nChild results, Process and Task wakes" as sys_in
 database "monitors\nPrompt or script; bounded runs and lifetime" as monitors
 rectangle "Scheduler\nCheck target and claim due work" as sched
 
-database "Agent Inbox (submissions)\nDurable receipts + source dedup" as inbox
+database "Input Queue (submissions)\nDurable receipts and deduplication" as queue
 
 package "Native PiG session run (QueueAll boundary batching)" as run {
   rectangle "User Turn\nlive.Run.Inputs has user message\nLive stream + auto reply on settle" as user_turn
-  rectangle "System Turn\nOnly Task / Monitor / Automation\nFail-quiet trace by default" as sys_turn
+  rectangle "System Turn\nNo user input in the batch\nNo automatic channel reply" as sys_turn
 }
 
 rectangle "Explicit exit tools\nnotify_user\nsession_report (report to parent)" as tools
-database "Agent Outbox (outbox_messages)\nOne message per destination" as outbox
+database "Outbox (outbox_messages)\nOne message per destination" as outbox
 rectangle "Channel senders\nConfirm or retry one message" as dispatch
 
 monitors --> sched : Due check
-sched --> inbox : Stable follow-up ID\nPrompt due / check changed / terminal
-user_in --> inbox : message
-sys_in --> inbox : task_result / wake
+sched --> queue : Monitor wake or Automation message
+user_in --> queue : message
+sys_in --> queue : session_result / wake / task_wake
 
-inbox --> user_turn : Batch includes user message
-inbox --> sys_turn : System events only
+queue --> user_turn : Batch includes user message
+queue --> sys_turn : System inputs only
 
 user_turn --> outbox : Final reply to a channel input
-sys_turn --> tools : Optional call
+sys_turn --> tools : Optional tools
 tools --> outbox : notify_user
 tools --> monitors : monitor_set (bounded)
 

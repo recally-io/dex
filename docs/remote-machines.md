@@ -8,7 +8,7 @@ nginx, Caddy, Tailscale Serve, or a cloud load balancer. The machine then trusts
 with the system CA bundle, and the proxy configuration is the ordinary one.
 
 A machine runs work as an account of a person by default, so a bot on that machine can read the
-files and the credentials of that person. Use a machine environment only with bots you trust.
+files and the credentials of that person. Use a Machine Runner only with Bots you trust.
 
 ## Put Dex behind HTTPS
 
@@ -58,7 +58,7 @@ The command does four things:
   `device.json` in the state directory with mode `0600`.
 - It starts the service. The machine comes online in Dex within a few seconds.
 
-4. In Dex, select **Test**. Then select the environment in the settings of one bot, and send a
+4. In Dex, select **Test**. Then select the Runner in the settings of one Bot, and send a
    request that runs `uname -sm`.
 
 If the service does not start, run `dex-agent status` as that account, then
@@ -78,8 +78,8 @@ account: its `PATH`, the CLIs it installed, its logins for `gh`, `git`, and the 
 project directories. Nothing needs a second install or a second login for that account.
 
 All work sent to a runner uses the permissions of that account. This includes access to its
-files and credentials, such as `~/.ssh` and cloud logins. The usual Dex environment selection
-rules still apply. Separate bot workspaces do not restrict access to the home directory.
+files and credentials, such as `~/.ssh` and cloud logins. Separate Bot workspaces do not
+restrict access to the home directory.
 
 Use a separate account for shared or less trusted work.
 
@@ -98,6 +98,10 @@ The two modes differ as follows:
 | Supervisor      | `dex-agent.service`, user manager | `dex-agent.service`, system        |
 | Log             | `journalctl --user -u dex-agent`  | `journalctl -u dex-agent`          |
 | Needs root      | no                                | yes                                |
+
+The paths above are defaults. A Linux user install honors `XDG_STATE_HOME` for
+state and `XDG_CONFIG_HOME` for the service file. Use those same paths when
+removing the install.
 
 Linux needs systemd with a user manager, plus curl, tar, and sha256sum or shasum. Debian 12 or
 later, Ubuntu 22.04 or later, and equivalent distributions work. The account keeps the service
@@ -129,8 +133,8 @@ tail -f ~/Library/Logs/dex-agent.log                 # what it does
 ```
 
 The state directory holds `device.json`, which contains the Dex origin, the
-environment ID, and the machine token. Each bot starts in
-`workspaces/<bot-id>/workspace` in the state directory. SSH and runner use the
+Runner ID (`runnerId`), and the machine token. Each Bot starts in
+`workspaces/<bot-id>/workspace` in the state directory. SSH and Outbound Machines use the
 same `<base>/<bot-id>/workspace` layout. The base directory depends on the
 backend. All bots on a machine use the same account. Separate workspaces do not
 restrict which files a bot can read or change.
@@ -153,7 +157,7 @@ between machines, so copy the work you need.
 
 ```sh
 sudo systemctl disable --now dex-agent.service
-sudo rm -rf /var/lib/dex-agent /usr/local/bin/dex-agent /etc/systemd/system/dex-agent.service
+sudo rm -rf /var/lib/dex-agent /etc/systemd/system/dex-agent.service
 sudo systemctl daemon-reload
 ```
 
@@ -166,18 +170,14 @@ rm -f ~/.config/systemd/user/dex-agent.service ~/.local/bin/dex-agent ~/.local/b
 rm -rf ~/.local/state/dex-agent
 ```
 
-A machine that the dedicated account serves behaves as it did before the move, and the default
-mode keeps its behavior after a rollback: the two installs share no file, so neither mode
-changes for the other.
-
 ## Replace, revoke, or remove a machine
 
 Select **Revoke machine** in Dex to close the active connection and to refuse the old token.
-Then generate a new install command. To connect the same machine again, stop the service and
-remove `/var/lib/dex-agent/device.json` after the revocation. The workspace stays in the state
-directory. Workspaces do not move between machines.
+Then stop the service and remove `device.json` from the state directory for
+that install mode. Generate a new install command to enroll the Runner again.
+Keep the rest of the state directory to retain the workspace.
 
-To uninstall, first revoke the machine and move the bot to another environment. Keep the state
+To uninstall, first revoke the machine and move the Bot to another Runner. Keep the state
 directory until you have copied the work you need: it holds the machine token and the workspace.
 The machine token is in `device.json`; remove the whole state directory after the revocation.
 
@@ -189,6 +189,7 @@ rm -f ~/.config/systemd/user/dex-agent.service ~/.local/bin/dex-agent ~/.local/b
 # Linux, a dedicated account
 sudo systemctl disable --now dex-agent.service
 sudo rm -f /var/lib/dex-agent/bin/dex-agent /var/lib/dex-agent/bin/dex-agent.previous /etc/systemd/system/dex-agent.service
+sudo systemctl daemon-reload
 
 # macOS
 launchctl bootout gui/$(id -u)/com.recally.dex-agent
@@ -207,11 +208,7 @@ fails, it restores the previous binary.
 A machine state file must contain `runnerId`. If the file does not have it,
 revoke the machine in Dex and enroll it again with the current install command.
 
-Pass `-no-auto-update` to `dex-agent run` to opt out of automatic version alignment. Linux hosts
-installed under the legacy `/usr/local/bin/dex-agent` path show as not writable in Dex.
-To migrate, revoke the machine in Dex, stop `dex-agent.service`, and remove
-`/var/lib/dex-agent/device.json`. Run a fresh install command with `--dedicated` to enroll again.
-The installer keeps the workspace and puts the binary in `/var/lib/dex-agent/bin/dex-agent`.
+Pass `-no-auto-update` to `dex-agent run` to opt out of automatic version alignment.
 
 For foreground use, run `dex-agent run` as the install account, or run
 `/var/lib/dex-agent/bin/dex-agent run -state /var/lib/dex-agent` as the dedicated account on Linux. Without `-state`, the agent uses
@@ -229,7 +226,6 @@ token, Dex replaces the earlier session at once. A command that starts while the
 offline waits up to 10 seconds for it. A revoke or a new enrollment ends the leases on the
 machine, and each bot that uses it reloads.
 
-A current Dex and Runner can execute up to 16 operations at a time per connection. If either
-peer is older, it still uses one slot. These operations share the target filesystem. Wait for a
+A connection can execute up to 16 operations at a time. These operations share the target filesystem. Wait for a
 write or rename to finish before starting work that depends on it. A file transfer is limited to
-16 MiB. Use an SSH environment when you need larger transfers.
+16 MiB. Use an SSH Machine when you need larger transfers.

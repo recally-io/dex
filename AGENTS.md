@@ -18,10 +18,11 @@ Keep user-facing docs in [README.md](README.md) and agent or engineering
 references here.
 
 - [Product](docs/product.md): users, scope, and non-goals.
-- [Glossary](docs/dev/glossary.md): canonical domain terms, cross-layer
-  mapping, and retired aliases.
+- [Glossary](docs/dev/glossary.md): canonical domain terms and cross-layer
+  mapping.
 - [Architecture](docs/dev/architecture.md): the overview, with links to one
   document per subsystem in `docs/dev/`, such as [Plugins](docs/dev/plugins.md).
+- [Tasks](docs/dev/tasks.md): Board, Task access, and external runs.
 - [Development](docs/dev/development.md): local setup, tasks, tests, and debug.
 - [Releasing](docs/dev/releasing.md): CI shards and release workflow.
 - [Web UI](web/AGENTS.md): frontend routes, state, and shadcn conventions.
