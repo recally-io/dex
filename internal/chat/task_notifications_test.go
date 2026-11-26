@@ -40,12 +40,12 @@ func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T
 		{"ordinary-question", "message", "web", "ask_user", "", false},
 		{"ordinary-reply", "message", "web", "", "", true},
 		// Both legacy alerts and Task wakes are system inputs. Their questions stay in Web.
-		{"task-alert", "task_result", "web", "ask_user", "", true},
+		{"task-alert", "session_result", "web", "ask_user", "", true},
 		{"board-wake", "task_wake", "web", "ask_user", "", true},
 	}
 	for _, tc := range cases {
 		producer, replyChannel, replyPeer := inboxIdentity(tc.origin)
-		if tc.kind == "task_result" || tc.kind == "task_wake" {
+		if tc.kind == "session_result" || tc.kind == "task_wake" {
 			producer, replyChannel, replyPeer = "plugin", "", ""
 		}
 		_, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{

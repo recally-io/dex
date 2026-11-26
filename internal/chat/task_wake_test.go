@@ -121,7 +121,7 @@ func TestUserTaskWakeReplaysAdmissionAndKeepsLatePointers(t *testing.T) {
 		t.Fatal(err)
 	}
 	native, err := r.agents.Submit(ctx, ref, engine.Input{
-		RequestID: wake.ID, Content: wake.Content, Kind: "task_wake", Origin: "web", Main: true, TaskTitle: "Task wake", Options: options,
+		RequestID: wake.ID, Content: wake.Content, Kind: "task_wake", Origin: "web", Main: true, Options: options,
 		RefreshContent: func(ctx context.Context) (string, error) { return r.service.snapshotTaskWake(ctx, wake.ID) },
 	})
 	if err != nil {

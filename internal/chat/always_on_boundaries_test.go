@@ -33,8 +33,8 @@ func TestUserSystemTurnToolsRejectBotMutations(t *testing.T) {
 		origin string
 		kind   string
 	}{
-		{id: "monitor:t1:fire", origin: "monitor", kind: "task_result"},
-		{id: "background:b1:end", origin: "task", kind: "task_result"},
+		{id: "monitor:t1:fire", origin: "monitor", kind: "wake"},
+		{id: "background:b1:end", origin: "task", kind: "wake"},
 	} {
 		if _, err := r.service.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 			ID:             tc.id,

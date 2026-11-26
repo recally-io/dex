@@ -145,7 +145,12 @@ func fakeProvider(inputSuffix string) *ai.ModelsProvider {
 			if err := json.Unmarshal([]byte(text), &args); err != nil || args == nil {
 				return ai.AssistantMessage{}, fmt.Errorf("faux/spawn requires a JSON object")
 			}
-			if result, ok := args["task-result"]; ok {
+			result, ok := args["session-result"]
+			if !ok {
+				// An admitted input from before the split can still resume after upgrade.
+				result, ok = args["task-result"]
+			}
+			if ok {
 				if result, ok := result.(map[string]any); m.ID == "spawn-notify" && ok && result["title"] == "Web notification fixture" {
 					if !fakeExposed(t, "notify_user") {
 						return fakeCall("tool_search", map[string]any{"query": "notify_user"}), nil
@@ -153,7 +158,7 @@ func fakeProvider(inputSuffix string) *ai.ModelsProvider {
 					return fakeCall("notify_user", map[string]any{"content": "Reviewed child conclusion"}), nil
 				}
 				data, err := json.Marshal(result, json.Deterministic(true))
-				return fakeText("task-result: " + string(data)), err
+				return fakeText("session-result: " + string(data)), err
 			}
 			if result, ok := args["background-result"]; ok {
 				if wake, ok := result.(map[string]any); m.ID == "spawn-monitor" && ok && wake["event"] == "exited" {

@@ -429,7 +429,7 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 		select {
 		case <-tick.C:
 		case <-deadline.C:
-			t.Fatal("task-result-only wake blocked by cold agent")
+			t.Fatal("result-only turn blocked by cold agent")
 		}
 	}
 	// Then the parent receives the saved answer before the other agent opens.

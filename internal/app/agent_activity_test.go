@@ -40,7 +40,7 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 		}
 		kind := "message"
 		if key == "chat:empty" {
-			kind = "task_result"
+			kind = "session_result"
 		}
 		if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions (id,conversation_id,content,status,created_at,kind) VALUES (?,?,'fixture','pending',1,?)", fmt.Sprint(id), id, kind); err != nil {
 			t.Fatal(err)

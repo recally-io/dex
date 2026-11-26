@@ -150,7 +150,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 				body.Outcome = "interrupted"
 			}
 			encoded, merr := json.Marshal(struct {
-				Result sessionResult `json:"task-result"`
+				Result sessionResult `json:"session-result"`
 			}{body})
 			if merr != nil {
 				return 0, 0, "", merr
@@ -162,7 +162,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 				Attachments:    "null",
 				Origin:         cmp.Or(sub.Origin, "web"),
 				Producer:       ProducerSubSession,
-				Kind:           "task_result",
+				Kind:           "session_result",
 				CreatedAt:      s.now().UnixMilli(),
 			}); cerr != nil {
 				return 0, 0, "", cerr

@@ -14,6 +14,7 @@ import {
 import { useAgentId } from "../../lib/agent-scope";
 import { createContext, memo, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import type { Attachment, Item, Retry, TimelineNotification, ToolItem } from "../../api/generated/types.gen";
 import { getChatItemOptions } from "../../api/generated/@tanstack/react-query.gen";
@@ -26,10 +27,11 @@ import {
   stepTitle,
   type ContentBlock,
   type Step,
+  type SystemBlock,
 } from "../../lib/tools";
 import { markdownOptions } from "../../lib/markdown";
 import { strongText } from "../../lib/strong";
-import { retryMessage } from "../../lib/chat-state";
+import { isQueued, isTurnStart, retryMessage } from "../../lib/chat-state";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -815,19 +817,25 @@ function TranscriptItem({
       );
     }
 
-    case "task":
-      if (item.taskId) return <ResultLine item={item} />;
+    case "session_result":
+      if (!item.alert) return <ResultLine item={item} />;
 
+      return <SystemMarker>Task alert · {item.title}</SystemMarker>;
+    case "wake":
       return (
-        <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5">
-          <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
-          <h3 className="min-w-0 [overflow-wrap:anywhere]">
-            <span className="mr-1.5 font-medium text-muted-foreground">
-              {item.alert ? "Task alert" : "Background command"}
-            </span>
-            <span className="font-semibold text-foreground">{item.title}</span>
-          </h3>
-        </header>
+        <SystemMarker>
+          <span className="font-semibold text-foreground">{item.title}</span>
+          {item.status ? ` · ${item.status.replaceAll("_", " ")}` : null}
+          {item.reason ? `: ${item.reason}` : null}
+        </SystemMarker>
+      );
+    case "task_wake":
+      return (
+        <SystemMarker>
+          <Link to="/board" className="font-semibold text-foreground underline-offset-3 hover:underline">
+            {item.title}
+          </Link>
+        </SystemMarker>
       );
     case "assistant":
       if (!live && !item.text.trim()) return null;
@@ -941,6 +949,8 @@ export function Transcript({
   );
 
   function content(block: ContentBlock) {
+    const nextItem = block.kind === "item" ? items[block.index + 1] : undefined;
+
     return block.kind === "steps" ? (
       <Steps
         key={block.key}
@@ -958,7 +968,7 @@ export function Transcript({
         queuedActions={queuedActions}
         actions={messageActions}
         forkable={!!block.item.entryId && !withTools.has(block.item.entryId)}
-        ending={["user", "task", "boundary", undefined].includes(items[block.index + 1]?.kind)}
+        ending={!nextItem || isTurnStart(nextItem)}
       />
     );
   }
@@ -971,7 +981,7 @@ export function Transcript({
 
   grouped.forEach((block, index) => {
     const item = block.kind === "steps" ? undefined : block.item;
-    const at = item?.kind === "user" && item.queued ? Infinity : item && "at" in item ? item.at : undefined;
+    const at = item && isQueued(item) ? Infinity : item && "at" in item ? item.at : undefined;
 
     if (at !== undefined) {
       for (let notice = notifications?.[next]; notice && notice.at < at; notice = notifications?.[++next])
@@ -979,8 +989,8 @@ export function Transcript({
     }
 
     rows.push(
-      block.kind === "task" ? (
-        <TaskSection
+      block.kind === "system" ? (
+        <SystemSection
           key={block.item.id}
           block={block}
           content={content}
@@ -1016,10 +1026,19 @@ function notificationRow(notice: TimelineNotification) {
   );
 }
 
-function isSilentSystemTask(taskBlocks: ContentBlock[]): boolean {
+function SystemMarker({ children }: { children: ReactNode }) {
+  return (
+    <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5 text-muted-foreground">
+      <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0" />
+      <h3 className="min-w-0 font-normal [overflow-wrap:anywhere]">{children}</h3>
+    </header>
+  );
+}
+
+function isSilentSystemTrace(trace: ContentBlock[]): boolean {
   let hasAssistant = false;
 
-  for (const b of taskBlocks) {
+  for (const b of trace) {
     if (b.kind === "item") {
       if (b.item.kind === "error") return false;
 
@@ -1037,25 +1056,30 @@ function isSilentSystemTask(taskBlocks: ContentBlock[]): boolean {
     }
   }
 
-  return taskBlocks.length > 0 && !hasAssistant;
+  return trace.length > 0 && !hasAssistant;
 }
 
-function TaskSection({
+function SystemSection({
   block,
   content,
   streaming,
 }: {
-  block: { kind: "task"; item: Extract<Item, { kind: "task" }>; blocks: ContentBlock[] };
+  block: SystemBlock;
   content: (b: ContentBlock) => React.ReactNode;
   streaming: boolean;
 }) {
-  const silent = !streaming && isSilentSystemTask(block.blocks);
+  const silent = !streaming && isSilentSystemTrace(block.blocks);
+  const { item } = block;
+
+  const label =
+    item.kind === "session_result"
+      ? `${item.alert ? "Task alert" : "Session result"}: ${item.title}`
+      : item.kind === "wake"
+        ? `Wake: ${item.title}`
+        : item.title;
 
   return (
-    <section
-      aria-label={`Session result: ${block.item.title}`}
-      className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0"
-    >
+    <section aria-label={label} className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0">
       <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
       {block.blocks.length ? (
         silent ? (

@@ -373,8 +373,8 @@ type Submission struct {
 	Producer        string         `json:"producer"`
 	ReplyChannel    string         `json:"reply_channel"`
 	ReplyPeer       string         `json:"reply_peer"`
-	Kind            string         `json:"kind"`
 	ExitAction      string         `json:"exit_action"`
+	Kind            string         `json:"kind"`
 }
 
 type SystemSetting struct {

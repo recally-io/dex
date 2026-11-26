@@ -25,10 +25,9 @@ type Item struct {
 	Origin         string       `json:"origin,omitempty"`
 	Queued         bool         `json:"queued,omitzero"`
 	Steer          bool         `json:"steer,omitzero"`
-	TaskID         string       `json:"taskId,omitempty"`
 	ChildSessionID int64        `json:"childSessionId,omitzero"`
 	Title          string       `json:"title,omitempty"`
-	// Alert marks a Task alert or a Task wake on Main.
+	// Alert marks a legacy Task alert on Main.
 	Alert      bool           `json:"alert,omitzero"`
 	Name       string         `json:"name,omitempty"`
 	Args       map[string]any `json:"args,omitempty"`
@@ -104,13 +103,6 @@ func (i Item) MarshalJSON() ([]byte, error) {
 			*plain
 			Text string `json:"text"`
 		}{(*plain)(&i), i.Text})
-	case "task":
-		// A background command result has no child session, so its task ID is empty.
-		return json.Marshal(struct {
-			*plain
-			TaskID string `json:"taskId"`
-			Title  string `json:"title"`
-		}{(*plain)(&i), i.TaskID, i.Title})
 	case "tool":
 		args := i.Args
 		if args == nil {
@@ -157,7 +149,7 @@ func metadata(value any) inputMetadata {
 		return inputMetadata{}
 	}
 	text := func(key string) string { v, _ := obj.Get(key); s, _ := v.(string); return s }
-	m := inputMetadata{RequestID: text("requestId"), Content: text("content"), Kind: text("kind"), Origin: text("origin"), Source: text("source"), TaskID: text("taskId"), TaskTitle: text("taskTitle")}
+	m := inputMetadata{RequestID: text("requestId"), Content: text("content"), Kind: text("kind"), Origin: text("origin"), Source: text("source"), Title: text("taskTitle")}
 	flag, _ := obj.Get("hasTask")
 	m.HasTask, _ = flag.(bool)
 	raw, _ := obj.Get("attachments")
@@ -176,36 +168,88 @@ func metadata(value any) inputMetadata {
 	return m
 }
 
-func userItem(m inputMetadata, id string, at int64, text string) Item {
+// inputKindForEntry reads the native kind, including the old combined entry. The
+// metadata kind is needed for withdrawn inputs and saved Board wake receipts.
+func inputKindForEntry(kind string, m inputMetadata) string {
+	switch kind {
+	case "dex.session_result", "dex.wake", "dex.task_wake":
+		return strings.TrimPrefix(kind, "dex.")
+	}
+	if kind != legacyResultEntry && m.Kind != legacyResultKind {
+		return m.Kind
+	}
 	if m.Kind == "task_wake" {
-		// Use the unlinked system marker. A Task wake does not name a child session.
-		return Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, Title: "Task wake", Alert: true}
+		return "task_wake"
 	}
-	if m.HasTask {
-		text = m.Content
-	} else if len(m.Attachments) > 0 {
-		text = stripAttachedFiles(text, m.Attachments)
+	id := strings.ToLower(m.RequestID)
+	if strings.HasPrefix(id, "background:") || strings.HasPrefix(id, "monitor:") || m.Origin == "monitor" {
+		return "wake"
 	}
-	if m.TaskID != "" || m.Kind == "task_result" {
-		// Only a Task alert is a task_result linked to a Task. Chat links only owner messages.
-		item := Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle, Alert: m.HasTask}
-		// The answer stays out of the projection. The user reads it in the child session.
-		var body struct {
-			Result struct {
-				Outcome string `json:"outcome"`
-				Reason  string `json:"reason"`
-				Session string `json:"session"`
-			} `json:"task-result"`
+	return "session_result"
+}
+
+func inputItem(m inputMetadata, id string, at int64, text string) Item {
+	item := Item{ID: cmp.Or(m.RequestID, id), At: at}
+	switch m.Kind {
+	case "task_wake":
+		item.Kind, item.Title = "task_wake", "Task wake"
+	case "session_result":
+		item.Kind = "session_result"
+		item.Alert = m.HasTask || strings.HasPrefix(m.RequestID, "task-alert:")
+		// Read only display fields. The answer stays in the child session.
+		type result struct {
+			Title   string `json:"title"`
+			Outcome string `json:"outcome"`
+			Reason  string `json:"reason"`
+			Session string `json:"session"`
 		}
-		if json.Unmarshal([]byte(text), &body) == nil {
-			item.Status, item.Reason = body.Result.Outcome, body.Result.Reason
-			if child, err := strconv.ParseInt(body.Result.Session, 10, 64); err == nil && child > 0 {
-				item.ChildSessionID = child
+		var body struct {
+			Result       *result `json:"session-result"`
+			LegacyResult *result `json:"task-result"`
+		}
+		item.Title = cmp.Or(m.Title, "Session result")
+		if json.Unmarshal([]byte(cmp.Or(m.Content, text)), &body) == nil {
+			if r := cmp.Or(body.Result, body.LegacyResult); r != nil {
+				item.Title, item.Status, item.Reason = cmp.Or(m.Title, r.Title, item.Title), r.Outcome, r.Reason
+				if child, err := strconv.ParseInt(r.Session, 10, 64); err == nil && child > 0 {
+					item.ChildSessionID = child
+				}
 			}
 		}
-		return item
+	case "wake":
+		item.Kind = "wake"
+		text = cmp.Or(m.Content, text)
+		if strings.HasPrefix(strings.ToLower(m.RequestID), "background:") {
+			var body struct {
+				Process struct {
+					Label  string `json:"label"`
+					Event  string `json:"event"`
+					Notice string `json:"notice"`
+				} `json:"background-result"`
+			}
+			item.Title = cmp.Or(m.Title, "Process")
+			if json.Unmarshal([]byte(text), &body) == nil {
+				item.Title = cmp.Or(m.Title, body.Process.Label, item.Title)
+				item.Status, item.Reason = body.Process.Event, body.Process.Notice
+			}
+		} else {
+			item.Title = cmp.Or(m.Title, "Monitor")
+			firstLine, _, _ := strings.Cut(text, "\n")
+			if header, ok := strings.CutPrefix(firstLine, "[Monitor "); ok && strings.HasSuffix(header, "]") {
+				if status, _, ok := strings.Cut(header, ": "); ok {
+					item.Status = status
+				}
+			}
+		}
+	default:
+		if m.HasTask {
+			text = m.Content
+		} else if len(m.Attachments) > 0 {
+			text = stripAttachedFiles(text, m.Attachments)
+		}
+		item.Kind, item.Text, item.Origin, item.Attachments = "user", text, m.Origin, m.Attachments
 	}
-	return Item{Kind: "user", ID: cmp.Or(m.RequestID, id), At: at, Text: text, Origin: m.Origin, Attachments: m.Attachments}
+	return item
 }
 
 // stripAttachedFiles removes the file list that inputText appends. Older entries list workspace
@@ -305,7 +349,8 @@ func (p projection) render() []Item {
 			}
 			rendered = []Item{{Kind: "boundary", ID: key, Boundary: "compaction", Status: note.Outcome, Reason: note.Error}}
 		case "dex.withdrawn":
-			item := userItem(m, key, 0, m.Content)
+			m.Kind = inputKindForEntry(e.Kind, m)
+			item := inputItem(m, key, 0, m.Content)
 			rendered = []Item{item, {Kind: "error", ID: item.ID + ":error", Reason: "Stopped before the bot read it.", Aborted: true}}
 		default:
 			if len(e.Model) == 0 {
@@ -313,12 +358,9 @@ func (p projection) render() []Item {
 			}
 			switch msg := e.Model[0].(type) {
 			case ai.UserMessage:
-				if e.Kind == "dex.user" || e.Kind == "pi.user" || e.Kind == "dex.task_result" {
-					// The native entry kind marks results. Metadata distinguishes a Task wake.
-					if e.Kind == "dex.task_result" && m.Kind != "task_wake" {
-						m.Kind = "task_result"
-					}
-					rendered = []Item{userItem(m, key, msg.Timestamp, userText(msg.Content))}
+				if isDexInputEntry(e.Kind) || e.Kind == "pi.user" {
+					m.Kind = inputKindForEntry(e.Kind, m)
+					rendered = []Item{inputItem(m, key, msg.Timestamp, userText(msg.Content))}
 				}
 			case ai.AssistantMessage:
 				rendered = p.assistantItems(msg, key, results, tools, p.live.Run != nil && (p.live.Generation == nil || p.live.Generation.Message == nil) && index == lastAssistant, true)
@@ -362,11 +404,10 @@ func (p projection) render() []Item {
 		if m.RequestID == "" || seen[m.RequestID] {
 			continue
 		}
-		if m.Kind == "" {
-			kind, _ := q.Entry.Get("kind")
-			m.Kind, _ = kind.(string)
-		}
-		item := userItem(m, fmt.Sprint(q.Id), 0, m.Content)
+		rawKind, _ := q.Entry.Get("kind")
+		kind, _ := rawKind.(string)
+		m.Kind = inputKindForEntry(kind, m)
+		item := inputItem(m, fmt.Sprint(q.Id), 0, m.Content)
 		item.Queued = true
 		item.Steer = q.Mode == harness.InboxSteer
 		items = append(items, item)

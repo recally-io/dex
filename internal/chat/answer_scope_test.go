@@ -39,7 +39,7 @@ func TestUserAnswerDedupIsScopedToChild(t *testing.T) {
 		}
 		awaitReceipt(t, r, turn)
 		var count int
-		if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE id = ? AND kind = 'task_result'`, "result:"+turn).Scan(&count); err != nil {
+		if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE id = ? AND kind = 'session_result'`, "result:"+turn).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 1 {

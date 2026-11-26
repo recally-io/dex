@@ -150,7 +150,7 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 		if s.leaseUntil.Load() != 0 {
 			return ErrConversationBusy
 		}
-		// Take the writer before reading. Input and task-result inserts use the same SQLite writer.
+		// Take the writer before reading. Input and session result inserts use the same SQLite writer.
 		// Native calls run after this transaction so settlement can acquire the writer.
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {

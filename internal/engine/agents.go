@@ -1074,19 +1074,22 @@ func withdrawQueuedInputs(ctx context.Context, conversation harness.Conversation
 			if item.Mode == harness.InboxWrite {
 				continue
 			}
-			metadata := inputMetadata{Reason: "aborted"}
+			input := inputMetadata{Reason: "aborted"}
 			if item.Entry != nil {
 				data, _ := item.Entry.Get("data")
 				encoded, err := json.Marshal(data)
 				if err != nil {
 					return nil, err
 				}
-				if err := json.Unmarshal(encoded, &metadata); err != nil {
+				if err := json.Unmarshal(encoded, &input); err != nil {
 					return nil, err
 				}
-				metadata.Reason = "aborted"
+				rawKind, _ := item.Entry.Get("kind")
+				kind, _ := rawKind.(string)
+				input.Kind = inputKindForEntry(kind, input)
+				input.Reason = "aborted"
 			}
-			data, err := durable.ToJsonValue(metadata)
+			data, err := durable.ToJsonValue(input)
 			if err != nil {
 				return nil, err
 			}
@@ -1562,7 +1565,7 @@ func (a *Agents) source(ctx context.Context, ref Ref) (string, error) {
 			return "", err
 		}
 		for _, entry := range page.Items {
-			if entry.Kind != "dex.user" && entry.Kind != "dex.task_result" {
+			if !isDexInputEntry(entry.Kind) {
 				continue
 			}
 			encoded, err := json.Marshal(entry.Data)

@@ -208,7 +208,7 @@ func TestUserAutomationBusinessBoundaryRejectsUntrustedSources(t *testing.T) {
 	wrong = source
 	wrong.ConversationID++
 	reject(wrong)
-	for _, kind := range []string{"task_result", "context_reset"} {
+	for _, kind := range []string{"session_result", "wake", "task_wake", "context_reset"} {
 		if _, err := conn.ExecContext(t.Context(), "UPDATE submissions SET kind=? WHERE id=?", kind, source.SourceRequestID); err != nil {
 			t.Fatal(err)
 		}

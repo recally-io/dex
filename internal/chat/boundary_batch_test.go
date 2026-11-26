@@ -76,7 +76,7 @@ func TestUserFinalBoundaryBatch(t *testing.T) {
 					t.Fatalf("not one native batch: %+v", turn)
 				}
 			}
-			rows, err := r.conn.QueryContext(t.Context(), `SELECT id FROM submissions WHERE conversation_id=? AND kind='task_result' ORDER BY rowid`, parent)
+			rows, err := r.conn.QueryContext(t.Context(), `SELECT id FROM submissions WHERE conversation_id=? AND kind='session_result' ORDER BY rowid`, parent)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -244,7 +244,7 @@ func TestUserFollowUpQueueAllBatchesSameOriginWakes(t *testing.T) {
 		wakeIDs = append(wakeIDs, id)
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 			ID: id, ConversationID: parent, Content: fmt.Sprintf("wake %d", i),
-			Attachments: "null", Origin: "web", Producer: "plugin", Kind: "task_result", CreatedAt: int64(i + 1),
+			Attachments: "null", Origin: "web", Producer: "plugin", Kind: "wake", CreatedAt: int64(i + 1),
 		}); err != nil {
 			t.Fatal(err)
 		}

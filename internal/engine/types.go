@@ -74,8 +74,9 @@ type Input struct {
 	// ChildHasTask enables scoped Task tools on a linked child Session.
 	ChildHasTask bool
 	// Main input comes from a person who waits for each reply.
-	Main              bool
-	TaskID, TaskTitle string
+	Main bool
+	// Title overrides the transcript label for an input linked to a Task.
+	Title string
 	// TaskContext is model context. It is not part of the owner's message.
 	TaskContext string
 	// ModelSuffix adds guidance to the model input without changing the saved message.
@@ -94,9 +95,9 @@ type inputMetadata struct {
 	Origin      string       `json:"origin"`
 	Source      string       `json:"source"`
 	Attachments []Attachment `json:"attachments"`
-	TaskID      string       `json:"taskId,omitempty"`
-	TaskTitle   string       `json:"taskTitle,omitempty"`
-	Reason      string       `json:"reason,omitempty"`
+	// Keep the saved metadata key for the labels of old inputs.
+	Title  string `json:"taskTitle,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 type Outcome struct {
 	Status, Answer, Reason string

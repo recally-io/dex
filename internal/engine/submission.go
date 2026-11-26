@@ -52,7 +52,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		return nil, fmt.Errorf("%w: request ID is required", ErrInvalidInput)
 	}
 	switch input.Kind {
-	case "", "message", "task_result", "task_wake":
+	case "", "message", "session_result", "wake", "task_wake":
 	default:
 		return nil, fmt.Errorf("%w: input kind", ErrInvalidInput)
 	}
@@ -207,7 +207,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				}
 				input.Content = content
 			}
-			metadata := inputMetadata{RequestID: input.RequestID, Content: input.Content, HasTask: input.TaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
+			metadata := inputMetadata{RequestID: input.RequestID, Content: input.Content, HasTask: input.TaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, Title: input.Title}
 			data, err := durable.ToJsonValue(metadata)
 			if err != nil {
 				return nil, err
@@ -339,11 +339,28 @@ func answerText(messages []ai.Message) string {
 	return text.String()
 }
 
+const (
+	legacyResultKind  = "task_result"
+	legacyResultEntry = "dex." + legacyResultKind
+)
+
 func inputEntryKind(input Input) string {
-	if input.Kind == "task_result" || input.Kind == "task_wake" {
-		return "dex.task_result"
+	switch input.Kind {
+	case "session_result", "wake", "task_wake":
+		return "dex." + input.Kind
+	default:
+		return "dex.user"
 	}
-	return "dex.user"
+}
+
+// isDexInputEntry also recognizes input already saved in state.sqlite before the split.
+func isDexInputEntry(kind string) bool {
+	switch kind {
+	case "dex.user", "dex.session_result", "dex.wake", "dex.task_wake", legacyResultEntry:
+		return true
+	default:
+		return false
+	}
 }
 
 type entryScanner interface {
@@ -373,7 +390,7 @@ func runInputIDsForAnswer(scanner entryScanner, convID durable.ConversationId, a
 				stop = true
 				break
 			}
-			if e.Kind != "dex.user" && e.Kind != "dex.task_result" {
+			if !isDexInputEntry(e.Kind) {
 				continue
 			}
 			reqID := metadata(e.Data).RequestID

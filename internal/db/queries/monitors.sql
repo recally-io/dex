@@ -54,14 +54,14 @@ WHERE conversation_id = @conversation_id AND state = 'scheduled';
 
 -- name: CreateMonitorSubmission :execrows
 INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context, when_busy)
-SELECT @id, t.conversation_id, @content, 'null', @id, root.origin, 'scheduler', '', '', 'task_result', 'pending', @created_at, root.channel_context, 'followUp'
+SELECT @id, t.conversation_id, @content, 'null', @id, root.origin, 'scheduler', '', '', 'wake', 'pending', @created_at, root.channel_context, 'followUp'
 FROM monitors t JOIN submissions root ON root.id = t.root_request_id
 WHERE t.id = @monitor_id
 ON CONFLICT DO NOTHING;
 
 -- name: ListPendingMonitorEvents :many
 SELECT s.id FROM monitors m JOIN submissions s ON s.conversation_id = m.conversation_id
-WHERE m.id = ? AND s.kind = 'task_result' AND s.source_key = s.id
+WHERE m.id = ? AND s.kind = 'wake' AND s.source_key = s.id
   AND (s.status = 'pending' OR (s.status = 'unanswered' AND s.reason = 'aborted'))
   AND (s.id = m.fire_submission_id OR substr(s.id, 1, length(m.id) + 9) = 'monitor:' || m.id || ':')
 ORDER BY s.rowid;

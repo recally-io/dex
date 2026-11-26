@@ -151,7 +151,7 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 
 			// Then the committed report stays visible exactly once.
 			var n int
-			if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM submissions WHERE kind = 'task_result'`).Scan(&n); err != nil || n != 1 {
+			if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM submissions WHERE kind = 'session_result'`).Scan(&n); err != nil || n != 1 {
 				t.Fatalf("report count = %d, want 1; %v", n, err)
 			}
 			result, err := q.GetSubmission(ctx, reportID)

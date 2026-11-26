@@ -75,7 +75,7 @@ test("user sees which child session returned after a topic change", async () => 
     { kind: "assistant", id: "a1", text: "I will report back." },
     { kind: "user", id: "u2", text: "What does HTTP 202 mean?" },
     { kind: "assistant", id: "a2", text: "The server accepted the request." },
-    { kind: "task", id: "result-1", taskId: "task-1", title: "检查日志写入" },
+    { kind: "session_result", id: "result-1", title: "检查日志写入" },
     { kind: "assistant", id: "a3", text: "The check passed." },
     tool("t1", "done", "verified"),
     { kind: "assistant", id: "a4", text: "The file contains hello-dex." },
@@ -84,10 +84,10 @@ test("user sees which child session returned after a topic change", async () => 
 
   // When the transcript groups the result, then all its output has one named group.
   const grouped = blocks(items);
-  expect(grouped.map((block) => block.kind)).toEqual(["item", "item", "item", "item", "task", "item"]);
+  expect(grouped.map((block) => block.kind)).toEqual(["item", "item", "item", "item", "system", "item"]);
   const result = grouped[4];
   expect(result).toMatchObject({
-    kind: "task",
+    kind: "system",
     item: { title: "检查日志写入" },
     blocks: [
       { kind: "item", index: 5, item: { id: "a3" } },
@@ -110,12 +110,11 @@ test("user sees which child session returned after a topic change", async () => 
 test("user sees two returned results as separate groups", async () => {
   // Given two results that arrive together.
   const items: Item[] = [
-    { kind: "task", id: "result-1", taskId: "task-1", title: "Access logs" },
+    { kind: "session_result", id: "result-1", title: "Access logs" },
     { kind: "assistant", id: "a1", text: "First report" },
     {
-      kind: "task",
+      kind: "session_result",
       id: "result-2",
-      taskId: "task-2",
       title: "Error logs",
       status: "interrupted",
       reason: "Restarted",
@@ -125,8 +124,8 @@ test("user sees two returned results as separate groups", async () => {
 
   // When the transcript groups the results, then each keeps only its own output.
   expect(blocks(items)).toMatchObject([
-    { kind: "task", item: { title: "Access logs" }, blocks: [{ item: { id: "a1" } }] },
-    { kind: "task", item: { title: "Error logs" }, blocks: [{ item: { id: "error-2" }, index: 3 }] },
+    { kind: "system", item: { title: "Access logs" }, blocks: [{ item: { id: "a1" } }] },
+    { kind: "system", item: { title: "Error logs" }, blocks: [{ item: { id: "error-2" }, index: 3 }] },
   ]);
 
   const html = await render(

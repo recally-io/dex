@@ -60,7 +60,8 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 	}{
 		{"user", tasksvc.OriginUser},
 		{"task-wake", tasksvc.OriginTaskWake},
-		{"task-result", tasksvc.OriginTaskResult},
+		{"session-result", tasksvc.OriginSessionResult},
+		{"wake", tasksvc.OriginWake},
 		{"other", tasksvc.OriginOther},
 	}
 	for _, row := range []struct {
@@ -90,7 +91,7 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 			if read, err := tasksvc.CanRead(ctx, q, row.actor, task); err != nil || read != row.read {
 				t.Errorf("CanRead = %v, %v; want %v, nil", read, err, row.read)
 			}
-			permissions := []string{row.user, row.wake, row.result, row.other}
+			permissions := []string{row.user, row.wake, row.result, "", row.other}
 			for i, origin := range origins {
 				for _, action := range actions {
 					target := task
@@ -379,7 +380,7 @@ func TestUserTaskBoardDerivesBlockersAndMainQueuePosition(t *testing.T) {
 	seedQuestion := func(id, taskID, botID, status, submissionStatus string, conversationID, queued int64) {
 		t.Helper()
 		boardExec(t, conn, `INSERT INTO submissions (id, conversation_id, kind, content, status, created_at)
-			VALUES (?, ?, 'task_result', '', ?, 1)`, id, conversationID, submissionStatus)
+			VALUES (?, ?, 'session_result', '', ?, 1)`, id, conversationID, submissionStatus)
 		if taskID != "" {
 			boardExec(t, conn, `INSERT INTO task_inputs (submission_id, task_id) VALUES (?, ?)`, id, taskID)
 		}

@@ -2,7 +2,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CornerDownRight, MessagesSquare } from "lucide-react";
-import type { TaskItem, ToolItem } from "../../api/generated/types.gen";
+import type { SessionResultItem, ToolItem } from "../../api/generated/types.gen";
 import { listChatsOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { useAgentId } from "../../lib/agent-scope";
 import { sessionAgentId } from "../../lib/sessions";
@@ -169,7 +169,7 @@ export function ThreadEntry({ tool }: { tool: ToolItem }) {
  * The result of a child turn, as one line. The answer is in the thread. A turn that did not finish
  * says why on the line. The session list gives the child its owning Bot.
  */
-export function ResultLine({ item }: { item: TaskItem }) {
+export function ResultLine({ item }: { item: SessionResultItem }) {
   const agentId = useAgentId();
 
   const { data } = useQuery({

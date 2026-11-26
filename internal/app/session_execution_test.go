@@ -86,7 +86,7 @@ func TestUserSeesCurrentChildStateWithoutText(t *testing.T) {
 	})
 	pw.until(t, "first result arrives while the child still runs", func(tr *transcript) bool {
 		for _, it := range tr.items {
-			if it.Kind == "task" && tr.children[child] == "running" {
+			if it.Kind == "session_result" && tr.children[child] == "running" {
 				return true
 			}
 		}
