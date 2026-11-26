@@ -46,11 +46,16 @@ See the [API contract](../api/openapi.yaml) for request and response schemas.
 `src/lib/attachments.ts` uploads each file of the composer when the user adds
 it; a message sends only upload IDs.
 
-Bot links open Main at `/b/$botId`. The bot header offers New session,
-Sessions, Automations, and Settings. General settings open at `/b/$botId/bot`.
-Settings also includes Skills, Integrations, and Secrets.
+Bot links open Main at `/b/$botId`. The bot header offers Artifacts while it
+shows Main or a Session, then New session, Sessions, Automations, and Bot
+settings. Below `lg`, it shows Artifacts when available and a Bot menu. The menu
+trigger names a failed latest Automation run and an unsaved instructions draft.
+General settings open at `/b/$botId/bot`.
+Settings also includes Skills, Integrations, and Secrets. A page outside a Bot
+has no Bot actions in its header.
 The right Sessions sidebar starts closed. The global sidebar
-opens Bots, [Board](../docs/dev/tasks.md#board), and Settings. Board (`/board`)
+scrolls the Bots list above a fixed footer with [Board](../docs/dev/tasks.md#board),
+Integrations, and Settings. The mobile drawer uses the same sidebar. Board (`/board`)
 shows the Owner attention count and groups Tasks with other work:
 
 - **Needs you**: active questions (answerable inline), Tasks awaiting Owner review (approvable inline), enabled Automations without an available model, and held external events (attach to an open Task or dismiss).
@@ -71,8 +76,15 @@ Board attention also polls every 10 seconds for changes outside the Task stream.
 Task edits keep the revision from the start of the edit. A conflict
 prompts the Owner to load the latest values. Approval uses the current review
 sequence. The composer adds a note or sends to the Assignee Bot's Main.
-Global Integrations lists Sources from `GET /api/settings/sources` with a switch for each. A note asks for a
-restart while a stored choice differs from what runs. When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
+Settings → Integrations lists Sources from `GET /api/settings/sources` with a switch for each. A note asks for a
+restart while a stored choice differs from what runs.
+Integrations (`/integrations?bot=<id>`) is the starting point for connections.
+Without `bot`, it writes the last opened Bot, or the first Bot, into the address.
+An unknown or archived Bot shows a notice and no Bot sections. Channels and MCP
+servers use only the selected Bot's APIs. Sources stay global: the selection
+does not change them. **Add MCP server** sends `POST /api/bots/{botId}/integrations/mcp`
+with a name, a URL, and optional OAuth (client ID, a vault name for the client
+secret, and scope). The dialog names the target Bot and takes no headers or tokens. When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
 a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its
 components in `src/plugins/<name>/`, and a page renders them only when the
 plugin is on.
@@ -132,7 +144,10 @@ A bot's Secrets page edits its own Vault entries. The vault API returns metadata
 only. The editor clears the value after submit and does not store it in the browser.
 [Skills and Integrations](../docs/dev/skills-and-integrations.md) read
 `/api/bots/{botId}/integrations` and both offer
-Reload. In Integrations, an OAuth MCP row starts authorization with an
+Reload. An MCP row shows its connection state and, for OAuth, its authorization
+state as separate badges. Authorized does not mean connected. Dex-level rows
+mark authorization as shared by the Bots that inherit the declaration. In Integrations,
+an OAuth MCP row starts authorization with an
 authenticated POST. The browser follows the returned URL in the same tab. The
 callback returns to `/b/{botId}/integrations`. The browser does not receive provider tokens.
 

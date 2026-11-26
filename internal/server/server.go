@@ -102,7 +102,7 @@ func New(cfg Config) http.Handler {
 				return
 			}
 			// Decoder errors can quote a value with the wrong JSON type.
-			if taskExternalPath(r) || taskTokenResponse(r) || strings.HasSuffix(r.URL.Path, "/vault") || strings.HasSuffix(r.URL.Path, "/oauth") {
+			if taskExternalPath(r) || taskTokenResponse(r) || strings.HasSuffix(r.URL.Path, "/vault") || strings.HasSuffix(r.URL.Path, "/oauth") || strings.HasSuffix(r.URL.Path, "/integrations/mcp") {
 				writeError(w, http.StatusBadRequest, "the request is not valid")
 				return
 			}
@@ -131,7 +131,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, bot.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, session.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrBotArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, bot.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, bot.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, bot.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, bot.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget), errors.Is(err, engine.ErrMCPServerExists):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -331,6 +331,28 @@ func (h *handler) integrationView(ctx context.Context) (api.BotIntegrations, err
 func (h *handler) GetBotIntegrations(ctx context.Context, _ api.GetBotIntegrationsRequestObject) (api.GetBotIntegrationsResponseObject, error) {
 	out, err := h.integrationView(ctx)
 	return api.GetBotIntegrations200JSONResponse(out), err
+}
+func (h *handler) CreateMcpServer(ctx context.Context, req api.CreateMcpServerRequestObject) (api.CreateMcpServerResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	in := engine.MCPServerInput{Name: req.Body.Name, URL: req.Body.Url}
+	if o := req.Body.Oauth; o != nil {
+		in.OAuth = &engine.MCPOAuthInput{}
+		if o.ClientId != nil {
+			in.OAuth.ClientID = *o.ClientId
+		}
+		if o.ClientSecret != nil {
+			in.OAuth.ClientSecret = *o.ClientSecret
+		}
+		if o.Scope != nil {
+			in.OAuth.Scope = *o.Scope
+		}
+	}
+	if err := h.Engine.CreateMCPServer(ctx, botID(ctx), in); err != nil {
+		return nil, err
+	}
+	return api.CreateMcpServer201JSONResponse(ok), nil
 }
 func (h *handler) ListVault(ctx context.Context, _ api.ListVaultRequestObject) (api.ListVaultResponseObject, error) {
 	list, err := h.Engine.VaultList(botID(ctx))

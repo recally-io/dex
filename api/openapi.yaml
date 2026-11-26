@@ -2581,6 +2581,53 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/bots/{botId}/integrations/mcp:
+    parameters:
+      - in: path
+        name: botId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: createMcpServer
+      description: >
+        Adds a Bot-level Streamable HTTP MCP declaration. It never replaces a
+        declaration: a Bot-level or Dex-level declaration with the same name
+        answers 409. The URL must use HTTPS, or HTTP on loopback, and must not
+        contain user information, a query, or a fragment. The request takes no
+        headers or static tokens. Use OAuth and authorize the connection in the
+        browser. A client secret must be a vault:NAME reference. Dex does not
+        contact the server here. The bot reloads when it is idle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, url]
+              additionalProperties: false
+              properties:
+                name: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+                url: { type: string }
+                oauth:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    clientId: { type: string }
+                    clientSecret:
+                      type: string
+                      description: A vault:NAME reference. Dex rejects a secret value.
+                    scope: { type: string }
+      responses:
+        "201":
+          description: The declaration is saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/bots/{botId}/integrations/mcp/{name}/oauth:
     parameters:
       - in: path

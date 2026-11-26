@@ -61,7 +61,7 @@ function ChannelRow({ channel, text, state }: { channel: ChannelId; text: string
   );
 }
 
-function ChannelsSection({ settings }: { settings: Settings }) {
+export function ChannelsSection({ settings }: { settings: Settings }) {
   const botId = useBotId();
   const saved = useQuery({ ...getChannelsOptions({ path: { botId } }), refetchInterval: 3000 });
   const current = saved.data ?? settings;
@@ -505,7 +505,7 @@ function TelegramDialog({
   );
 }
 
-function WithChannels({ children }: { children: (settings: Settings) => ReactNode }) {
+export function WithChannels({ children }: { children: (settings: Settings) => ReactNode }) {
   const botId = useBotId();
   const settings = useQuery(getChannelsOptions({ path: { botId } }));
 

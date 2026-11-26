@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ListTodo, Plus, Search, Settings } from "lucide-react";
+import { Cable, ListTodo, Plus, Search, Settings } from "lucide-react";
 import type { Bot } from "../api/generated/types.gen";
 import { getSettingsOptions, listBotsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { BotContext } from "../lib/bot-scope";
@@ -60,29 +60,6 @@ export function Sidebar({
           <kbd className="ml-auto text-[10px]">⌘K</kbd>
         </Button>
       </div>
-      <nav aria-label="Workspace" className="space-y-1 px-2 pb-2">
-        <Link
-          to="/board"
-          aria-current={area === "board" ? "page" : undefined}
-          aria-label={
-            attentionCount
-              ? `Board, ${attentionCount} ${attentionCount === 1 ? "item needs" : "items need"} attention`
-              : undefined
-          }
-          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row, "w-full")}
-        >
-          <ListTodo size={15} aria-hidden />
-          Board
-          {attentionCount ? (
-            <span
-              aria-hidden
-              className="ml-auto rounded-full bg-muted px-1.5 text-xs tabular-nums text-orange"
-            >
-              {attentionCount}
-            </span>
-          ) : null}
-        </Link>
-      </nav>
       <nav aria-label="Bots" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3">
         {(bots.data?.bots ?? []).map((bot) => (
           <BotContext.Provider key={bot.id} value={bot.id!}>
@@ -104,7 +81,7 @@ export function Sidebar({
           </p>
         ) : null}
       </nav>
-      <Footer active={area === "settings"} />
+      <Footer area={area} attentionCount={attentionCount} />
       {creating ? (
         <BotContext.Provider value={openBot ?? "default"}>
           <BotCreateDialog onClose={() => setCreating(false)} />
@@ -114,29 +91,50 @@ export function Sidebar({
   );
 }
 
-function Footer({ active }: { active: boolean }) {
+/** The global pages stay in a fixed footer, so the Bots list scrolls above them. */
+function Footer({ area, attentionCount }: { area: string | undefined; attentionCount: number }) {
   const settings = useQuery(getSettingsOptions());
   const errors = settings.data?.providers.filter((p) => p.error).length ?? 0;
   const label = `${errors} ${errors === 1 ? "provider needs" : "providers need"} attention`;
+  const link = cn(buttonVariants({ variant: "ghost", size: "sm" }), row, "w-full");
 
   return (
-    <div className="flex gap-1 border-t border-border p-2">
+    <nav aria-label="Workspace" className="flex shrink-0 flex-col gap-1 border-t border-border p-2">
       <Link
-        to="/settings/general"
-        aria-current={active ? "page" : undefined}
-        className={cn(
-          buttonVariants({ variant: "ghost", size: "sm" }),
-          row,
-          active && "bg-accent font-medium text-foreground",
-        )}
+        to="/board"
+        aria-current={area === "board" ? "page" : undefined}
+        aria-label={
+          attentionCount
+            ? `Board, ${attentionCount} ${attentionCount === 1 ? "item needs" : "items need"} attention`
+            : undefined
+        }
+        className={link}
       >
+        <ListTodo size={15} aria-hidden />
+        Board
+        {attentionCount ? (
+          <span aria-hidden className="ml-auto rounded-full bg-muted px-1.5 text-xs tabular-nums text-orange">
+            {attentionCount}
+          </span>
+        ) : null}
+      </Link>
+      <Link
+        to="/integrations"
+        aria-current={area === "integrations" ? "page" : undefined}
+        title="Connections for each Bot, and Sources for this Dex"
+        className={link}
+      >
+        <Cable size={15} aria-hidden />
+        Integrations
+      </Link>
+      <Link to="/settings/general" aria-current={area === "settings" ? "page" : undefined} className={link}>
         <Settings size={15} aria-hidden />
         Settings
         {errors ? (
           <span role="img" aria-label={label} title={label} className="size-2 rounded-full bg-red" />
         ) : null}
       </Link>
-    </div>
+    </nav>
   );
 }
 

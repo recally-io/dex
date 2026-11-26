@@ -166,6 +166,19 @@ declaration. Writes apply after
 the current work ends and the affected bot reloads. A dex change marks all
 open bots for reload.
 
+The owner can also add a Bot-level remote declaration from Web Integrations.
+`POST /api/bots/{botId}/integrations/mcp` takes a name, a URL, and optional
+`oauth` with `clientId`, `clientSecret` as `vault:NAME`, and `scope`. It saves
+`type: "http"` (Streamable HTTP) through the same store and validation as
+`mcp_server_set`, and it marks only that bot for idle reload. It never replaces
+a declaration. The same name at the bot level or at the dex level returns 409,
+so a Web add cannot mask an inherited server. The store lock orders the check
+and the insert against all other declaration writes. The URL must use HTTPS,
+or HTTP on loopback, without user information, a query, or a fragment. The
+request takes no headers or environment, so it cannot store a static token. It
+does not contact the server. A server that needs sign-in uses browser
+authorization below.
+
 `mcp_server_get` hides plain `env` and `headers` values and the URL query.
 dex resolves `vault:NAME` and inline `${vault:NAME}` in `env` and `headers`
 when it starts the server. For example, an HTTP header can use

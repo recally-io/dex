@@ -42,7 +42,14 @@ export function BotSecretsPage() {
   );
 }
 
-export function IntegrationCatalog({ section }: { section: "skills" | "integrations" }) {
+export function IntegrationCatalog({
+  section,
+  addAction,
+}: {
+  section: "skills" | "integrations";
+  /** A control that adds a declaration to this bot, next to Reload. */
+  addAction?: ReactNode;
+}) {
   const botId = useBotId();
 
   const query = useQuery({
@@ -71,13 +78,26 @@ export function IntegrationCatalog({ section }: { section: "skills" | "integrati
   return (
     <>
       {query.data.reloadPending && !query.data.errors.length ? (
-        <Note>Change waiting for idle bots</Note>
+        <Note>Change waiting for this bot to be idle</Note>
       ) : null}
       <Configuration extensions={query.data} />
       {section === "skills" ? (
         <Skills extensions={query.data} reloadAction={reloadAction} />
       ) : (
-        <McpServers servers={query.data.servers} reloadAction={reloadAction} />
+        <McpServers
+          servers={query.data.servers}
+          canAdd={!!addAction}
+          reloadAction={
+            addAction ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {addAction}
+                {reloadAction}
+              </div>
+            ) : (
+              reloadAction
+            )
+          }
+        />
       )}
       {reload.isError ? (
         <Failure title="Could not reload tools and MCP servers" error={reload.error} />
@@ -103,7 +123,7 @@ function Skills({ extensions: e, reloadAction }: { extensions: BotIntegrations; 
       </Section>
       <Section
         title="Available skills"
-        caption="Skill edits apply to the next request. Reload refreshes the bot's tools and MCP connections when all bots are idle."
+        caption="Skill edits apply to the next request. Reload refreshes the bot's tools and MCP connections when this bot is idle."
         action={reloadAction}
       >
         <List
@@ -146,11 +166,19 @@ function Configuration({ extensions: e }: { extensions: BotIntegrations }) {
   );
 }
 
-function McpServers({ servers, reloadAction }: { servers: McpServer[]; reloadAction: ReactNode }) {
+function McpServers({
+  servers,
+  canAdd,
+  reloadAction,
+}: {
+  servers: McpServer[];
+  canAdd: boolean;
+  reloadAction: ReactNode;
+}) {
   return (
     <Section
       title="MCP servers"
-      caption="Manage declarations with mcp_server tools in an owner session. Reload refreshes this bot's MCP connections when all bots are idle."
+      caption={`${canAdd ? "Add a remote server here, or manage" : "Manage"} declarations with mcp_server tools in an owner session. Reload refreshes this bot's MCP connections when this bot is idle.`}
       action={reloadAction}
     >
       <List
@@ -158,10 +186,14 @@ function McpServers({ servers, reloadAction }: { servers: McpServer[]; reloadAct
           <ServerRow key={server.name} server={server} />
         ))}
         empty={
-          <>
-            Ask the bot to add a server with mcp_server_set. A bot declaration with disabled: true turns off a
-            dex server with the same name.
-          </>
+          canAdd ? (
+            "No MCP servers yet. Add a remote server for this Bot."
+          ) : (
+            <>
+              Ask the bot to add a server with mcp_server_set. A bot declaration with disabled: true turns off
+              a dex server with the same name.
+            </>
+          )
         }
       />
     </Section>
@@ -212,9 +244,40 @@ const STATE: Record<McpServer["state"], { tone: "green" | "red" | "neutral"; lab
   idle: { tone: "neutral", label: "Starts with the bot" },
 };
 
+/** Authorization is a grant. It does not mean that the connection or its tools are live. */
+const AUTH: Record<NonNullable<McpServer["oauth"]>, { tone: "green" | "red" | "neutral"; label: string }> = {
+  authorize: { tone: "neutral", label: "Not authorized" },
+  reauthorize: { tone: "red", label: "Authorization required" },
+  authorized: { tone: "green", label: "Authorized" },
+};
+
+function StateBadge({
+  label,
+  tone,
+  name,
+}: {
+  label: string;
+  tone: "green" | "red" | "neutral";
+  name: string;
+}) {
+  return (
+    <Badge
+      title={name}
+      variant={tone === "red" ? "destructive" : tone === "green" ? "secondary" : "outline"}
+      className={`h-5 px-2 text-[11.5px] ${tone === "green" ? "bg-green-tint text-green" : ""}`}
+    >
+      <span className="sr-only">{name}: </span>
+      <span>{label}</span>
+    </Badge>
+  );
+}
+
 function ServerRow({ server: s }: { server: McpServer }) {
-  const state = s.oauth === "reauthorize" ? { tone: "red", label: "Authorization required" } : STATE[s.state];
+  const state = STATE[s.state];
+  const auth = s.oauth && s.state !== "disabled" ? AUTH[s.oauth] : undefined;
   const botId = useBotId();
+  const shared = s.scope === "dex";
+  const authorizeLabel = `${s.oauth === "authorize" ? "Authorize" : "Reauthorize"}${shared ? " for Dex" : ""}`;
 
   const authorize = useMutation({
     ...startMcpOAuthMutation(),
@@ -227,12 +290,8 @@ function ServerRow({ server: s }: { server: McpServer }) {
       <div className="flex flex-wrap items-center gap-2">
         <Header name={s.name} scope={s.scope} overrides={s.overrides} />
         <span className="flex-1" />
-        <Badge
-          variant={state.tone === "red" ? "destructive" : state.tone === "green" ? "secondary" : "outline"}
-          className={`h-5 px-2 text-[11.5px] ${state.tone === "green" ? "bg-green-tint text-green" : ""}`}
-        >
-          {state.label}
-        </Badge>
+        {auth ? <StateBadge name="Authorization" label={auth.label} tone={auth.tone} /> : null}
+        <StateBadge name="Connection" label={state.label} tone={state.tone} />
         {s.oauth && s.state !== "disabled" ? (
           <Button
             size="sm"
@@ -240,10 +299,15 @@ function ServerRow({ server: s }: { server: McpServer }) {
             disabled={authorize.isPending}
             onClick={() => authorize.mutate({ path: { botId, name: s.name }, body: { scope: s.scope } })}
           >
-            {authorize.isPending ? "Starting…" : s.oauth === "authorize" ? "Authorize" : "Reauthorize"}
+            {authorize.isPending ? "Starting…" : authorizeLabel}
           </Button>
         ) : null}
       </div>
+      {shared && auth ? (
+        <p className="mt-1 text-[12.5px] text-muted-foreground">
+          All Bots that inherit this server use the same authorization.
+        </p>
+      ) : null}
       {authorize.isError ? <Failure error={authorize.error} title="Could not start authorization" /> : null}
       {s.oauth === "reauthorize" ? (
         <p className="mt-1 text-[12.5px] text-red">This connection needs a new grant.</p>

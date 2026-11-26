@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -13,6 +13,7 @@ import {
 import { errorText, queryClient } from "./lib/queries";
 import { BoardResultPage } from "./components/board-results";
 import { BoardPage } from "./routes/board";
+import { IntegrationsPage } from "./routes/integrations";
 import { TaskDetailPage } from "./routes/task-detail";
 import { Shell } from "./components/shell";
 import { BotLayout } from "./components/bot-layout";
@@ -105,6 +106,30 @@ const board = createRoute({
   },
 });
 
+const integrations = createRoute({
+  getParentRoute: () => root,
+  path: "/integrations",
+  validateSearch: (search: { bot?: unknown }) => {
+    // eslint-disable-next-line anti-slop/no-runtime-typeof
+    if (typeof search.bot === "string" && search.bot) return { bot: search.bot };
+
+    return {};
+  },
+  component: IntegrationsRoute,
+});
+
+function IntegrationsRoute() {
+  const { bot } = integrations.useSearch();
+  const navigate = integrations.useNavigate();
+
+  const change = useCallback(
+    (id: string, replace: boolean) => void navigate({ search: { bot: id }, replace }),
+    [navigate],
+  );
+
+  return <IntegrationsPage bot={bot} onBotChange={change} />;
+}
+
 const taskDetail = page("/board/$taskKey", () => {
   const { taskKey } = taskDetail.useParams();
 
@@ -194,6 +219,7 @@ const router = createRouter({
     ]),
     index,
     board,
+    integrations,
     taskDetail,
     boardResult,
     generalSettings,

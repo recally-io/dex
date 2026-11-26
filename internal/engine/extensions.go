@@ -124,7 +124,7 @@ type serverConfig struct {
 	URL      string            `json:"url"`
 	Headers  map[string]string `json:"headers"`
 	Disabled bool              `json:"disabled"`
-	OAuth    *mcpOAuthConfig   `json:"oauth,omitempty"`
+	OAuth    *mcpOAuthConfig   `json:"oauth,omitzero"` // An empty block enables browser authorization.
 	OAuthID  string            `json:"oauthId,omitempty"`
 }
 type serverEntry struct {
@@ -714,7 +714,7 @@ func extensionGuide(levels []ExtensionLevel, secrets string) string {
 		"Keep secrets in the vault. Use secret_list to find names and pass vault:NAME references in the env argument of bash, process_start, or a monitor_set check. Ask the user to add missing values in Settings. Do not put secrets in skill files. dex commits skill history; do not run Git in the stores.",
 		`MCP: use mcp_server_list and mcp_server_get to inspect declarations. Call mcp_server_set to replace one declaration at the dex or bot level. Call mcp_server_remove to delete it. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name. Changes apply after the bot finishes its current work.`,
 		`To use a JSON snippet, call mcp_server_set for each server. Ask the user to move secrets into the vault first: a pasted snippet is stored in the transcript. Use vault:NAME or ${vault:NAME} references in env and headers. Plain values are stored as plain text in control.sqlite.`,
-		`For browser OAuth, set type to http and add oauth: {}. If the provider requires a registered client, set oauth.clientId and use vault:NAME in oauth.clientSecret. Ask the owner to authorize the connection in Tools. Never ask for OAuth tokens or codes.`,
+		`For browser OAuth, set type to http and add oauth: {}. If the provider requires a registered client, set oauth.clientId and use vault:NAME in oauth.clientSecret. Ask the owner to authorize the connection in Integrations. Never ask for OAuth tokens or codes.`,
 		"",
 		"The tool environment starts from the user's login shell environment.",
 		secrets,

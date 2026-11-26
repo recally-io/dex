@@ -13,8 +13,8 @@ import (
 	"github.com/recally-io/dex/internal/vault"
 )
 
-var errMCPAuthorize = errors.New("authorize this MCP connection in Tools")
-var errMCPReauthorize = errors.New("reauthorize this MCP connection in Tools")
+var errMCPAuthorize = errors.New("authorize this MCP connection in Integrations")
+var errMCPReauthorize = errors.New("reauthorize this MCP connection in Integrations")
 
 type mcpOAuthConnection struct {
 	store   *MCPStore

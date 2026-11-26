@@ -5882,6 +5882,56 @@ export type GetBotIntegrationsResponses = {
 
 export type GetBotIntegrationsResponse = GetBotIntegrationsResponses[keyof GetBotIntegrationsResponses];
 
+export type CreateMcpServerData = {
+    body: {
+        name: string;
+        url: string;
+        oauth?: {
+            clientId?: string;
+            /**
+             * A vault:NAME reference. Dex rejects a secret value.
+             */
+            clientSecret?: string;
+            scope?: string;
+        };
+    };
+    path: {
+        botId: string;
+    };
+    query?: never;
+    url: '/api/bots/{botId}/integrations/mcp';
+};
+
+export type CreateMcpServerErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateMcpServerError = CreateMcpServerErrors[keyof CreateMcpServerErrors];
+
+export type CreateMcpServerResponses = {
+    /**
+     * The declaration is saved.
+     */
+    201: Ok;
+};
+
+export type CreateMcpServerResponse = CreateMcpServerResponses[keyof CreateMcpServerResponses];
+
 export type StartMcpOAuthData = {
     body: {
         scope: IntegrationScope;

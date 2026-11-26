@@ -105,12 +105,12 @@ func (h *handler) finishMcpOAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	requests.mu.Unlock()
 	if !valid {
-		writeError(w, 400, "invalid or expired MCP authorization state; start again from Tools")
+		writeError(w, 400, "invalid or expired MCP authorization state; start again from Integrations")
 		return
 	}
 	http.SetCookie(w, mcpOAuthCookie(state, "", p.secure, -1))
 	if query.Has("error") || len(query["code"]) != 1 || len(query["iss"]) > 1 {
-		writeError(w, 400, "MCP authorization did not complete; return to Tools and try again")
+		writeError(w, 400, "MCP authorization did not complete; return to Integrations and try again")
 		return
 	}
 	var iss *string
@@ -122,7 +122,7 @@ func (h *handler) finishMcpOAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Engine.FinishMCPAuthorization(r.Context(), p.grant, query.Get("code"), iss); err != nil {
-		writeError(w, 400, "MCP authorization failed; return to Tools and try again")
+		writeError(w, 400, "MCP authorization failed; return to Integrations and try again")
 		return
 	}
 	http.Redirect(w, r, "/b/"+url.PathEscape(p.botID)+"/integrations", http.StatusSeeOther)

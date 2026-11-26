@@ -221,7 +221,7 @@ func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 		_, body := d.call(t, http.MethodGet, "/api/bots/default/integrations", nil)
 		return strings.Contains(body, `"oauth":"reauthorize"`) && !strings.Contains(body, "private-refresh-token"), body
 	})
-	w.until(t, "reauthorization action", answeredWith("reauthorize this MCP connection in Tools"))
+	w.until(t, "reauthorization action", answeredWith("reauthorize this MCP connection in Integrations"))
 
 	// When the resource changes while the browser is away, the old callback cannot exchange its code.
 	auth = start()
