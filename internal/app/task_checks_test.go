@@ -36,7 +36,14 @@ func TestUserSeesGitHubCIOnlyAsATimelineEntry(t *testing.T) {
 	var detail api.TaskDetail
 	d.must(t, http.MethodGet, path, nil, &detail)
 	t.Logf("artifact: entries=%+v links=%+v", detail.Entries, detail.Links)
-	if len(detail.Entries) != 2 || detail.Entries[1].EventId == nil || detail.Entries[1].Content != "GitHub checks: github-actions failure" {
+	var external []api.TaskEntry
+	for _, entry := range detail.Entries {
+		if entry.Kind == api.TaskEntryKindExternal {
+			external = append(external, entry)
+		}
+	}
+	if len(detail.Entries) != 4 || len(external) != 2 || external[0].EventId == nil || external[1].EventId == nil ||
+		external[0].Content != "GitHub checks: github-actions failure" || external[1].Content != "GitHub checks: github-actions failure" {
 		t.Fatalf("CI must add one external entry per completion: %+v", detail.Entries)
 	}
 	if waits := detail.Links[0].Waits; len(waits) != 1 || waits[0].Resolved {
