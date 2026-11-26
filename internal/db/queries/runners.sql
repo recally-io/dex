@@ -29,7 +29,7 @@ WHERE runner_id = ? AND archived_at IS NULL
 ORDER BY created_at, id;
 
 -- name: GetAgentBinding :one
--- found_id is empty when runner_id names a deleted environment.
+-- found_id is empty when runner_id names a deleted Runner.
 SELECT
     a.runner_id,
     a.runner_sandbox_id,
@@ -53,15 +53,14 @@ SET runner_sandbox_id = ''
 WHERE id = @agent_id AND runner_sandbox_id = @sandbox_id;
 
 -- name: SetChatRunner :execrows
--- A chat selects its environment before its first message only.
+-- Select a Session's Runner before its first message.
 UPDATE conversations SET runner_id = @runner_id, cwd = ''
 WHERE conversations.id = @id AND conversations.agent_id = @agent_id AND conversations.execution_id IS NULL AND conversations.forked_from IS NULL
   AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id);
 
 -- name: CountDefaultSessionWork :one
--- Unsettled input and running background commands in the sessions of agent_id that follow the
--- environment of the agent. A change of that environment waits until they end. Admitted input
--- counts too: PiG can accept input and keep it queued.
+-- A change to the Bot's Runner waits for unsettled input and running Processes in
+-- Sessions that follow it. This includes input that PiG accepted but has not run.
 SELECT
     (SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id
      WHERE c.agent_id = @agent_id AND c.runner_id = '' AND s.status = 'pending')
@@ -69,15 +68,15 @@ SELECT
        WHERE c.agent_id = @agent_id AND c.runner_id = '' AND b.state IN ('starting', 'running'));
 
 -- name: ClearDefaultSessionCwd :exec
--- The sessions that follow the environment of the agent start in the workspace of the new one.
+-- Sessions that follow the Bot's Runner start in the new Runner's workspace.
 UPDATE conversations SET cwd = '' WHERE agent_id = ? AND runner_id = '';
 
 -- name: ClearDefaultAutomationCwd :exec
--- The routines that follow the environment of the agent run in the workspace of the new one.
+-- Automations that follow the Bot's Runner use the new Runner's workspace.
 UPDATE automations SET cwd = '' WHERE agent_id = ? AND runner_id = '';
 
 -- name: RetireAutomationChat :exec
--- A reused routine chat that ran in another environment moves off the reuse key and stays readable.
+-- An Automation Session on another Runner stays readable but can no longer be reused.
 UPDATE conversations SET channel_key = @channel_key WHERE id = @id;
 
 -- name: CountPendingAgent :one
@@ -86,7 +85,7 @@ FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE c.agent_id = ? AND s.status = 'pending';
 
 -- name: LastAutomationRunRunner :one
--- The effective environment of the newest run in a routine chat.
+-- The Runner of the newest run in an Automation Session.
 SELECT r.runner_id FROM automation_runs r
 JOIN submissions s ON s.id = r.id
 WHERE s.conversation_id = ?

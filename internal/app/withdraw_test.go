@@ -53,14 +53,15 @@ func queuedItem(id string) func(*transcript) bool {
 	}
 }
 
-func receiptState(t *testing.T, conn *sql.DB, id string) (status, reason string, delivered bool) {
+func receiptState(t *testing.T, conn *sql.DB, id string) (status, reason string, hasReply bool) {
 	t.Helper()
 	var reasonValue sql.NullString
-	var deliveredAt sql.NullInt64
-	if err := conn.QueryRowContext(t.Context(), "SELECT status, reason, delivered_at FROM submissions WHERE id = ?", id).Scan(&status, &reasonValue, &deliveredAt); err != nil {
+	if err := conn.QueryRowContext(t.Context(), `SELECT status, reason, EXISTS (
+		SELECT 1 FROM outbox_messages WHERE source_submission_id = s.id AND kind = 'reply'
+	) FROM submissions s WHERE id = ?`, id).Scan(&status, &reasonValue, &hasReply); err != nil {
 		t.Fatal(err)
 	}
-	return status, reasonValue.String, deliveredAt.Valid
+	return status, reasonValue.String, hasReply
 }
 
 func TestUserWithdrawsQueuedMessageAndItNeverRuns(t *testing.T) {
@@ -187,7 +188,7 @@ func TestUserWithdrawnChannelMessageIsNotRunByRedelivery(t *testing.T) {
 	if _, err := os.Stat(ran); err == nil {
 		t.Fatal("the withdrawn message ran after redelivery")
 	}
-	if status, reason, delivered := receiptState(t, taskResultDB(t, dir), queued); status != "unanswered" || reason != "withdrawn" || !delivered {
-		t.Fatalf("receipt: %s %s delivered=%t", status, reason, delivered)
+	if status, reason, hasReply := receiptState(t, taskResultDB(t, dir), queued); status != "unanswered" || reason != "withdrawn" || hasReply {
+		t.Fatalf("receipt: %s %s has reply=%t", status, reason, hasReply)
 	}
 }

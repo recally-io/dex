@@ -1134,7 +1134,7 @@ export type OnePasswordInput = {
     serviceAccountToken?: string;
 };
 
-export type RunnerKind = 'pi-env' | 'e2b' | 'runner';
+export type RunnerKind = 'ssh' | 'e2b' | 'runner';
 
 export type RunnerConfig = {
     host?: string;
@@ -2002,7 +2002,7 @@ export type SaveEmailSourceData = {
          */
         taskAgentId?: string;
         /**
-         * Hold other unmatched messages in the Inbox. The default ignores them.
+         * Hold other unmatched messages on Board. The default ignores them.
          */
         holdUnmatched?: boolean;
     };
@@ -2066,7 +2066,7 @@ export type SaveWebhookSourceData = {
          */
         taskAgentId?: string;
         /**
-         * Hold other unmatched events in the Inbox. The default ignores them.
+         * Hold other unmatched events on Board. The default ignores them.
          */
         holdUnmatched?: boolean;
     };
@@ -2130,7 +2130,7 @@ export type SaveGitHubWebhookData = {
          */
         issueAgentId?: string;
         /**
-         * Hold Webhook and Pull events that match no Task in the Inbox. The default ignores them.
+         * Hold Webhook and Pull events that match no Task on Board. The default ignores them.
          */
         holdUnmatched?: boolean;
     };
@@ -6134,7 +6134,7 @@ export type ListAutomationTargetsData = {
 
 export type ListAutomationTargetsResponses = {
     /**
-     * Existing sessions that can be used by a Routine of this bot.
+     * Existing sessions that can be used by an Automation of this bot.
      */
     200: {
         targets: Array<AutomationTarget>;

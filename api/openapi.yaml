@@ -167,7 +167,7 @@ paths:
                 holdUnmatched:
                   type: boolean
                   default: false
-                  description: Hold other unmatched messages in the Inbox. The default ignores them.
+                  description: Hold other unmatched messages on Board. The default ignores them.
       responses:
         "204": { description: Source saved. }
         default: { $ref: "#/components/responses/Error" }
@@ -208,7 +208,7 @@ paths:
                 holdUnmatched:
                   type: boolean
                   default: false
-                  description: Hold other unmatched events in the Inbox. The default ignores them.
+                  description: Hold other unmatched events on Board. The default ignores them.
       responses:
         "204": { description: Source saved. }
         default: { $ref: "#/components/responses/Error" }
@@ -249,7 +249,7 @@ paths:
                 holdUnmatched:
                   type: boolean
                   default: false
-                  description: Hold Webhook and Pull events that match no Task in the Inbox. The default ignores them.
+                  description: Hold Webhook and Pull events that match no Task on Board. The default ignores them.
       responses:
         "204": { description: Webhook configuration saved. }
         default: { $ref: "#/components/responses/Error" }
@@ -2749,7 +2749,7 @@ paths:
         - $ref: "#/components/parameters/AgentId"
       responses:
         "200":
-          description: Existing sessions that can be used by a Routine of this bot.
+          description: Existing sessions that can be used by an Automation of this bot.
           content:
             application/json:
               schema:
@@ -4370,7 +4370,7 @@ components:
 
     RunnerKind:
       type: string
-      enum: [pi-env, e2b, runner]
+      enum: [ssh, e2b, runner]
 
     RunnerConfig:
       type: object

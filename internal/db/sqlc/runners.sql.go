@@ -30,7 +30,7 @@ const clearDefaultAutomationCwd = `-- name: ClearDefaultAutomationCwd :exec
 UPDATE automations SET cwd = '' WHERE agent_id = ? AND runner_id = ''
 `
 
-// The routines that follow the environment of the agent run in the workspace of the new one.
+// Automations that follow the Bot's Runner use the new Runner's workspace.
 func (q *Queries) ClearDefaultAutomationCwd(ctx context.Context, agentID string) error {
 	_, err := q.db.ExecContext(ctx, clearDefaultAutomationCwd, agentID)
 	return err
@@ -40,7 +40,7 @@ const clearDefaultSessionCwd = `-- name: ClearDefaultSessionCwd :exec
 UPDATE conversations SET cwd = '' WHERE agent_id = ? AND runner_id = ''
 `
 
-// The sessions that follow the environment of the agent start in the workspace of the new one.
+// Sessions that follow the Bot's Runner start in the new Runner's workspace.
 func (q *Queries) ClearDefaultSessionCwd(ctx context.Context, agentID string) error {
 	_, err := q.db.ExecContext(ctx, clearDefaultSessionCwd, agentID)
 	return err
@@ -54,9 +54,8 @@ SELECT
        WHERE c.agent_id = ?1 AND c.runner_id = '' AND b.state IN ('starting', 'running'))
 `
 
-// Unsettled input and running background commands in the sessions of agent_id that follow the
-// environment of the agent. A change of that environment waits until they end. Admitted input
-// counts too: PiG can accept input and keep it queued.
+// A change to the Bot's Runner waits for unsettled input and running Processes in
+// Sessions that follow it. This includes input that PiG accepted but has not run.
 func (q *Queries) CountDefaultSessionWork(ctx context.Context, agentID string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countDefaultSessionWork, agentID)
 	var column_1 int64
@@ -159,7 +158,7 @@ type GetAgentBindingRow struct {
 	UpdatedAt       int64  `json:"updated_at"`
 }
 
-// found_id is empty when runner_id names a deleted environment.
+// found_id is empty when runner_id names a deleted Runner.
 func (q *Queries) GetAgentBinding(ctx context.Context, id string) (GetAgentBindingRow, error) {
 	row := q.db.QueryRowContext(ctx, getAgentBinding, id)
 	var i GetAgentBindingRow
@@ -203,7 +202,7 @@ ORDER BY s.created_at DESC, s.id DESC
 LIMIT 1
 `
 
-// The effective environment of the newest run in a routine chat.
+// The Runner of the newest run in an Automation Session.
 func (q *Queries) LastAutomationRunRunner(ctx context.Context, conversationID int64) (string, error) {
 	row := q.db.QueryRowContext(ctx, lastAutomationRunRunner, conversationID)
 	var runner_id string
@@ -290,7 +289,7 @@ type RetireAutomationChatParams struct {
 	ID         int64  `json:"id"`
 }
 
-// A reused routine chat that ran in another environment moves off the reuse key and stays readable.
+// An Automation Session on another Runner stays readable but can no longer be reused.
 func (q *Queries) RetireAutomationChat(ctx context.Context, arg RetireAutomationChatParams) error {
 	_, err := q.db.ExecContext(ctx, retireAutomationChat, arg.ChannelKey, arg.ID)
 	return err
@@ -325,7 +324,7 @@ type SetChatRunnerParams struct {
 	AgentID  string `json:"agent_id"`
 }
 
-// A chat selects its environment before its first message only.
+// Select a Session's Runner before its first message.
 func (q *Queries) SetChatRunner(ctx context.Context, arg SetChatRunnerParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, setChatRunner, arg.RunnerID, arg.ID, arg.AgentID)
 	if err != nil {

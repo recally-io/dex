@@ -347,7 +347,7 @@ func TestUserAutomationToolDoesNotRunInASessionSelectedDuringPreflight(t *testin
 	conn := sessionDB(t, d)
 	var remote apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
-		"name": "fixture box", "kind": "pi-env", "config": map[string]string{"host": "fixture.internal", "user": "dev"},
+		"name": "fixture box", "kind": "ssh", "config": map[string]string{"host": "fixture.internal", "user": "dev"},
 	}, &remote, http.StatusCreated)
 	for _, target := range []int64{first, second} {
 		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", target), map[string]string{"runnerId": remote.ID}, nil)

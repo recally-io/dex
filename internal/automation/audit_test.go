@@ -179,7 +179,7 @@ func TestUserIntervalCatchUpKeepsScheduleAlignment(t *testing.T) {
 func TestUserRoutineRunsOnlyOnTheCheckedRunner(t *testing.T) {
 	f := newRoutineFixture(t)
 	ctx := t.Context()
-	if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
+	if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','ssh','{"host":"box.internal"}','',0,0)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.conn.ExecContext(ctx, `UPDATE agents SET runner_id = 'box' WHERE id = 'a'`); err != nil {
@@ -212,7 +212,7 @@ func TestUserRoutineRunsOnlyOnTheCheckedRunner(t *testing.T) {
 func TestUserRoutineEditDuringRunNowCheckStartsNoRun(t *testing.T) {
 	f := newRoutineFixture(t)
 	ctx := t.Context()
-	if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
+	if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','ssh','{"host":"box.internal"}','',0,0)`); err != nil {
 		t.Fatal(err)
 	}
 	in := routineInput()
@@ -254,7 +254,7 @@ func TestUserRoutineSkipsATargetInvalidatedDuringPreflight(t *testing.T) {
 INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
+			if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','ssh','{"host":"box.internal"}','',0,0)`); err != nil {
 				t.Fatal(err)
 			}
 			conv, err := f.q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: "a", ChannelKey: "chat:bound-target"})

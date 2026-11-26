@@ -492,8 +492,8 @@ func bindFileDeliveries(ctx context.Context, q *sqlc.Queries, outboxID, sourceID
 // WakeAutomationOutbox nudges channel delivery after commit without waking any conversation.
 func (s *Service) WakeAutomationOutbox(ctx context.Context, runID string) {
 	if s.notify != nil {
-		if row, err := s.q.GetOutboxMessage(ctx, "routine:"+runID); err == nil && row.Status == "pending" {
-			s.notify(row.Peer)
+		if peer, err := s.q.GetPendingAutomationOutboxPeer(ctx, "remind:"+runID); err == nil {
+			s.notify(peer)
 		}
 	}
 }
@@ -515,7 +515,7 @@ func routineFailure(run sqlc.AutomationRun) bool {
 func queueAutomationOutbox(ctx context.Context, q *sqlc.Queries, runID string, convID int64, now int64) error {
 	run, err := q.GetAutomationRun(ctx, runID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil // A non-Routine input also uses settlement.
+		return nil // Other inputs also use settlement.
 	}
 	if err != nil {
 		return err
@@ -561,7 +561,7 @@ func queueAutomationOutbox(ctx context.Context, q *sqlc.Queries, runID string, c
 	// same reason after a success) must not supersede an alert still waiting to send.
 	var topicKey string
 	if !failure {
-		topicKey = "routine:" + run.AutomationID
+		topicKey = "automation:" + run.AutomationID
 		if _, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{
 			ConversationID: convID,
 			Peer:           info.Peer,
@@ -577,7 +577,7 @@ func queueAutomationOutbox(ctx context.Context, q *sqlc.Queries, runID string, c
 		return err
 	}
 	_, err = q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-		ID:                 "routine:" + runID,
+		ID:                 "automation:" + runID,
 		EventID:            "remind:" + runID,
 		AgentID:            info.AgentID,
 		ConversationID:     convID,

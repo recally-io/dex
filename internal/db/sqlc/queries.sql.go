@@ -1056,7 +1056,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, channel_revoked, required_reply_id, stop_requested, producer, reply_channel, reply_peer, exit_action, kind FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, channel_revoked, required_reply_id, stop_requested, producer, reply_channel, reply_peer, exit_action, kind FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -1073,7 +1073,6 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.SettledAt,
 		&i.SourceKey,
 		&i.Attachments,
-		&i.DeliveredAt,
 		&i.Origin,
 		&i.AdmittedAt,
 		&i.WhenBusy,
@@ -2283,7 +2282,7 @@ func (q *Queries) UpsertProvider(ctx context.Context, arg UpsertProviderParams) 
 
 const withdrawSubmission = `-- name: WithdrawSubmission :execrows
 UPDATE submissions SET status = 'unanswered', answer = NULL, reason = 'withdrawn',
-    settled_at = coalesce(settled_at, ?1), delivered_at = coalesce(delivered_at, ?1)
+    settled_at = coalesce(settled_at, ?1)
 WHERE id = ?2 AND kind IN ('message', 'session_result', 'wake')
 AND (status = 'pending' OR (status = 'unanswered' AND reason = 'aborted'))
 `

@@ -38,7 +38,7 @@ type TaskKey = string
 
 // SaveEmailSourceJSONBody defines parameters for SaveEmailSource.
 type SaveEmailSourceJSONBody struct {
-	// HoldUnmatched Hold other unmatched messages in the Inbox. The default ignores them.
+	// HoldUnmatched Hold other unmatched messages on Board. The default ignores them.
 	HoldUnmatched *bool   `json:"holdUnmatched,omitempty"`
 	Secret        *string `json:"secret,omitempty"`
 

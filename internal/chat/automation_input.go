@@ -56,7 +56,7 @@ func AutomationTargetEligible(conv sqlc.Conversation, agentID string) bool {
 	return conv.AgentID == agentID && !conv.ArchivedAt.Valid && acceptsInput(conv.ChannelKey, conv.ParentID)
 }
 
-// ErrAutomationTarget identifies a binding that cannot accept a Routine input.
+// ErrAutomationTarget identifies a binding that cannot accept an Automation input.
 var ErrAutomationTarget = errors.New(routineSkipTargetSession)
 
 func AutomationTarget(ctx context.Context, q *sqlc.Queries, agentID string, id sql.NullInt64) (sqlc.Conversation, error) {

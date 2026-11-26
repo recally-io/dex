@@ -9,7 +9,7 @@ import {
 } from "./runners";
 
 test("Runner labels name the type and connection without exposing the stored kind", () => {
-  const ssh = { name: "MacMini", kind: "pi-env" as const, config: { host: "macmini", user: "ops" } };
+  const ssh = { name: "MacMini", kind: "ssh" as const, config: { host: "macmini", user: "ops" } };
   const outbound = { name: "Build host", kind: "runner" as const, config: {} };
   const cloud = { name: "Cloud", kind: "e2b" as const, config: { template: "base" } };
 

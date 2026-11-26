@@ -39,7 +39,7 @@ export function detectSandboxPreset(cfg: RunnerConfig): SandboxPreset {
 // runnerKindBadge names how Dex reaches the environment. It never shows the stored
 // kind, because a kind names our transport and the user thinks in machines.
 export function runnerKindBadge(env: Pick<Runner, "kind" | "config">): string {
-  if (env.kind === "pi-env") return "Machine · SSH";
+  if (env.kind === "ssh") return "Machine · SSH";
 
   if (env.kind === "runner") return "Machine · Outbound";
 
@@ -53,7 +53,7 @@ export function runnerOptionLabel(env: Pick<Runner, "name" | "kind" | "config">)
 }
 
 export function runnerBotHint(env: Pick<Runner, "name" | "kind" | "config">): string {
-  if (env.kind === "pi-env") {
+  if (env.kind === "ssh") {
     return `Runs tools on ${env.name} over SSH (${formatSshTarget(env.config)}).`;
   }
 

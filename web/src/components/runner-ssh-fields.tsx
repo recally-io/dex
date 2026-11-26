@@ -11,10 +11,10 @@ type SshFormController = {
   errors: Partial<Record<"name" | "host" | "port" | "workspaceDir", string>>;
   hasConfigErrors: boolean;
   hasErrors: boolean;
-  submitBody: () => { name: string; kind: "pi-env"; config: RunnerConfig };
+  submitBody: () => { name: string; kind: "ssh"; config: RunnerConfig };
   probeBody: (runnerId?: string) => {
     runnerId?: string;
-    kind: "pi-env";
+    kind: "ssh";
     config: RunnerConfig;
   };
   viewProps: {
@@ -132,8 +132,8 @@ export function useSshRunnerForm(
     errors,
     hasConfigErrors: !!(errors.host || errors.port || errors.workspaceDir),
     hasErrors: Object.keys(errors).length > 0,
-    submitBody: () => ({ name: name.trim(), kind: "pi-env", config: buildConfig() }),
-    probeBody: (runnerId?: string) => ({ runnerId, kind: "pi-env", config: buildConfig() }),
+    submitBody: () => ({ name: name.trim(), kind: "ssh", config: buildConfig() }),
+    probeBody: (runnerId?: string) => ({ runnerId, kind: "ssh", config: buildConfig() }),
     viewProps: {
       isEditing: !!existing,
       name,

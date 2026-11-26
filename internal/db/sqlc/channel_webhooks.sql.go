@@ -10,7 +10,7 @@ import (
 )
 
 const countHandledChannelWebhook = `-- name: CountHandledChannelWebhook :one
-SELECT count(*) FROM channel_webhook_inbox
+SELECT count(*) FROM channel_webhook_queue
 WHERE platform = ? AND account = ? AND event_id = ? AND payload IS NULL
 `
 
@@ -28,7 +28,7 @@ func (q *Queries) CountHandledChannelWebhook(ctx context.Context, arg CountHandl
 }
 
 const enqueueChannelWebhook = `-- name: EnqueueChannelWebhook :exec
-INSERT INTO channel_webhook_inbox (platform, account, event_id, agent_id, received_at, payload)
+INSERT INTO channel_webhook_queue (platform, account, event_id, agent_id, received_at, payload)
 VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (platform, account, event_id) DO NOTHING
 `
@@ -55,7 +55,7 @@ func (q *Queries) EnqueueChannelWebhook(ctx context.Context, arg EnqueueChannelW
 }
 
 const finishChannelWebhook = `-- name: FinishChannelWebhook :exec
-UPDATE channel_webhook_inbox SET payload = NULL WHERE id = ?
+UPDATE channel_webhook_queue SET payload = NULL WHERE id = ?
 `
 
 func (q *Queries) FinishChannelWebhook(ctx context.Context, id int64) error {
@@ -64,7 +64,7 @@ func (q *Queries) FinishChannelWebhook(ctx context.Context, id int64) error {
 }
 
 const nextChannelWebhook = `-- name: NextChannelWebhook :one
-SELECT id, payload FROM channel_webhook_inbox
+SELECT id, payload FROM channel_webhook_queue
 WHERE agent_id = ? AND platform = ? AND account = ? AND payload IS NOT NULL
 ORDER BY id LIMIT 1
 `
@@ -88,7 +88,7 @@ func (q *Queries) NextChannelWebhook(ctx context.Context, arg NextChannelWebhook
 }
 
 const pruneHandledChannelWebhooks = `-- name: PruneHandledChannelWebhooks :exec
-DELETE FROM channel_webhook_inbox WHERE payload IS NULL AND received_at < ?
+DELETE FROM channel_webhook_queue WHERE payload IS NULL AND received_at < ?
 `
 
 func (q *Queries) PruneHandledChannelWebhooks(ctx context.Context, receivedAt int64) error {

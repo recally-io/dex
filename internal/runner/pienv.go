@@ -376,7 +376,7 @@ func (r *piEnvRuntime) probe(ctx context.Context, saved *Spec, spec Spec) (TestR
 	}
 	ephemeralKnownHosts := true
 	envID := ""
-	if saved != nil && saved.Kind == KindPiEnv && saved.ID != "" {
+	if saved != nil && saved.Kind == KindSSH && saved.ID != "" {
 		if oldCfg, parseErr := parsePiEnvConfig(saved.Config); parseErr == nil && samePiEnvEndpoint(oldCfg, cfg) {
 			ephemeralKnownHosts = false
 			envID = saved.ID
@@ -749,7 +749,7 @@ type piEnvHandle struct {
 	closeOnce sync.Once
 }
 
-func (h *piEnvHandle) Kind() Kind        { return KindPiEnv }
+func (h *piEnvHandle) Kind() Kind        { return KindSSH }
 func (h *piEnvHandle) Workspace() string { return h.workspace }
 func (h *piEnvHandle) Home() string      { return h.c.home }
 

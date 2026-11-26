@@ -134,8 +134,8 @@ tail -f ~/Library/Logs/dex-agent.log                 # what it does
 
 The state directory holds `device.json`, which contains the Dex origin, the
 Runner ID (`runnerId`), and the machine token. Each Bot starts in
-`workspaces/<bot-id>/workspace` in the state directory. SSH and Outbound Machines use the
-same `<base>/<bot-id>/workspace` layout. The base directory depends on the
+`workspaces/<bot-id>/workspace` in the state directory. SSH (`ssh`) and Outbound
+(`runner`) Machines use the same `<base>/<bot-id>/workspace` layout. The base directory depends on the
 backend. All bots on a machine use the same account. Separate workspaces do not
 restrict which files a bot can read or change.
 

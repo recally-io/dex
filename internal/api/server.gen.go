@@ -604,8 +604,8 @@ func (e RunEventType) Valid() bool {
 // Defines values for RunnerKind.
 const (
 	RunnerKindE2b    RunnerKind = "e2b"
-	RunnerKindPiEnv  RunnerKind = "pi-env"
 	RunnerKindRunner RunnerKind = "runner"
+	RunnerKindSsh    RunnerKind = "ssh"
 )
 
 // Valid indicates whether the value is a known member of the RunnerKind enum.
@@ -613,9 +613,9 @@ func (e RunnerKind) Valid() bool {
 	switch e {
 	case RunnerKindE2b:
 		return true
-	case RunnerKindPiEnv:
-		return true
 	case RunnerKindRunner:
+		return true
+	case RunnerKindSsh:
 		return true
 	default:
 		return false

@@ -55,7 +55,7 @@ type Input struct {
 	Session              string        `json:"session"` // new, reuse, or session
 	TargetConversationID int64         `json:"targetConversationId,omitzero"`
 	Enabled              bool          `json:"enabled"`
-	// RunnerID is local or an SSH environment ID. Empty follows the environment of the bot.
+	// RunnerID is Local or an SSH Runner ID. An empty ID follows the Bot's Runner.
 	RunnerID string `json:"runnerId"`
 }
 
@@ -84,7 +84,7 @@ type Run struct {
 	Reason           string `json:"reason,omitempty"`
 	NotificationNote string `json:"notificationNote,omitempty"`
 	ChatID           int64  `json:"chatId,omitzero"` // 0 when the run has no message
-	// RunnerID and Cwd are where the run started: the effective environment, never empty
+	// RunnerID and Cwd are where the run started: the effective Runner, never empty
 	// for a run with a message.
 	RunnerID string `json:"runnerId,omitempty"`
 	Cwd      string `json:"cwd,omitempty"`
@@ -96,18 +96,18 @@ type Service struct {
 	enqueue    func(context.Context, chat.AutomationInput) (chat.AutomationInputResult, error)
 	now        func() time.Time
 	wakeOutbox func(context.Context, string)
-	// probe opens an SSH environment of a run before its input; nil skips the check.
+	// probe opens the SSH Runner before the run starts; nil skips the check.
 	probe  func(ctx context.Context, agentID, runnerID string) error
 	status func(ctx context.Context, agentID, runnerID string) string
 }
 
-// ConfigureProbe sets the check that an SSH environment is reachable before a run. A run on an
+// ConfigureProbe sets the check that an SSH Runner is reachable before a run. A run on an
 // unreachable host is skipped, so it never starts a chat that cannot use its machine.
 func (s *Service) ConfigureProbe(probe func(ctx context.Context, agentID, runnerID string) error) {
 	s.probe = probe
 }
 
-// ConfigureRunnerStatus lets a bound Routine detect an offline target without opening it.
+// ConfigureRunnerStatus lets a bound Automation detect an offline target without opening it.
 func (s *Service) ConfigureRunnerStatus(status func(context.Context, string, string) string) {
 	s.status = status
 }
@@ -291,22 +291,22 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 	return s.view(ctx, row)
 }
 
-// checkRunner fails with ErrInvalid unless id is empty, LocalID, or a saved pi-env
-// environment. Routines can use E2B or runner only through their bot's default environment.
-// The saved value still passes so the owner can edit or pause a routine whose environment was removed.
+// checkRunner allows an empty ID, LocalID, or a saved SSH Runner. An Automation
+// can use E2B or Outbound only if it follows the Bot's Runner. The current ID
+// stays valid for editing or pausing the Automation after its Runner is removed.
 func (s *Service) checkRunner(ctx context.Context, id, current string) error {
 	if id == "" || id == current || id == runner.LocalID {
 		return nil
 	}
 	row, err := s.q.GetRunner(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return invalid("the environment " + id + " does not exist")
+		return invalid("the Runner " + id + " does not exist")
 	}
 	if err != nil {
 		return err
 	}
-	if runner.Kind(row.Kind) != runner.KindPiEnv {
-		return invalid(fmt.Sprintf("%s is a %s environment; select local or an SSH environment", row.Name, row.Kind))
+	if runner.Kind(row.Kind) != runner.KindSSH {
+		return invalid(fmt.Sprintf("%s is a %s Runner; select Local or an SSH Runner", row.Name, row.Kind))
 	}
 	return nil
 }
@@ -377,7 +377,7 @@ func (s *Service) get(ctx context.Context, agentID string, id string) (sqlc.Auto
 	return row, err
 }
 
-// ListTargetCandidates returns the bot's existing conversations for the Routine picker.
+// ListTargetCandidates returns the bot's existing conversations for the Automation picker.
 func (s *Service) ListTargetCandidates(ctx context.Context, agentID string) ([]sqlc.Conversation, error) {
 	return s.q.ListAutomationTargetCandidates(ctx, agentID)
 }
@@ -525,8 +525,8 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 }
 
 // admit stores a run for due, skipped with the reason skip, or when the bot has no model, a run
-// of the automation is busy, or its environment cannot be used. An existing scheduled run creates
-// no new input. A nil pre checks the environment here; the check does network I/O, so it never
+// of the automation is busy, or its Runner cannot be used. An existing scheduled run creates
+// no new input. A nil pre checks the Runner here; the check does network I/O, so it never
 // runs in a transaction.
 func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullInt64, skip string, pre *Target) (Run, error) {
 	if skip == "" && row.Session != "session" {
@@ -551,8 +551,8 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 		CreatedAt: run.CreatedAt,
 	}
 	if skip != "" {
-		// A predetermined skip needs no environment probe. Store it in the same transaction
-		// as any alert, including when the routine was invoked through a tool.
+		// A predetermined skip needs no Runner probe. Store it in the same transaction
+		// as any alert, including when a tool started the Automation.
 		pre = &Target{Skip: skip}
 	} else if pre == nil {
 		t, err := s.Preflight(ctx, row)
@@ -581,15 +581,15 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 	return run, err
 }
 
-// Target is the effective environment of a run, checked before the run is stored. Skip is the
+// Target is the effective Runner of a run, checked before the run is stored. Skip is the
 // reason when the run cannot use it.
 type Target struct {
 	ID, Skip string
 }
 
-// Preflight resolves the effective environment of a run of row and checks that it can be used.
-// The input transaction compares the environment again, so a change in between does not admit a
-// run on an environment that was not checked.
+// Preflight resolves the effective Runner of a run of row and checks that it can be used.
+// The input transaction compares the Runner again, so a change in between does not admit a
+// run on a Runner that it did not check.
 func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, error) {
 	agent, err := s.q.GetAgent(ctx, row.AgentID)
 	if err != nil {
@@ -614,9 +614,9 @@ func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, e
 	return Target{ID: id, Skip: skip}, err
 }
 
-// unavailable returns the skip reason when a run cannot use environment id, so a run never falls
-// back to another machine. Only an SSH host is probed: local is always there, and opening an E2B
-// sandbox or a runner would start the work that the run does.
+// unavailable returns a skip reason instead of letting the run use a different
+// Runner. It probes SSH only. Local is always available. Opening an E2B Sandbox
+// or an Outbound Machine would start the run's work.
 func (s *Service) unavailable(ctx context.Context, agentID, id string) (string, error) {
 	if id == runner.LocalID {
 		return "", nil
@@ -625,7 +625,7 @@ func (s *Service) unavailable(ctx context.Context, agentID, id string) (string, 
 	if errors.Is(err, sql.ErrNoRows) {
 		return chat.RoutineRemovedRunner(id), nil
 	}
-	if err != nil || runner.Kind(env.Kind) != runner.KindPiEnv || s.probe == nil {
+	if err != nil || runner.Kind(env.Kind) != runner.KindSSH || s.probe == nil {
 		return "", err
 	}
 	if err := s.probe(ctx, agentID, id); err != nil {

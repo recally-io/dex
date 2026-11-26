@@ -126,7 +126,7 @@ type ChannelCommand struct {
 	ChannelContext string        `json:"channel_context"`
 }
 
-type ChannelWebhookInbox struct {
+type ChannelWebhookQueue struct {
 	ID         int64  `json:"id"`
 	Platform   string `json:"platform"`
 	Account    string `json:"account"`
@@ -359,7 +359,6 @@ type Submission struct {
 	SettledAt       sql.NullInt64  `json:"settled_at"`
 	SourceKey       sql.NullString `json:"source_key"`
 	Attachments     string         `json:"attachments"`
-	DeliveredAt     sql.NullInt64  `json:"delivered_at"`
 	Origin          string         `json:"origin"`
 	AdmittedAt      sql.NullInt64  `json:"admitted_at"`
 	WhenBusy        string         `json:"when_busy"`

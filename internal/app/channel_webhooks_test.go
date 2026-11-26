@@ -138,7 +138,7 @@ func TestUserSwitchesTelegramWebhookWithDurableRetriesAndRollback(t *testing.T) 
 	// A failed storage write cannot ACK. An accepted update behind the held
 	// download survives a restart even though the agent has not seen it.
 	conn := controlWriteDB(t, dir)
-	if _, err := conn.ExecContext(t.Context(), `CREATE TRIGGER reject_webhook BEFORE INSERT ON channel_webhook_inbox WHEN NEW.event_id = '201' BEGIN SELECT RAISE(FAIL, 'intake unavailable'); END`); err != nil {
+	if _, err := conn.ExecContext(t.Context(), `CREATE TRIGGER reject_webhook BEFORE INSERT ON channel_webhook_queue WHEN NEW.event_id = '201' BEGIN SELECT RAISE(FAIL, 'intake unavailable'); END`); err != nil {
 		t.Fatal(err)
 	}
 	msg := telegramHookMessage(t, 201, 42, "durable webhook")
@@ -195,7 +195,7 @@ func TestUserKeepsPendingAndRecentWebhookEventsAfterCleanup(t *testing.T) {
 	now := time.Now()
 	old := now.Add(-8 * 24 * time.Hour).UnixMilli()
 	if _, err := conn.ExecContext(t.Context(), `
-INSERT INTO channel_webhook_inbox (platform, account, event_id, agent_id, received_at, payload)
+INSERT INTO channel_webhook_queue (platform, account, event_id, agent_id, received_at, payload)
 VALUES ('telegram', '123', 'recent', 'default', ?, NULL),
        ('telegram', '123', 'skew-margin', 'default', ?, NULL),
        ('telegram', '123', 'handled', 'default', ?, NULL),
@@ -208,7 +208,7 @@ VALUES ('telegram', '123', 'recent', 'default', ?, NULL),
 	_ = startDex(t, dir, "")
 	eventually(t, "old handled webhook row pruned", func() (bool, any) {
 		var events string
-		err := conn.QueryRowContext(t.Context(), `SELECT group_concat(event_id ORDER BY event_id) FROM channel_webhook_inbox`).Scan(&events)
+		err := conn.QueryRowContext(t.Context(), `SELECT group_concat(event_id ORDER BY event_id) FROM channel_webhook_queue`).Scan(&events)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -102,12 +102,11 @@ func TestUserUpgradeDoesNotResendOldChannelAnswers(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 	// Then the old answer is excluded from redelivery, but pending work remains pending.
-	var delivered sql.NullInt64
-	if err = conn.QueryRowContext(t.Context(), "SELECT delivered_at FROM submissions WHERE id='old'").Scan(&delivered); err != nil {
-		t.Fatal(err)
-	}
-	if !delivered.Valid || delivered.Int64 != 2 {
-		t.Fatalf("old delivery: %+v", delivered)
+	var pendingDelivery bool
+	if err = conn.QueryRowContext(t.Context(), `SELECT EXISTS (
+		SELECT 1 FROM outbox_messages WHERE source_submission_id = 'old' AND status = 'pending'
+	)`).Scan(&pendingDelivery); err != nil || pendingDelivery {
+		t.Fatalf("old answer is pending delivery: %t, error: %v", pendingDelivery, err)
 	}
 	var status string
 	if err = conn.QueryRowContext(t.Context(), "SELECT status FROM submissions WHERE id='pending'").Scan(&status); err != nil {

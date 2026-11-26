@@ -28,9 +28,6 @@ UPDATE channel_commands SET answer = ? WHERE source_key = ?;
 -- name: ListChannelCommands :many
 SELECT * FROM channel_commands WHERE agent_id = ? AND completed = 0 AND delivered_at IS NULL;
 
--- name: MarkChannelReplyDelivered :exec
-UPDATE submissions SET delivered_at = ? WHERE id = ?;
-
 -- name: ListChannelCommandReplies :many
 SELECT c.* FROM channel_commands c
 WHERE c.completed = 1 AND c.delivered_at IS NULL
