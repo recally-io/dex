@@ -11,9 +11,9 @@ import (
 )
 
 const createChildConversation = `-- name: CreateChildConversation :one
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, parent_id, created_at)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id
 `
 
 type CreateChildConversationParams struct {
@@ -24,7 +24,7 @@ type CreateChildConversationParams struct {
 	ModelID       string        `json:"model_id"`
 	ThinkingLevel string        `json:"thinking_level"`
 	Cwd           string        `json:"cwd"`
-	EnvironmentID string        `json:"environment_id"`
+	RunnerID      string        `json:"runner_id"`
 	ParentID      sql.NullInt64 `json:"parent_id"`
 	CreatedAt     int64         `json:"created_at"`
 }
@@ -39,7 +39,7 @@ func (q *Queries) CreateChildConversation(ctx context.Context, arg CreateChildCo
 		arg.ModelID,
 		arg.ThinkingLevel,
 		arg.Cwd,
-		arg.EnvironmentID,
+		arg.RunnerID,
 		arg.ParentID,
 		arg.CreatedAt,
 	)
@@ -61,7 +61,7 @@ func (q *Queries) CreateChildConversation(ctx context.Context, arg CreateChildCo
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
-		&i.EnvironmentID,
+		&i.RunnerID,
 	)
 	return i, err
 }
@@ -241,7 +241,7 @@ func (q *Queries) LatestTurn(ctx context.Context, conversationID int64) (LatestT
 }
 
 const listChannelChildren = `-- name: ListChannelChildren :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations
 WHERE parent_id = ?1 AND agent_id = ?2
     AND execution_scope = ''
 ORDER BY id DESC
@@ -279,7 +279,7 @@ func (q *Queries) ListChannelChildren(ctx context.Context, arg ListChannelChildr
 			&i.ParentID,
 			&i.ExecutionScope,
 			&i.ScopeContext,
-			&i.EnvironmentID,
+			&i.RunnerID,
 		); err != nil {
 			return nil, err
 		}

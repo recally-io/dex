@@ -47,7 +47,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
   const agents = useQuery(listAgentsOptions());
   const activity = agents.data?.agents.find((item) => item.id === agentId)?.activity;
   const routines = activity?.enabledAutomations ?? 0;
-  const failed = activity?.routineFailed ?? false;
+  const failed = activity?.automationFailed ?? false;
 
   const routineLabel = ["Automations", routines ? `${routines} on` : "", failed ? "latest run failed" : ""]
     .filter(Boolean)
@@ -183,7 +183,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           key={created.id}
           chatId={created.id}
           cwd={created.cwd}
-          environmentId={created.environmentId}
+          runnerId={created.runnerId}
           initialOpen
           onClose={() => setCreated(undefined)}
         />

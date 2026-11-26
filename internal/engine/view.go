@@ -293,7 +293,7 @@ func (p projection) render() []Item {
 				text = strings.TrimSuffix(strings.TrimPrefix(text, summaryPrefix), summarySuffix)
 			}
 			rendered = []Item{{Kind: "boundary", ID: key, Boundary: strings.TrimPrefix(e.Kind, "pi."), At: at, Text: text}}
-		case environmentNoticeKind:
+		case runnerNoticeKind:
 			if len(e.Model) == 0 {
 				break
 			}

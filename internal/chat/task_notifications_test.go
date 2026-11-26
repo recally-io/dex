@@ -17,7 +17,7 @@ func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.q.InsertRoutineNotificationTarget(ctx, sqlc.InsertRoutineNotificationTargetParams{
+	if err := r.q.InsertAutomationNotificationTarget(ctx, sqlc.InsertAutomationNotificationTargetParams{
 		ID: "target", AgentID: conv.AgentID, Platform: "telegram", AccountID: "123", Peer: "telegram:42",
 	}); err != nil {
 		t.Fatal(err)

@@ -23,8 +23,8 @@ type Agent struct {
 	ThinkingLevel               string         `json:"thinking_level"`
 	PrimaryNotificationTargetID sql.NullString `json:"primary_notification_target_id"`
 	ArchivedAt                  sql.NullInt64  `json:"archived_at"`
-	EnvironmentID               string         `json:"environment_id"`
-	EnvironmentSandboxID        string         `json:"environment_sandbox_id"`
+	RunnerID                    string         `json:"runner_id"`
+	RunnerSandboxID             string         `json:"runner_sandbox_id"`
 	FallbackProvider            string         `json:"fallback_provider"`
 	FallbackModelID             string         `json:"fallback_model_id"`
 }
@@ -60,9 +60,17 @@ type Automation struct {
 	Cwd                  string         `json:"cwd"`
 	NotificationRoute    string         `json:"notification_route"`
 	NotificationTargetID sql.NullString `json:"notification_target_id"`
-	EnvironmentID        string         `json:"environment_id"`
+	RunnerID             string         `json:"runner_id"`
 	Session              string         `json:"session"`
 	TargetConversationID sql.NullInt64  `json:"target_conversation_id"`
+}
+
+type AutomationNotificationTarget struct {
+	ID        string `json:"id"`
+	AgentID   string `json:"agent_id"`
+	Platform  string `json:"platform"`
+	AccountID string `json:"account_id"`
+	Peer      string `json:"peer"`
 }
 
 type AutomationRun struct {
@@ -78,9 +86,18 @@ type AutomationRun struct {
 	Duplicate        int64          `json:"duplicate"`
 	ReadAt           sql.NullInt64  `json:"read_at"`
 	DismissedAt      sql.NullInt64  `json:"dismissed_at"`
-	EnvironmentID    string         `json:"environment_id"`
+	RunnerID         string         `json:"runner_id"`
 	Cwd              string         `json:"cwd"`
 	NotificationNote string         `json:"notification_note"`
+}
+
+type AutomationToolOperation struct {
+	Key             string `json:"key"`
+	AgentID         string `json:"agent_id"`
+	ConversationID  int64  `json:"conversation_id"`
+	SourceRequestID string `json:"source_request_id"`
+	Action          string `json:"action"`
+	Result          string `json:"result"`
 }
 
 type BackgroundCommand struct {
@@ -126,14 +143,6 @@ type ChannelPeer struct {
 	ChannelKey string `json:"channel_key"`
 }
 
-type ChannelReplyFile struct {
-	OperationKey string `json:"operation_key"`
-	SubmissionID string `json:"submission_id"`
-	Name         string `json:"name"`
-	MimeType     string `json:"mime_type"`
-	Body         []byte `json:"body"`
-}
-
 type ChannelWebhookInbox struct {
 	ID         int64  `json:"id"`
 	Platform   string `json:"platform"`
@@ -174,7 +183,7 @@ type Conversation struct {
 	ParentID       sql.NullInt64 `json:"parent_id"`
 	ExecutionScope string        `json:"execution_scope"`
 	ScopeContext   string        `json:"scope_context"`
-	EnvironmentID  string        `json:"environment_id"`
+	RunnerID       string        `json:"runner_id"`
 }
 
 type Dream struct {
@@ -187,17 +196,6 @@ type Dream struct {
 
 type EnabledPlugin struct {
 	Name string `json:"name"`
-}
-
-type ExecutionEnvironment struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Kind        string `json:"kind"`
-	Config      string `json:"config"`
-	Secret      string `json:"secret"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
-	Description string `json:"description"`
 }
 
 type FeishuSetting struct {
@@ -235,33 +233,33 @@ type McpServer struct {
 }
 
 type Monitor struct {
-	ID                        string         `json:"id"`
-	OperationKey              string         `json:"operation_key"`
-	AgentID                   string         `json:"agent_id"`
-	ConversationID            int64          `json:"conversation_id"`
-	RootRequestID             string         `json:"root_request_id"`
-	SourceSubmissionID        string         `json:"source_submission_id"`
-	ChainDepth                int64          `json:"chain_depth"`
-	DueAt                     int64          `json:"due_at"`
-	TimeZone                  string         `json:"time_zone"`
-	Prompt                    string         `json:"prompt"`
-	State                     string         `json:"state"`
-	FireSubmissionID          sql.NullString `json:"fire_submission_id"`
-	CreatedAt                 int64          `json:"created_at"`
-	UpdatedAt                 int64          `json:"updated_at"`
-	CheckCommand              string         `json:"check_command"`
-	IntervalSeconds           int64          `json:"interval_seconds"`
-	MaxRuns                   int64          `json:"max_runs"`
-	Runs                      int64          `json:"runs"`
-	ExpiresAt                 int64          `json:"expires_at"`
-	TargetExecutionID         int64          `json:"target_execution_id"`
-	TargetEnvironment         string         `json:"target_environment"`
-	TargetEnvironmentRevision int64          `json:"target_environment_revision"`
-	TargetCwd                 string         `json:"target_cwd"`
-	OutputHash                string         `json:"output_hash"`
-	Outcome                   string         `json:"outcome"`
-	Running                   int64          `json:"running"`
-	CheckEnv                  string         `json:"check_env"`
+	ID                   string         `json:"id"`
+	OperationKey         string         `json:"operation_key"`
+	AgentID              string         `json:"agent_id"`
+	ConversationID       int64          `json:"conversation_id"`
+	RootRequestID        string         `json:"root_request_id"`
+	SourceSubmissionID   string         `json:"source_submission_id"`
+	ChainDepth           int64          `json:"chain_depth"`
+	DueAt                int64          `json:"due_at"`
+	TimeZone             string         `json:"time_zone"`
+	Prompt               string         `json:"prompt"`
+	State                string         `json:"state"`
+	FireSubmissionID     sql.NullString `json:"fire_submission_id"`
+	CreatedAt            int64          `json:"created_at"`
+	UpdatedAt            int64          `json:"updated_at"`
+	CheckCommand         string         `json:"check_command"`
+	IntervalSeconds      int64          `json:"interval_seconds"`
+	MaxRuns              int64          `json:"max_runs"`
+	Runs                 int64          `json:"runs"`
+	ExpiresAt            int64          `json:"expires_at"`
+	TargetExecutionID    int64          `json:"target_execution_id"`
+	TargetRunnerID       string         `json:"target_runner_id"`
+	TargetRunnerRevision int64          `json:"target_runner_revision"`
+	TargetCwd            string         `json:"target_cwd"`
+	OutputHash           string         `json:"output_hash"`
+	Outcome              string         `json:"outcome"`
+	Running              int64          `json:"running"`
+	CheckEnv             string         `json:"check_env"`
 }
 
 type OnePassword struct {
@@ -351,39 +349,19 @@ type QuestionMessage struct {
 	QuestionID string `json:"question_id"`
 }
 
-type RoutineNotificationDelivery struct {
-	RunID         string `json:"run_id"`
-	AgentID       string `json:"agent_id"`
-	TargetID      string `json:"target_id"`
-	Platform      string `json:"platform"`
-	AccountID     string `json:"account_id"`
-	Peer          string `json:"peer"`
-	Body          string `json:"body"`
-	RenderedParts string `json:"rendered_parts"`
-	Parts         int64  `json:"parts"`
-	Status        string `json:"status"`
-	Reason        string `json:"reason"`
-}
-
-type RoutineNotificationTarget struct {
-	ID        string `json:"id"`
-	AgentID   string `json:"agent_id"`
-	Platform  string `json:"platform"`
-	AccountID string `json:"account_id"`
-	Peer      string `json:"peer"`
-}
-
-type RoutineToolOperation struct {
-	Key             string `json:"key"`
-	AgentID         string `json:"agent_id"`
-	ConversationID  int64  `json:"conversation_id"`
-	SourceRequestID string `json:"source_request_id"`
-	Action          string `json:"action"`
-	Result          string `json:"result"`
+type Runner struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	Config      string `json:"config"`
+	Secret      string `json:"secret"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
+	Description string `json:"description"`
 }
 
 type RunnerPairing struct {
-	EnvironmentID    string `json:"environment_id"`
+	RunnerID         string `json:"runner_id"`
 	CodeDigest       string `json:"code_digest"`
 	ExpiresAt        int64  `json:"expires_at"`
 	CredentialDigest string `json:"credential_digest"`

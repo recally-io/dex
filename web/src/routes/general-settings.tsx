@@ -4,13 +4,13 @@ import {
   getAgentOptions,
   getSettingsOptions,
   listAgentsQueryKey,
-  listEnvironmentsOptions,
+  listRunnersOptions,
   listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import type { Agent } from "../api/generated/types.gen";
 import { findModel, saveAgent, thinkingNames } from "../lib/agent";
 import { useApp } from "../lib/app-state";
-import { environmentOptionLabel } from "../lib/environments";
+import { runnerOptionLabel } from "../lib/runners";
 import { queryClient } from "../lib/queries";
 import { Failure, Loading } from "../components/feedback";
 import { Select } from "../components/form";
@@ -45,7 +45,7 @@ export function GeneralSettingsPage() {
   // New bots copy these fields from the built-in default bot.
   const template = useQuery(getAgentOptions({ path: { agentId: "default" } }));
   const models = useQuery(listModelsOptions());
-  const environments = useQuery(listEnvironmentsOptions());
+  const runners = useQuery(listRunnersOptions());
 
   const save = useMutation({
     mutationFn: (patch: Partial<Agent>) => saveAgent("default", (saved) => ({ ...saved, ...patch })),
@@ -53,7 +53,7 @@ export function GeneralSettingsPage() {
   });
 
   const defaults = template.data;
-  const envList = environments.data?.environments ?? [];
+  const envList = runners.data?.runners ?? [];
 
   const primary = defaults ? findModel(defaults.provider, defaults.modelId, models.data?.models) : undefined;
 
@@ -61,13 +61,9 @@ export function GeneralSettingsPage() {
     ? findModel(defaults.fallbackProvider, defaults.fallbackModelId, models.data?.models)
     : undefined;
 
-  const currentEnv = defaults?.environmentId
-    ? envList.find((env) => env.id === defaults.environmentId)
-    : undefined;
+  const currentEnv = defaults?.runnerId ? envList.find((env) => env.id === defaults.runnerId) : undefined;
 
-  const missingEnv = Boolean(
-    defaults?.environmentId && !environments.isPending && !environments.isError && !currentEnv,
-  );
+  const missingEnv = Boolean(defaults?.runnerId && !runners.isPending && !runners.isError && !currentEnv);
 
   async function updateDefaults(patch: Partial<Agent>, message: string) {
     await save.mutateAsync(patch);
@@ -225,9 +221,9 @@ export function GeneralSettingsPage() {
                   </label>
                   <p id="default-environment-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
                     {currentEnv
-                      ? `${environmentOptionLabel(currentEnv)}.`
+                      ? `${runnerOptionLabel(currentEnv)}.`
                       : missingEnv
-                        ? `Configured Runner (${defaults.environmentId}) is missing.`
+                        ? `Configured Runner (${defaults.runnerId}) is missing.`
                         : "Runs tools and workspaces on this computer."}{" "}
                     <Link className="font-medium text-primary underline" to="/settings/runners">
                       Manage Runners
@@ -240,13 +236,13 @@ export function GeneralSettingsPage() {
                   aria-describedby="default-environment-hint"
                   aria-invalid={save.isError || missingEnv}
                   className="w-full sm:w-[220px]"
-                  value={defaults.environmentId}
-                  disabled={save.isPending || environments.isPending}
+                  value={defaults.runnerId}
+                  disabled={save.isPending || runners.isPending}
                   onChange={(event) => {
                     const nextId = event.target.value;
                     const target = envList.find((env) => env.id === nextId);
                     void updateDefaults(
-                      { environmentId: nextId },
+                      { runnerId: nextId },
                       target
                         ? `Default Runner is now ${target.name}.`
                         : "Default Runner is now this computer.",
@@ -255,18 +251,18 @@ export function GeneralSettingsPage() {
                 >
                   <option value="">Local</option>
                   {missingEnv ? (
-                    <option value={defaults.environmentId}>Missing ({defaults.environmentId})</option>
+                    <option value={defaults.runnerId}>Missing ({defaults.runnerId})</option>
                   ) : null}
                   {envList.map((env) => (
                     <option key={env.id} value={env.id}>
-                      {environmentOptionLabel(env)}
+                      {runnerOptionLabel(env)}
                     </option>
                   ))}
                 </Select>
               </div>
-              {environments.isError ? (
+              {runners.isError ? (
                 <div className="mt-3">
-                  <Failure title="Could not load Runners" error={environments.error} />
+                  <Failure title="Could not load Runners" error={runners.error} />
                 </div>
               ) : null}
               {save.isError ? (

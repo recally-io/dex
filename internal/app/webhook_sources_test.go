@@ -20,7 +20,7 @@ func TestUserTracksACalendarThroughASignedWebhookSource(t *testing.T) {
 	d := startDex(t, dataDir, "")
 	secret := strings.Repeat("w", 40)
 	d.must(t, http.MethodPut, "/api/plugins/webhook/sources/calendar", map[string]any{"secret": secret}, nil, http.StatusNotFound)
-	d.must(t, http.MethodPut, "/api/settings/plugins/webhook", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/settings/sources/webhook", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
 	d.stop()
 	d = startDex(t, dataDir, "")
 	var health api.Health

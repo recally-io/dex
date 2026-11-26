@@ -42,7 +42,7 @@ type stopCall struct {
 	child  sqlc.Conversation
 }
 
-// toolStopAction names the receipt of a session_stop call in routine_tool_operations, the table of
+// toolStopAction names the receipt of a session_stop call in automation_tool_operations, the table of
 // replay-safe tool receipts. The table has no routine-only column.
 const toolStopAction = "session_stop"
 
@@ -118,7 +118,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		}
 	}
 	if call != nil {
-		prior, err := q.GetRoutineToolOperation(ctx, call.task.Key)
+		prior, err := q.GetAutomationToolOperation(ctx, call.task.Key)
 		if err == nil {
 			if prior.AgentID != call.task.AgentID || prior.ConversationID != call.parent || prior.SourceRequestID != call.task.SourceRequestID || prior.Action != toolStopAction {
 				return withdrawal{}, fmt.Errorf("%w: tool key belongs to another operation", errSessionInvalid)
@@ -200,7 +200,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		if err != nil {
 			return withdrawal{}, err
 		}
-		if err := q.CreateRoutineToolOperation(ctx, sqlc.CreateRoutineToolOperationParams{Key: call.task.Key, AgentID: call.task.AgentID, ConversationID: call.parent, SourceRequestID: call.task.SourceRequestID, Action: toolStopAction, Result: string(data)}); err != nil {
+		if err := q.CreateAutomationToolOperation(ctx, sqlc.CreateAutomationToolOperationParams{Key: call.task.Key, AgentID: call.task.AgentID, ConversationID: call.parent, SourceRequestID: call.task.SourceRequestID, Action: toolStopAction, Result: string(data)}); err != nil {
 			return withdrawal{}, err
 		}
 	}

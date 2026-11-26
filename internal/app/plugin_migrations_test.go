@@ -119,15 +119,15 @@ ORDER BY name`)
 	if got := count("SELECT count(*) FROM applied_plugin_migrations WHERE (plugin, version) IN (VALUES ('github', 1), ('webhook', 1))"); got != 2 || count("SELECT count(*) FROM applied_plugin_migrations WHERE plugin = 'email'") != 0 {
 		t.Fatalf("each enabled plugin must record its versions in the one table: %d", got)
 	}
-	var plugins api.ListPlugins200JSONResponse
-	d.must(t, http.MethodGet, "/api/settings/plugins", nil, &plugins)
-	if !slices.Equal(plugins.Plugins, []api.PluginSetting{{Name: "github", Enabled: true, Running: true}, {Name: "webhook", Enabled: true, Running: true}, {Name: "email", Enabled: false, Running: false}}) {
-		t.Fatalf("the stored choices must carry over: %+v", plugins.Plugins)
+	var plugins api.ListSources200JSONResponse
+	d.must(t, http.MethodGet, "/api/settings/sources", nil, &plugins)
+	if !slices.Equal(plugins.Sources, []api.SourceSetting{{Name: "github", Enabled: true, Running: true}, {Name: "webhook", Enabled: true, Running: true}, {Name: "email", Enabled: false, Running: false}}) {
+		t.Fatalf("the stored choices must carry over: %+v", plugins.Sources)
 	}
 
 	// When the owner turns email on and dex starts again, email adopts its tables too. The IMAP
 	// Pull still follows its source after both renames.
-	d.must(t, http.MethodPut, "/api/settings/plugins/email", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/settings/sources/email", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
 	d.stop()
 	d = startDex(t, dataDir, "")
 	if count("SELECT count(*) FROM plugin_email_imap_pulls WHERE source_id = 'mail' AND configuration_id = 'c1' AND uid_validity = 7 AND last_uid = 42") != 1 {
@@ -156,7 +156,7 @@ func TestUserKeepsDexRunningWhenAPluginMigrationFails(t *testing.T) {
 	}
 	cfg := app.Config{DataDir: t.TempDir(), Plugins: []plugin.Factory{github.New, broken}}
 	d := startDexWith(t, cfg)
-	d.must(t, http.MethodPut, "/api/settings/plugins/broken", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/settings/sources/broken", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
 	d.stop()
 
 	// When dex starts again.
@@ -168,11 +168,11 @@ func TestUserKeepsDexRunningWhenAPluginMigrationFails(t *testing.T) {
 	if !slices.Equal(health.Plugins, []string{"github"}) {
 		t.Fatalf("only the healthy plugin must run: %+v", health.Plugins)
 	}
-	var plugins api.ListPlugins200JSONResponse
-	d.must(t, http.MethodGet, "/api/settings/plugins", nil, &plugins)
-	t.Logf("artifact: plugins=%+v", plugins.Plugins)
-	if len(plugins.Plugins) != 2 || plugins.Plugins[1].Running || plugins.Plugins[1].Error == nil || !strings.Contains(*plugins.Plugins[1].Error, "missing_table") {
-		t.Fatalf("the settings must show why the plugin does not run: %+v", plugins.Plugins)
+	var plugins api.ListSources200JSONResponse
+	d.must(t, http.MethodGet, "/api/settings/sources", nil, &plugins)
+	t.Logf("artifact: plugins=%+v", plugins.Sources)
+	if len(plugins.Sources) != 2 || plugins.Sources[1].Running || plugins.Sources[1].Error == nil || !strings.Contains(*plugins.Sources[1].Error, "missing_table") {
+		t.Fatalf("the settings must show why the plugin does not run: %+v", plugins.Sources)
 	}
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/hooks/broken/x", nil)
 	if err != nil {
@@ -194,15 +194,15 @@ func TestUserKeepsDexRunningWhenAPluginMigrationFails(t *testing.T) {
 	}
 
 	// When the owner turns it off, the error of the last start no longer shows.
-	d.must(t, http.MethodPut, "/api/settings/plugins/broken", map[string]bool{"enabled": false}, nil, http.StatusNoContent)
-	d.must(t, http.MethodGet, "/api/settings/plugins", nil, &plugins)
-	if plugins.Plugins[1].Enabled || plugins.Plugins[1].Error != nil {
-		t.Fatalf("a plugin that is off must not show an old error: %+v", plugins.Plugins)
+	d.must(t, http.MethodPut, "/api/settings/sources/broken", map[string]bool{"enabled": false}, nil, http.StatusNoContent)
+	d.must(t, http.MethodGet, "/api/settings/sources", nil, &plugins)
+	if plugins.Sources[1].Enabled || plugins.Sources[1].Error != nil {
+		t.Fatalf("a plugin that is off must not show an old error: %+v", plugins.Sources)
 	}
 	d.stop()
 	d = startDexWith(t, cfg)
-	d.must(t, http.MethodGet, "/api/settings/plugins", nil, &plugins)
-	if plugins.Plugins[1].Error != nil {
-		t.Fatalf("a disabled plugin must not migrate: %+v", plugins.Plugins)
+	d.must(t, http.MethodGet, "/api/settings/sources", nil, &plugins)
+	if plugins.Sources[1].Error != nil {
+		t.Fatalf("a disabled plugin must not migrate: %+v", plugins.Sources)
 	}
 }

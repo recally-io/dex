@@ -13,7 +13,7 @@ import (
 	"github.com/recally-io/dex/internal/runner"
 )
 
-const gatedEnvironment = "gated-environment"
+const gatedRunner = "gated-environment"
 
 type gatedOpen struct {
 	runner.Provider
@@ -24,7 +24,7 @@ type gatedOpen struct {
 
 func (g *gatedOpen) Stamp(ctx context.Context, agent, id string) (string, error) {
 	if id == g.id {
-		return gatedEnvironment, nil
+		return gatedRunner, nil
 	}
 	return g.Provider.Stamp(ctx, agent, id)
 }
@@ -52,7 +52,7 @@ func (g *gatedOpen) Open(ctx context.Context, agent, id string) (runner.Handle, 
 
 type gatedHandle struct{ runner.Handle }
 
-func (gatedHandle) Stamp() string { return gatedEnvironment }
+func (gatedHandle) Stamp() string { return gatedRunner }
 
 func TestUserRejectModeInputWaitsForEnvironmentReset(t *testing.T) {
 	// Given an idle Session with an existing execution and an environment reset in progress.
@@ -69,7 +69,7 @@ func TestUserRejectModeInputWaitsForEnvironmentReset(t *testing.T) {
 	defer release()
 	done := make(chan error, 1)
 	go func() {
-		done <- r.service.ResetEnvironment(ctx, "bot", func(ctx context.Context) error {
+		done <- r.service.ResetRunner(ctx, "bot", func(ctx context.Context) error {
 			close(entered)
 			select {
 			case <-released:
@@ -117,7 +117,7 @@ func TestUserColdBotAdmitsLocalSessionWhileDefaultOpenWaits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.service.SetEnvironment(ctx, "bot", local.ID, runner.LocalID); err != nil {
+	if _, err := r.service.SetRunner(ctx, "bot", local.ID, runner.LocalID); err != nil {
 		t.Fatal(err)
 	}
 	runReconciler(t, r)
@@ -160,7 +160,7 @@ func TestUserColdBotAdmitsLocalSessionWhileDefaultOpenWaits(t *testing.T) {
 
 func TestUserSameBotSessionsAdmitWhileChildWaitsForEnvironment(t *testing.T) {
 	// Given a warm bot and a child whose first admission waits on its environment.
-	gate := &gatedOpen{entered: make(chan struct{}), release: make(chan struct{}), id: gatedEnvironment}
+	gate := &gatedOpen{entered: make(chan struct{}), release: make(chan struct{}), id: gatedRunner}
 	r := startNative(t, "context", func(p runner.Provider) runner.Provider { gate.Provider = p; return gate })
 	parent, source := taskParent(t, r)
 	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Child", Message: "first"})
@@ -171,14 +171,14 @@ func TestUserSameBotSessionsAdmitWhileChildWaitsForEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.conn.ExecContext(t.Context(), `UPDATE conversations SET environment_id = ? WHERE id = ?`, gatedEnvironment, id); err != nil {
+	if _, err := r.conn.ExecContext(t.Context(), `UPDATE conversations SET runner_id = ? WHERE id = ?`, gatedRunner, id); err != nil {
 		t.Fatal(err)
 	}
 	conv, err := r.q.GetConversation(t.Context(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if conv.EnvironmentID != gatedEnvironment {
+	if conv.RunnerID != gatedRunner {
 		t.Fatalf("child environment was not set: %+v", conv)
 	}
 	other, err := r.service.Create(t.Context(), "bot")

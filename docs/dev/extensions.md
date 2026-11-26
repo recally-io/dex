@@ -1,4 +1,4 @@
-# Extensions
+# Skills and Integrations
 
 This document describes how dex loads skills, MCP servers, vault secrets, and
 `AGENTS.md` for an agent, and how it reloads them.
@@ -178,16 +178,16 @@ open agents for reload.
 dex resolves `vault:NAME` and inline `${vault:NAME}` in `env` and `headers`
 when it starts the server. For example, an HTTP header can use
 `Authorization: Bearer ${vault:NOTION_TOKEN}`. The declarations keep references,
-not resolved values. `mcp_server_get`, `mcp_server_list`, and the Extensions
+not resolved values. `mcp_server_get`, `mcp_server_list`, and the Integrations
 API show those references as written. To keep a hidden `env` or `headers`
 value, include `[hidden]` for that key in `mcp_server_set`. Do not paste
 literal secrets into a declaration. A snippet can enter the transcript.
 Plain values in declarations are stored as plain text.
 
-`GET /api/agents/{agentId}/extensions` reads file metadata and MCP status.
-For an open Harness, the request uses the default environment's lease to inspect
+`GET /api/agents/{agentId}/integrations` reads file metadata and MCP status.
+For an open Harness, the request uses the default Runner's lease to inspect
 workspace skills. If the lease has not opened, this request can open it without
-blocking admission in other environments. Bot Settings → Integrations shows
+blocking admission on other Runners. Bot Settings → Integrations shows
 loaded MCP server state and the current OAuth grant state. Reload is available
 from both Integrations and Skills.
 Before the agent opens, the API shows connection state `idle` for declarations
@@ -235,7 +235,7 @@ works, Integrations shows **Reauthorize**. Dex does not fall back to static head
 
 ### Reload
 
-`POST /api/agents/{agentId}/extensions/reload`
+`POST /api/agents/{agentId}/integrations/reload`
 validates the selected agent and requires idle execution of that agent only:
 no open, task, submission, settlement, or tool call of the agent can be in
 progress. Work of other agents does not block it. The idle check and

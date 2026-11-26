@@ -62,8 +62,8 @@ RETURNING *;
 -- name: ListTaskExecutions :many
 SELECT sqlc.embed(e), t.number AS task_number, coalesce(r.name, '') AS runner_name
 FROM task_executions e JOIN tasks t ON t.id = e.task_id
-LEFT JOIN execution_environments r ON r.id = e.machine_id AND r.kind = 'runner'
-  AND EXISTS (SELECT 1 FROM runner_pairing p WHERE p.environment_id = r.id
+LEFT JOIN runners r ON r.id = e.machine_id AND r.kind = 'runner'
+  AND EXISTS (SELECT 1 FROM runner_pairing p WHERE p.runner_id = r.id
     AND p.credential_digest <> '' AND p.credential_digest = e.runner_enrollment)
 WHERE (CAST(@task_id AS TEXT) = '' OR e.task_id = @task_id)
   AND (CAST(@machine_id_filter AS TEXT) = '' OR r.id = @machine_id_filter)

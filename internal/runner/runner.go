@@ -38,7 +38,7 @@ var ErrInvalidConfig = errors.New("invalid execution environment configuration")
 // it. The caller must not run the work in another environment.
 var ErrUnavailable = errors.New("execution environment is unavailable")
 
-// LocalID selects the control host. The control host has no execution_environments row.
+// LocalID selects the control host. The control host has no runners row.
 const LocalID = "local"
 
 // Handle is one agent's lease on an opened execution environment.
@@ -55,12 +55,12 @@ type Handle interface {
 	Close(ctx context.Context) error
 }
 
-// Provider opens agent execution environment handles. An empty environmentID selects the
+// Provider opens agent execution environment handles. An empty runnerID selects the
 // environment of the agent. LocalID or a registered environment ID selects that environment.
 type Provider interface {
-	Open(ctx context.Context, agentID, environmentID string) (Handle, error)
+	Open(ctx context.Context, agentID, runnerID string) (Handle, error)
 	// Stamp returns the current fingerprint of the selected environment.
-	Stamp(ctx context.Context, agentID, environmentID string) (string, error)
+	Stamp(ctx context.Context, agentID, runnerID string) (string, error)
 	Close(ctx context.Context) error
 }
 
@@ -94,15 +94,15 @@ func LeaseExpired(h Handle) bool {
 // backend is one remote environment kind. Each method gets the stored spec of one environment.
 type backend interface {
 	// normalize validates spec and returns its normalized JSON config.
-	normalize(spec EnvironmentSpec) (string, error)
+	normalize(spec Spec) (string, error)
 	// probe checks connectivity. saved is the stored spec when the user edits a saved environment.
-	probe(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error)
-	open(ctx context.Context, agentID string, spec EnvironmentSpec) (lease, error)
+	probe(ctx context.Context, saved *Spec, spec Spec) (TestResult, error)
+	open(ctx context.Context, agentID string, spec Spec) (lease, error)
 	// changed runs after the row changed. cur is nil when the row was deleted.
-	changed(ctx context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error
+	changed(ctx context.Context, old Spec, cur *Spec) error
 	// release drops the agent's state in the environment: an environment switch, an archive, or a reset.
 	// sandboxID is the agent's stored sandbox reference, or empty.
-	release(ctx context.Context, agentID string, spec EnvironmentSpec, sandboxID string) error
+	release(ctx context.Context, agentID string, spec Spec, sandboxID string) error
 	// disposable reports that release discards the agent's files, so the user can reset the environment.
 	disposable() bool
 	// identity fingerprints the state of an environment beyond its stored spec that a lease

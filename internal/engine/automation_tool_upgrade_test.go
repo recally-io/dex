@@ -44,10 +44,10 @@ func TestUserUpgradeKeepsCommittedAutomationWhenOldToolIsRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	tools := automation.NewToolService(conn, automation.New(q, nil, time.Now), nil)
-	handlers := automation.RoutineTools{Create: tools.Create}
+	handlers := automation.ToolHandlers{Create: tools.Create}
 	agents, err := engine.New(engine.Config{DataDir: dir, Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true,
 		Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
-			return engine.ExtensionSet{Optional: []*engine.Extension{automation.RoutineExtension(rt.AgentID, handlers)}}
+			return engine.ExtensionSet{Optional: []*engine.Extension{automation.ToolExtension(rt.AgentID, handlers)}}
 		},
 	})
 	if err != nil {
@@ -70,7 +70,7 @@ func TestUserUpgradeKeepsCommittedAutomationWhenOldToolIsRemoved(t *testing.T) {
 	legacy := &durable.Extension{Name: "routines", Tools: []*durable.ToolRegistration{
 		engine.JSONTool(agentID, oldName, "Create a routine.", engine.ObjectSchema(nil, map[string]any{
 			"name": map[string]any{"type": "string"}, "prompt": map[string]any{"type": "string"}, "schedule": map[string]any{"type": "object"}, "timeZone": map[string]any{"type": "string"},
-		}), true, func(ctx context.Context, call engine.TaskContext, patch automation.RoutinePatch) (automation.RoutineInfo, error) {
+		}), true, func(ctx context.Context, call engine.TaskContext, patch automation.ToolPatch) (automation.ToolInfo, error) {
 			created, err := tools.Create(ctx, call, patch)
 			if err != nil {
 				return created, err
@@ -150,7 +150,7 @@ func TestUserUpgradeKeepsCommittedAutomationWhenOldToolIsRemoved(t *testing.T) {
 		t.Fatalf("expected an interrupted legacy create in the recovered transcript: %+v", history.Items)
 	}
 	reopened := automation.NewToolService(conn, automation.New(q, nil, time.Now), nil)
-	got, err := reopened.Create(ctx, original.call, automation.RoutinePatch{})
+	got, err := reopened.Create(ctx, original.call, automation.ToolPatch{})
 	if err != nil || got.ID != original.id {
 		t.Fatalf("create receipt = %s, %v; want original automation %s", got.ID, err, original.id)
 	}

@@ -30,8 +30,8 @@ type AutomationId = string
 // ChatId defines model for ChatId.
 type ChatId = int64
 
-// EnvironmentId defines model for EnvironmentId.
-type EnvironmentId = string
+// RunnerId defines model for RunnerId.
+type RunnerId = string
 
 // TaskKey defines model for TaskKey.
 type TaskKey = string

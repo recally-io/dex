@@ -33,7 +33,7 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	q := sqlc.New(conn)
 
 	now := time.Now().UnixMilli()
-	envRow, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+	envRow, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
 		ID: "env-e2b", Name: "E2B Cloud", Kind: string(runner.KindE2B),
 		Config: `{"template":"base","timeoutSeconds":120}`, Secret: "e2b_test_secret",
 		CreatedAt: now, UpdatedAt: now,
@@ -42,7 +42,7 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{
-		ID: "bot-e2b", Name: "E2B Bot", ThinkingLevel: "off", EnvironmentID: envRow.ID, CreatedAt: now,
+		ID: "bot-e2b", Name: "E2B Bot", ThinkingLevel: "off", RunnerID: envRow.ID, CreatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -101,8 +101,8 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	_ = h.Close(t.Context())
 
 	agentRow, err := q.GetAgent(t.Context(), "bot-e2b")
-	if err != nil || agentRow.EnvironmentSandboxID != "sbx-2" {
-		t.Fatalf("persisted sandbox=%q err=%v", agentRow.EnvironmentSandboxID, err)
+	if err != nil || agentRow.RunnerSandboxID != "sbx-2" {
+		t.Fatalf("persisted sandbox=%q err=%v", agentRow.RunnerSandboxID, err)
 	}
 
 	// Simulate E2B idle autoPause + dex restart (fresh Manager): next Open reconnects via /connect and preserves files.
@@ -131,8 +131,8 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	agentAfterReset, _ := q.GetAgent(t.Context(), "bot-e2b")
-	if agentAfterReset.EnvironmentSandboxID != "" {
-		t.Fatalf("expected cleared sandbox_id, got %q", agentAfterReset.EnvironmentSandboxID)
+	if agentAfterReset.RunnerSandboxID != "" {
+		t.Fatalf("expected cleared sandbox_id, got %q", agentAfterReset.RunnerSandboxID)
 	}
 
 	h3, err := mgr2.Open(t.Context(), "bot-e2b", "")
@@ -141,8 +141,8 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	}
 	_ = h3.Close(t.Context())
 	agentFresh, _ := q.GetAgent(t.Context(), "bot-e2b")
-	if agentFresh.EnvironmentSandboxID != "sbx-3" {
-		t.Fatalf("expected fresh sbx-3 after reset, got %q", agentFresh.EnvironmentSandboxID)
+	if agentFresh.RunnerSandboxID != "sbx-3" {
+		t.Fatalf("expected fresh sbx-3 after reset, got %q", agentFresh.RunnerSandboxID)
 	}
 
 	// Simulate expired sandbox (404 on /connect): fresh Manager transparently creates sbx-4.
@@ -155,16 +155,16 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	}
 	_ = h4.Close(t.Context())
 	agentRecovered, _ := q.GetAgent(t.Context(), "bot-e2b")
-	if agentRecovered.EnvironmentSandboxID != "sbx-4" {
-		t.Fatalf("expected transparent 404 recovery sbx-4, got %q", agentRecovered.EnvironmentSandboxID)
+	if agentRecovered.RunnerSandboxID != "sbx-4" {
+		t.Fatalf("expected transparent 404 recovery sbx-4, got %q", agentRecovered.RunnerSandboxID)
 	}
 
 	// Releasing the earlier sandbox keeps the reference to the sandbox that a later open stored.
 	if err := mgr3.ReleaseAgent(t.Context(), "bot-e2b", envRow.ID, "sbx-3"); err != nil {
 		t.Fatal(err)
 	}
-	if agentKept, _ := q.GetAgent(t.Context(), "bot-e2b"); agentKept.EnvironmentSandboxID != "sbx-4" {
-		t.Fatalf("release of sbx-3 cleared the later sandbox reference, got %q", agentKept.EnvironmentSandboxID)
+	if agentKept, _ := q.GetAgent(t.Context(), "bot-e2b"); agentKept.RunnerSandboxID != "sbx-4" {
+		t.Fatalf("release of sbx-3 cleared the later sandbox reference, got %q", agentKept.RunnerSandboxID)
 	}
 }
 
@@ -229,7 +229,7 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 		fake.APIURL(),
 		gwSrv.URL+"/proxy/{sandboxId}/{port}",
 	)
-	envRow, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+	envRow, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
 		ID: "env-custom-e2b", Name: "Local Docker E2B", Kind: string(runner.KindE2B),
 		Config: cfgJSON, Secret: "", CreatedAt: now, UpdatedAt: now,
 	})
@@ -237,7 +237,7 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 		t.Fatal(err)
 	}
 	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{
-		ID: "bot-custom-e2b", Name: "Custom E2B Bot", ThinkingLevel: "off", EnvironmentID: envRow.ID, CreatedAt: now,
+		ID: "bot-custom-e2b", Name: "Custom E2B Bot", ThinkingLevel: "off", RunnerID: envRow.ID, CreatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +324,7 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 	_ = h3.Close(t.Context())
 	agentRow, _ := q.GetAgent(t.Context(), "bot-custom-e2b")
 	killsBeforeCleanup := fake.Counts().Killed
-	if err := mgr2.ReleaseAgent(t.Context(), "bot-custom-e2b", envRow.ID, agentRow.EnvironmentSandboxID); err != nil {
+	if err := mgr2.ReleaseAgent(t.Context(), "bot-custom-e2b", envRow.ID, agentRow.RunnerSandboxID); err != nil {
 		t.Fatal(err)
 	}
 	if fake.Counts().Killed <= killsBeforeCleanup {
@@ -341,7 +341,7 @@ func TestUserConnectsLocalhostSubdomainE2BViaLoopbackDialer(t *testing.T) {
 	mgr := runner.NewManager(runner.ManagerConfig{DataDir: t.TempDir()})
 	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
 
-	probe, err := mgr.Probe(t.Context(), nil, runner.EnvironmentSpec{
+	probe, err := mgr.Probe(t.Context(), nil, runner.Spec{
 		ID:     "env-localhost",
 		Kind:   runner.KindE2B,
 		Config: fmt.Sprintf(`{"apiUrl":%q}`, localhostAPI),

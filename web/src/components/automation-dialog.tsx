@@ -5,7 +5,7 @@ import type { Automation, AutomationInput, Schedule, ScheduleInput } from "../ap
 import {
   createAutomationMutation,
   getNotificationTargetsOptions,
-  listAgentEnvironmentsOptions,
+  listAgentRunnersOptions,
   listAutomationTargetsOptions,
   updateAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
@@ -37,7 +37,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   const browserZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [name, setName] = useState(existing?.name ?? "");
   const [cwd, setCwd] = useState(existing?.cwd ?? "");
-  const [environmentId, setEnvironmentId] = useState(existing?.environmentId ?? "");
+  const [runnerId, setRunnerId] = useState(existing?.runnerId ?? "");
   const [prompt, setPrompt] = useState(existing?.prompt ?? "");
   const [kind, setKind] = useState<Schedule["kind"]>(existing?.schedule.kind ?? "daily");
   const [minutes, setMinutes] = useState(existing?.schedule.minutes ?? 30);
@@ -66,20 +66,17 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
 
   const targetsForRoutine = sessions.data?.targets ?? [];
   const validTarget = !bound || targetsForRoutine.some((target) => target.id === targetId);
-  const environments = useQuery({ ...listAgentEnvironmentsOptions({ path: { agentId } }), enabled: !bound });
-  const environmentList = environments.data?.environments ?? [];
-  const own = environmentList.find((env) => env.default);
+  const runners = useQuery({ ...listAgentRunnersOptions({ path: { agentId } }), enabled: !bound });
+  const runnerList = runners.data?.runners ?? [];
+  const own = runnerList.find((env) => env.default);
 
   // An automation can select only Local or an SSH Machine. Keep a saved Runner in the list
   // even if it is no longer a choice, so a schedule edit does not move the automation.
-  const choices = environmentList.filter(
-    (env) => !env.default && (env.kind === "local" || env.kind === "pi-env"),
-  );
+  const choices = runnerList.filter((env) => !env.default && (env.kind === "local" || env.kind === "pi-env"));
 
-  const kept = environmentId !== "" && !choices.some((env) => env.id === environmentId);
+  const kept = runnerId !== "" && !choices.some((env) => env.id === runnerId);
 
-  const keptName =
-    environmentList.find((env) => env.id === environmentId)?.name ?? `${environmentId} (removed)`;
+  const keptName = runnerList.find((env) => env.id === runnerId)?.name ?? `${runnerId} (removed)`;
 
   const schedule = useMemo<Schedule>(() => {
     switch (kind) {
@@ -182,7 +179,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             name: name.trim(),
             prompt: prompt.trim(),
             cwd: bound ? undefined : cwd.trim(),
-            environmentId: bound ? undefined : environmentId,
+            runnerId: bound ? undefined : runnerId,
             targetConversationId: bound ? targetId : undefined,
             schedule,
             timeZone,
@@ -215,7 +212,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             />
           )}
         </Field>
-        {!bound && (choices.length > 0 || environmentId) ? (
+        {!bound && (choices.length > 0 || runnerId) ? (
           <Field
             label="Runner"
             hint="Runs use only this Runner. A run is skipped when it is removed or unreachable. Changing it clears the project directory."
@@ -224,11 +221,11 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               <Select
                 id={id}
                 aria-describedby={describedBy}
-                value={environmentId}
+                value={runnerId}
                 onChange={(event) => {
                   // A project path belongs to one machine, so another environment starts without one.
-                  if (event.target.value !== environmentId) setCwd("");
-                  setEnvironmentId(event.target.value);
+                  if (event.target.value !== runnerId) setCwd("");
+                  setRunnerId(event.target.value);
                 }}
               >
                 <option value="">Follow bot ({own?.name ?? "default"})</option>
@@ -237,7 +234,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
                     {env.name}
                   </option>
                 ))}
-                {kept ? <option value={environmentId}>{keptName}</option> : null}
+                {kept ? <option value={runnerId}>{keptName}</option> : null}
               </Select>
             )}
           </Field>

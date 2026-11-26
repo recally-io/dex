@@ -24,7 +24,7 @@ type BotInfo struct {
 	FallbackModelID  string `json:"fallbackModelId,omitempty"`
 	// Instructions is the first line in bot_list and the full text in bot_get.
 	Instructions    string   `json:"instructions"`
-	EnvironmentID   string   `json:"environmentId,omitempty"`
+	RunnerID        string   `json:"runnerId,omitempty"`
 	Skills          []string `json:"skills,omitempty"`
 	McpServers      []string `json:"mcpServers,omitempty"`
 	RunningSessions *int64   `json:"runningSessions,omitempty"`
@@ -40,7 +40,7 @@ type BotPatch struct {
 	ThinkingLevel    *string `json:"thinkingLevel,omitempty"`
 	FallbackProvider *string `json:"fallbackProvider,omitempty"`
 	FallbackModelID  *string `json:"fallbackModelId,omitempty"`
-	EnvironmentID    *string `json:"environmentId,omitempty"`
+	RunnerID         *string `json:"runnerId,omitempty"`
 }
 
 // BotDeleteArgs is the input of bot_delete.
@@ -100,13 +100,13 @@ func BotManageExtension(agentID string, h BotHandlers) *engine.Extension {
 			"thinkingLevel":    map[string]any{"type": "string", "enum": []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}},
 			"fallbackProvider": map[string]any{"type": "string", "description": "Provider of the fallback model. Empty with an empty fallbackModelId means no fallback."},
 			"fallbackModelId":  str,
-			"environmentId":    map[string]any{"type": "string", "description": "Execution environment ID. Empty or \"local\" selects this computer."},
+			"runnerId":         map[string]any{"type": "string", "description": "Registered Runner ID. Empty or \"local\" selects this computer."},
 		}
 	}
 	update := fields()
 	update["bot"] = map[string]any{"type": "string", "description": "Bot ID or name."}
 	tools := []*durable.ToolRegistration{
-		botTool(agentID, "bot_create", "Create a bot with the same checks as the web create dialog. Omitted model, thinking, fallback, and environment fields use global bot defaults. It gets no bot-level channels, skills, MCP servers, or vault values.",
+		botTool(agentID, "bot_create", "Create a bot with the same checks as the web create dialog. Omitted model, thinking, fallback, and Runner fields use global bot defaults. It gets no bot-level channels, skills, MCP servers, or vault values.",
 			map[string]any{"type": "object", "properties": fields(), "required": []string{"name"}, "additionalProperties": false},
 			func(ctx context.Context, c engine.TaskContext, a BotPatch) (any, error) {
 				if h.Create == nil {

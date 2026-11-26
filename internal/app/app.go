@@ -202,8 +202,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		BaseEnv:    cfg.ToolEnv,
 		LoginEnv:   cfg.LoginEnv,
 		ExecEnv:    execProvider,
-		SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) {
-			return chats.SessionEnvironment(ctx, ref)
+		SessionRunner: func(ctx context.Context, ref engine.Ref) (string, error) {
+			return chats.SessionRunner(ctx, ref)
 		},
 		FakeModel:       cfg.FakeModel,
 		FakeInputSuffix: chat.BoundRoutineCheckSuffix,
@@ -215,8 +215,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 					New: chats.ToolSessionNew, Send: chats.ToolSessionSend, Stop: chats.ToolSessionStop,
 					Fork: chats.ToolSessionFork, List: chats.ToolSessionList, Read: chats.ToolSessionRead, Search: chats.ToolSessionSearch,
 				},
-				Environments: func(ctx context.Context, c engine.TaskContext) ([]engine.EnvironmentInfo, error) {
-					return prefs.SessionEnvironments(ctx, c.AgentID)
+				Runners: func(ctx context.Context, c engine.TaskContext) ([]engine.RunnerInfo, error) {
+					return prefs.SessionRunners(ctx, c.AgentID)
 				},
 			}
 			outbox := chat.OutboxTools{NotifyUser: chats.ToolNotifyUser, ReportParent: chats.ToolReportParent, RecentOutbox: chats.ToolRecentOutbox}
@@ -244,7 +244,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 				Before: map[string][]*engine.Extension{
 					"tool-search": {chat.CheckExtension(id, chats.ToolReportCheck)},
 					"vault": {
-						automation.RoutineExtension(id, automation.RoutineTools{
+						automation.ToolExtension(id, automation.ToolHandlers{
 							List: routineTools.List, Get: routineTools.Get, Create: routineTools.Create, Update: routineTools.Update, Run: routineTools.Run,
 						}),
 						chat.SessionExtension(id, sessions), chat.SessionReadExtension(id, sessions),
@@ -290,13 +290,13 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	chats.ConfigureTasks(tasks)
 	chats.ConfigureBackground(bg)
 	automations := automation.New(q, chats, time.Now)
-	automations.ConfigureEnvironmentStatus(envs.Status)
+	automations.ConfigureRunnerStatus(envs.Status)
 	// Check admits due routines one at a time, so a dead host delays the others by this timeout;
 	// probe in parallel if many routines use SSH hosts.
-	automations.ConfigureProbe(func(ctx context.Context, agentID, environmentID string) error {
+	automations.ConfigureProbe(func(ctx context.Context, agentID, runnerID string) error {
 		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
-		h, err := envs.Open(ctx, agentID, environmentID)
+		h, err := envs.Open(ctx, agentID, runnerID)
 		if err != nil {
 			return err
 		}
@@ -342,7 +342,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err := agentsService.ConfigureTelegramVault(ctx, vault.New(cfg.DataDir)); err != nil {
 		slog.Warn("telegram: could not open the manager credential")
 	}
-	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
+	agentsService.OnRunnerChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
 		_ = native.CloseAgent(changeCtx, agentID)
 		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID, oldSandboxID); err != nil {
 			slog.Warn("release the earlier execution environment of a bot", "agent", agentID, "err", err)
@@ -425,8 +425,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	})
 	a.sysops = sys
 
-	forEnvironmentBots := func(ctx context.Context, id string, fn func(string)) {
-		bots, err := q.ListActiveAgentsByEnvironment(ctx, id)
+	forRunnerBots := func(ctx context.Context, id string, fn func(string)) {
+		bots, err := q.ListActiveAgentsByRunner(ctx, id)
 		if err != nil {
 			if ctx.Err() == nil {
 				slog.Warn("find bots that use the environment", "environment", id, "err", err)
@@ -439,7 +439,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	// Restore the default even when no input is waiting for the machine.
 	envs.Runners().OnOnline(func(id string) {
-		forEnvironmentBots(runCtx, id, func(agentID string) { native.MarkRestorable(runCtx, agentID) })
+		forRunnerBots(runCtx, id, func(agentID string) { native.MarkRestorable(runCtx, agentID) })
 		chats.RetryNow()
 	})
 	a.handler = server.New(server.Config{
@@ -449,11 +449,11 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Plugins:         plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
 		Engine: native,
 		Envs:   envs,
-		EnvironmentChanged: func(ctx context.Context, id string) {
-			forEnvironmentBots(context.WithoutCancel(ctx), id, func(agentID string) {
+		RunnerChanged: func(ctx context.Context, id string) {
+			forRunnerBots(context.WithoutCancel(ctx), id, func(agentID string) {
 				native.MarkStale(agentID, "execution environment settings")
 			})
-			native.MarkEnvironmentChanged(id)
+			native.MarkRunnerChanged(id)
 		},
 		Runners:     envs.Runners(),
 		System:      sys,

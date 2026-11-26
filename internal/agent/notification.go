@@ -37,7 +37,7 @@ func (s *Service) notificationTargets(ctx context.Context, agentID string) (Noti
 	if err != nil {
 		return NotificationTargets{}, err
 	}
-	stored, err := s.q.ListRoutineNotificationTargets(ctx, agentID)
+	stored, err := s.q.ListAutomationNotificationTargets(ctx, agentID)
 	if err != nil {
 		return NotificationTargets{}, err
 	}
@@ -56,7 +56,7 @@ func (s *Service) notificationTargets(ctx context.Context, agentID string) (Noti
 			}
 		}
 		id := uuid.NewV7().String()
-		if err := s.q.InsertRoutineNotificationTarget(ctx, sqlc.InsertRoutineNotificationTargetParams{ID: id, AgentID: agentID, Platform: platform, AccountID: account, Peer: peer}); err != nil {
+		if err := s.q.InsertAutomationNotificationTarget(ctx, sqlc.InsertAutomationNotificationTargetParams{ID: id, AgentID: agentID, Platform: platform, AccountID: account, Peer: peer}); err != nil {
 			return err
 		}
 		out.Targets = append(out.Targets, NotificationTarget{ID: id, Platform: platform, Peer: peer})

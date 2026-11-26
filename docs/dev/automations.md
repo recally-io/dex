@@ -45,8 +45,9 @@ An Automation does not create or fall back to another session. Its prompt queues
 a follow-up if the session is busy. Only a pending input of the same Automation
 counts as overlap. Stop and Clear work on the session as usual.
 
-An automation selects its Runner with `environmentId`. An empty value follows
-the bot. `local` or an SSH Machine ID pins the Runner. The owner cannot select
+The Automation API and tools select a Runner with `runnerId`. An empty value
+follows the bot. `local` or an SSH Machine ID from `runner_list` pins the Runner.
+The owner cannot select
 a Sandbox or Outbound Machine as an explicit override. `automation_create`
 uses the calling session's Runner and cwd by default. A run never falls back to
 another machine. Before a run, outside any transaction, `Preflight` resolves the
@@ -66,7 +67,7 @@ The writer records the session's environment and cwd on the run, but does not
 change these settings on the session.
 
 Each run stores its effective environment and its cwd
-(`automation_runs.environment_id`, `cwd`). Runs from before this column have an
+(`automation_runs.runner_id`, `cwd`). Runs from before this column have an
 empty binding, because where they ran is not known. A reused chat
 (`automation:<id>`) continues only when its last run has the same effective
 environment, so an automation that follows the bot also gets a new chat after the
@@ -77,6 +78,8 @@ and uses its cwd. A run in an E2B or runner environment, or with an empty
 binding, cannot be continued that way, because a chat cannot pin that
 environment.
 
+The `automation_notification_targets` table stores authorized recipients. The
+`automation_tool_operations` table stores committed tool results for replay.
 A user can select a primary notification target for each agent. Each automation can
 turn notifications off, follow the primary target, or select another authorized
 recipient of that agent. Existing automations keep notifications off. The API keeps
@@ -129,7 +132,7 @@ exposes these fields in the automation's run history.
 
 Failed runs and runs skipped due to no model, a missing or unavailable
 execution environment, or a missed schedule can queue an alert in the channel
-Outbox. A skip due to a busy Automation does not queue one. Dex compares the
+Outbox with kind `automation`. A skip due to a busy Automation does not queue one. Dex compares the
 failure reason with the previous finished run of that Automation. Only an exact
 match with a previous failure suppresses the alert. This comparison does not
 change report deduplication. A skip has no input; its Outbox entry uses an

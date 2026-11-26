@@ -60,19 +60,19 @@ func (e AssistantItemKind) Valid() bool {
 
 // Defines values for BoundaryItemBoundary.
 const (
-	BoundaryItemBoundaryCompaction  BoundaryItemBoundary = "compaction"
-	BoundaryItemBoundaryEnvironment BoundaryItemBoundary = "environment"
-	BoundaryItemBoundaryReset       BoundaryItemBoundary = "reset"
+	Compaction  BoundaryItemBoundary = "compaction"
+	Environment BoundaryItemBoundary = "environment"
+	Reset       BoundaryItemBoundary = "reset"
 )
 
 // Valid indicates whether the value is a known member of the BoundaryItemBoundary enum.
 func (e BoundaryItemBoundary) Valid() bool {
 	switch e {
-	case BoundaryItemBoundaryCompaction:
+	case Compaction:
 		return true
-	case BoundaryItemBoundaryEnvironment:
+	case Environment:
 		return true
-	case BoundaryItemBoundaryReset:
+	case Reset:
 		return true
 	default:
 		return false
@@ -217,27 +217,6 @@ func (e ChildEventType) Valid() bool {
 	}
 }
 
-// Defines values for EnvironmentKind.
-const (
-	E2b    EnvironmentKind = "e2b"
-	PiEnv  EnvironmentKind = "pi-env"
-	Runner EnvironmentKind = "runner"
-)
-
-// Valid indicates whether the value is a known member of the EnvironmentKind enum.
-func (e EnvironmentKind) Valid() bool {
-	switch e {
-	case E2b:
-		return true
-	case PiEnv:
-		return true
-	case Runner:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ErrorItemKind.
 const (
 	ErrorItemKindError ErrorItemKind = "error"
@@ -247,24 +226,6 @@ const (
 func (e ErrorItemKind) Valid() bool {
 	switch e {
 	case ErrorItemKindError:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ExtensionScope.
-const (
-	ExtensionScopeAgent ExtensionScope = "agent"
-	ExtensionScopeDex   ExtensionScope = "dex"
-)
-
-// Valid indicates whether the value is a known member of the ExtensionScope enum.
-func (e ExtensionScope) Valid() bool {
-	switch e {
-	case ExtensionScopeAgent:
-		return true
-	case ExtensionScopeDex:
 		return true
 	default:
 		return false
@@ -316,6 +277,24 @@ func (e HeldEventReason) Valid() bool {
 	case Conflict:
 		return true
 	case Unmatched:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IntegrationScope.
+const (
+	IntegrationScopeAgent IntegrationScope = "agent"
+	IntegrationScopeDex   IntegrationScope = "dex"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationScope enum.
+func (e IntegrationScope) Valid() bool {
+	switch e {
+	case IntegrationScopeAgent:
+		return true
+	case IntegrationScopeDex:
 		return true
 	default:
 		return false
@@ -534,19 +513,21 @@ func (e OnePasswordMode) Valid() bool {
 
 // Defines values for OutboxMessageKind.
 const (
+	OutboxMessageKindAutomation  OutboxMessageKind = "automation"
 	OutboxMessageKindControl     OutboxMessageKind = "control"
 	OutboxMessageKindFeedback    OutboxMessageKind = "feedback"
 	OutboxMessageKindFile        OutboxMessageKind = "file"
 	OutboxMessageKindProactive   OutboxMessageKind = "proactive"
 	OutboxMessageKindQuestion    OutboxMessageKind = "question"
 	OutboxMessageKindReply       OutboxMessageKind = "reply"
-	OutboxMessageKindRoutine     OutboxMessageKind = "routine"
 	OutboxMessageKindSystemError OutboxMessageKind = "system_error"
 )
 
 // Valid indicates whether the value is a known member of the OutboxMessageKind enum.
 func (e OutboxMessageKind) Valid() bool {
 	switch e {
+	case OutboxMessageKindAutomation:
+		return true
 	case OutboxMessageKindControl:
 		return true
 	case OutboxMessageKindFeedback:
@@ -558,8 +539,6 @@ func (e OutboxMessageKind) Valid() bool {
 	case OutboxMessageKindQuestion:
 		return true
 	case OutboxMessageKindReply:
-		return true
-	case OutboxMessageKindRoutine:
 		return true
 	case OutboxMessageKindSystemError:
 		return true
@@ -601,6 +580,27 @@ const (
 func (e RunEventType) Valid() bool {
 	switch e {
 	case Run:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RunnerKind.
+const (
+	RunnerKindE2b    RunnerKind = "e2b"
+	RunnerKindPiEnv  RunnerKind = "pi-env"
+	RunnerKindRunner RunnerKind = "runner"
+)
+
+// Valid indicates whether the value is a known member of the RunnerKind enum.
+func (e RunnerKind) Valid() bool {
+	switch e {
+	case RunnerKindE2b:
+		return true
+	case RunnerKindPiEnv:
+		return true
+	case RunnerKindRunner:
 		return true
 	default:
 		return false
@@ -1282,13 +1282,13 @@ type Agent = agent.Agent
 // AgentActivity defines model for AgentActivity.
 type AgentActivity = agent.Activity
 
-// AgentEnvironments defines model for AgentEnvironments.
-type AgentEnvironments struct {
-	Environments []engine.EnvironmentInfo `json:"environments"`
-}
-
 // AgentInput defines model for AgentInput.
 type AgentInput = agent.Agent
+
+// AgentRunners defines model for AgentRunners.
+type AgentRunners struct {
+	Runners []engine.RunnerInfo `json:"runners"`
+}
 
 // AppendEvent Appends text to the text of the item with this ID.
 type AppendEvent struct {
@@ -1353,6 +1353,30 @@ type AutomationTarget struct {
 	Title string `json:"title"`
 }
 
+// BotIntegrations defines model for BotIntegrations.
+type BotIntegrations struct {
+	// Errors Invalid configuration prevents MCP startup and reload.
+	Errors []string `json:"errors"`
+
+	// Levels The .agents directories, from wide to narrow. Each can hold skills/. Two levels can have the same directory.
+	Levels []struct {
+		Dir string `json:"dir"`
+
+		// Scope Shared across dex or scoped to one agent.
+		Scope IntegrationScope `json:"scope"`
+	} `json:"levels"`
+
+	// ReloadPending Extension files, vault entries, shell rc files, or 1Password settings changed after the agent loaded. dex reloads the agent when all agents are idle and the configuration is valid.
+	ReloadPending bool `json:"reloadPending"`
+
+	// Servers Loaded servers, or idle declarations before the agent opens.
+	Servers []McpServer `json:"servers"`
+
+	// Skills Current disk declarations; skills are read before each model request.
+	Skills   []Skill  `json:"skills"`
+	Warnings []string `json:"warnings"`
+}
+
 // BoundaryItem defines model for BoundaryItem.
 type BoundaryItem struct {
 	// At The boundary time in milliseconds.
@@ -1368,7 +1392,7 @@ type BoundaryItem struct {
 	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (session cancellation drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 	Status *BoundaryItemStatus `json:"status,omitempty"`
 
-	// Text The handoff of a reset, the summary of a compaction, or the notice of a fork to another environment. Absent when there is none.
+	// Text The handoff of a reset, the summary of a compaction, or the notice of a fork to another Runner. Absent when there is none.
 	Text *string `json:"text,omitempty"`
 }
 
@@ -1408,11 +1432,8 @@ type Chat struct {
 	Channel   ChatChannel `json:"channel"`
 	CreatedAt int64       `json:"createdAt"`
 
-	// Cwd The saved project directory. Empty means the workspace of the environment.
+	// Cwd The saved project directory. Empty means the workspace of the Runner.
 	Cwd string `json:"cwd"`
-
-	// EnvironmentId The execution environment that the chat selects: "local" or an environment ID. Empty means the environment of the agent.
-	EnvironmentId *string `json:"environmentId,omitempty"`
 
 	// ForkedFrom The session that a Chat was forked from. Only on a single chat.
 	ForkedFrom *ChatOrigin `json:"forkedFrom,omitempty"`
@@ -1438,6 +1459,9 @@ type Chat struct {
 
 	// ReadOnly The web cannot send messages to this chat now. A child session is writable at any time.
 	ReadOnly bool `json:"readOnly"`
+
+	// RunnerId The Runner that the Chat selects: "local" or a registered Runner ID. An empty value follows the default Runner of the agent.
+	RunnerId *string `json:"runnerId,omitempty"`
 
 	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
 	Settings ChatSettings `json:"settings"`
@@ -1516,9 +1540,6 @@ type ChildEventType string
 
 // CreateAgentInput defines model for CreateAgentInput.
 type CreateAgentInput struct {
-	// EnvironmentId Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.
-	EnvironmentId *string `json:"environmentId,omitempty"`
-
 	// FallbackModelId Omitted copies the default bot's fallback model. Empty chooses none.
 	FallbackModelId  *string `json:"fallbackModelId,omitempty"`
 	FallbackProvider *string `json:"fallbackProvider,omitempty"`
@@ -1531,85 +1552,11 @@ type CreateAgentInput struct {
 	Name     string  `json:"name"`
 	Provider *string `json:"provider,omitempty"`
 
+	// RunnerId Omitted copies the default bot's Runner. Empty or "local" selects the built-in Local Runner.
+	RunnerId *string `json:"runnerId,omitempty"`
+
 	// ThinkingLevel pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the model supports.
 	ThinkingLevel *ThinkingLevel `json:"thinkingLevel,omitempty"`
-}
-
-// Environment defines model for Environment.
-type Environment struct {
-	Config    EnvironmentConfig `json:"config"`
-	CreatedAt int64             `json:"createdAt"`
-
-	// Description Owner-provided plain text.
-	Description *string         `json:"desc,omitempty"`
-	Id          string          `json:"id"`
-	Kind        EnvironmentKind `json:"kind"`
-	Name        string          `json:"name"`
-	Runner      *RunnerStatus   `json:"runner,omitempty"`
-	SecretSet   bool            `json:"secretSet"`
-	UpdatedAt   int64           `json:"updatedAt"`
-}
-
-// EnvironmentConfig defines model for EnvironmentConfig.
-type EnvironmentConfig struct {
-	ApiUrl       *string `json:"apiUrl,omitempty"`
-	AutoPause    *bool   `json:"autoPause,omitempty"`
-	Domain       *string `json:"domain,omitempty"`
-	EnvdUrl      *string `json:"envdUrl,omitempty"`
-	Host         *string `json:"host,omitempty"`
-	IdentityFile *string `json:"identityFile,omitempty"`
-
-	// LoginShell Starts the remote SSH runtime and captures environment variables through the user's login shell ($SHELL -l). Defaults to true when omitted.
-	LoginShell     *bool   `json:"loginShell,omitempty"`
-	Port           *int    `json:"port,omitempty"`
-	Template       *string `json:"template,omitempty"`
-	TimeoutSeconds *int    `json:"timeoutSeconds,omitempty"`
-	User           *string `json:"user,omitempty"`
-	WorkspaceDir   *string `json:"workspaceDir,omitempty"`
-}
-
-// EnvironmentInput defines model for EnvironmentInput.
-type EnvironmentInput struct {
-	Config *EnvironmentConfig `json:"config,omitempty"`
-
-	// Description Optional plain text. Omit on update to keep the saved description. Send an empty string to clear it.
-	Description *string         `json:"desc,omitempty"`
-	Kind        EnvironmentKind `json:"kind"`
-	Name        string          `json:"name"`
-
-	// Secret Write-only secret. Required for E2B Cloud; optional for custom E2B endpoints. Empty or omitted on update keeps the saved secret.
-	Secret *string `json:"secret,omitempty"`
-}
-
-// EnvironmentKind defines model for EnvironmentKind.
-type EnvironmentKind string
-
-// EnvironmentList defines model for EnvironmentList.
-type EnvironmentList struct {
-	Environments []Environment `json:"environments"`
-}
-
-// EnvironmentProbeInput defines model for EnvironmentProbeInput.
-type EnvironmentProbeInput struct {
-	Config *EnvironmentConfig `json:"config,omitempty"`
-
-	// EnvironmentId Optional existing environment ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
-	EnvironmentId *string         `json:"environmentId,omitempty"`
-	Kind          EnvironmentKind `json:"kind"`
-
-	// Secret Optional write-only secret. When environmentId is set and secret is omitted or empty, uses the saved secret.
-	Secret *string `json:"secret,omitempty"`
-}
-
-// EnvironmentTestResult defines model for EnvironmentTestResult.
-type EnvironmentTestResult struct {
-	Arch           *string   `json:"arch,omitempty"`
-	Error          *string   `json:"error,omitempty"`
-	Home           *string   `json:"home,omitempty"`
-	HostKeyChanged *bool     `json:"hostKeyChanged,omitempty"`
-	Ok             bool      `json:"ok"`
-	Platform       *string   `json:"platform,omitempty"`
-	Warnings       *[]string `json:"warnings,omitempty"`
 }
 
 // Error defines model for Error.
@@ -1633,33 +1580,6 @@ type ErrorItem struct {
 
 // ErrorItemKind defines model for ErrorItem.Kind.
 type ErrorItemKind string
-
-// ExtensionScope Shared across dex or scoped to one agent.
-type ExtensionScope string
-
-// Extensions defines model for Extensions.
-type Extensions struct {
-	// Errors Invalid configuration prevents MCP startup and reload.
-	Errors []string `json:"errors"`
-
-	// Levels The .agents directories, from wide to narrow. Each can hold skills/. Two levels can have the same directory.
-	Levels []struct {
-		Dir string `json:"dir"`
-
-		// Scope Shared across dex or scoped to one agent.
-		Scope ExtensionScope `json:"scope"`
-	} `json:"levels"`
-
-	// ReloadPending Extension files, vault entries, shell rc files, or 1Password settings changed after the agent loaded. dex reloads the agent when all agents are idle and the configuration is valid.
-	ReloadPending bool `json:"reloadPending"`
-
-	// Servers Loaded servers, or idle declarations before the agent opens.
-	Servers []McpServer `json:"servers"`
-
-	// Skills Current disk declarations; skills are read before each model request.
-	Skills   []Skill  `json:"skills"`
-	Warnings []string `json:"warnings"`
-}
 
 // Feishu defines model for Feishu.
 type Feishu = agent.Feishu
@@ -1771,6 +1691,9 @@ type InboxSummarySession struct {
 	Chat    Chat   `json:"chat"`
 }
 
+// IntegrationScope Shared across dex or scoped to one agent.
+type IntegrationScope string
+
 // Item defines model for Item.
 type Item struct {
 	union json.RawMessage
@@ -1797,7 +1720,7 @@ type McpServer struct {
 	Overrides bool `json:"overrides"`
 
 	// Scope Shared across dex or scoped to one agent.
-	Scope ExtensionScope `json:"scope"`
+	Scope IntegrationScope `json:"scope"`
 
 	// State idle means that the agent has not started, so dex has not connected.
 	State McpServerState `json:"state"`
@@ -1979,19 +1902,6 @@ type OutboxMessageList struct {
 	Messages []OutboxMessage `json:"messages"`
 }
 
-// PluginSetting defines model for PluginSetting.
-type PluginSetting struct {
-	// Enabled The stored choice. dex reads it at start.
-	Enabled bool `json:"enabled"`
-
-	// Error Why an enabled plugin does not run
-	Error *string `json:"error,omitempty"`
-	Name  string  `json:"name"`
-
-	// Running The plugin runs in this process.
-	Running bool `json:"running"`
-}
-
 // Provider defines model for Provider.
 type Provider struct {
 	// Api Empty for a built-in provider.
@@ -2078,6 +1988,72 @@ type RunEventType string
 // RunTarget The exact foreground task of this session. Absent when no task can be stopped.
 type RunTarget = string
 
+// Runner defines model for Runner.
+type Runner struct {
+	Config    RunnerConfig `json:"config"`
+	CreatedAt int64        `json:"createdAt"`
+
+	// Description Owner-provided plain text.
+	Description *string       `json:"desc,omitempty"`
+	Id          string        `json:"id"`
+	Kind        RunnerKind    `json:"kind"`
+	Name        string        `json:"name"`
+	Runner      *RunnerStatus `json:"runner,omitempty"`
+	SecretSet   bool          `json:"secretSet"`
+	UpdatedAt   int64         `json:"updatedAt"`
+}
+
+// RunnerConfig defines model for RunnerConfig.
+type RunnerConfig struct {
+	ApiUrl       *string `json:"apiUrl,omitempty"`
+	AutoPause    *bool   `json:"autoPause,omitempty"`
+	Domain       *string `json:"domain,omitempty"`
+	EnvdUrl      *string `json:"envdUrl,omitempty"`
+	Host         *string `json:"host,omitempty"`
+	IdentityFile *string `json:"identityFile,omitempty"`
+
+	// LoginShell Starts the remote SSH runtime and captures environment variables through the user's login shell ($SHELL -l). Defaults to true when omitted.
+	LoginShell     *bool   `json:"loginShell,omitempty"`
+	Port           *int    `json:"port,omitempty"`
+	Template       *string `json:"template,omitempty"`
+	TimeoutSeconds *int    `json:"timeoutSeconds,omitempty"`
+	User           *string `json:"user,omitempty"`
+	WorkspaceDir   *string `json:"workspaceDir,omitempty"`
+}
+
+// RunnerInput defines model for RunnerInput.
+type RunnerInput struct {
+	Config *RunnerConfig `json:"config,omitempty"`
+
+	// Description Optional plain text. Omit on update to keep the saved description. Send an empty string to clear it.
+	Description *string    `json:"desc,omitempty"`
+	Kind        RunnerKind `json:"kind"`
+	Name        string     `json:"name"`
+
+	// Secret Write-only secret. Required for E2B Cloud; optional for custom E2B endpoints. Empty or omitted on update keeps the saved secret.
+	Secret *string `json:"secret,omitempty"`
+}
+
+// RunnerKind defines model for RunnerKind.
+type RunnerKind string
+
+// RunnerList defines model for RunnerList.
+type RunnerList struct {
+	Runners []Runner `json:"runners"`
+}
+
+// RunnerProbeInput defines model for RunnerProbeInput.
+type RunnerProbeInput struct {
+	Config *RunnerConfig `json:"config,omitempty"`
+	Kind   RunnerKind    `json:"kind"`
+
+	// RunnerId Optional existing Runner ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
+	RunnerId *string `json:"runnerId,omitempty"`
+
+	// Secret Optional write-only secret. When runnerId is set and secret is omitted or empty, uses the saved secret.
+	Secret *string `json:"secret,omitempty"`
+}
+
 // RunnerStatus defines model for RunnerStatus.
 type RunnerStatus struct {
 	Arch             *string `json:"arch,omitempty"`
@@ -2086,6 +2062,17 @@ type RunnerStatus struct {
 	Os               *string `json:"os,omitempty"`
 	SelfUpdateReason *string `json:"selfUpdateReason,omitempty"`
 	Version          *string `json:"version,omitempty"`
+}
+
+// RunnerTestResult defines model for RunnerTestResult.
+type RunnerTestResult struct {
+	Arch           *string   `json:"arch,omitempty"`
+	Error          *string   `json:"error,omitempty"`
+	Home           *string   `json:"home,omitempty"`
+	HostKeyChanged *bool     `json:"hostKeyChanged,omitempty"`
+	Ok             bool      `json:"ok"`
+	Platform       *string   `json:"platform,omitempty"`
+	Warnings       *[]string `json:"warnings,omitempty"`
 }
 
 // Schedule every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
@@ -2159,6 +2146,19 @@ type SnapshotEvent struct {
 
 // SnapshotEventType defines model for SnapshotEvent.Type.
 type SnapshotEventType string
+
+// SourceSetting defines model for SourceSetting.
+type SourceSetting struct {
+	// Enabled The stored choice. dex reads it at start.
+	Enabled bool `json:"enabled"`
+
+	// Error Why an enabled plugin does not run
+	Error *string `json:"error,omitempty"`
+	Name  string  `json:"name"`
+
+	// Running The plugin runs in this process.
+	Running bool `json:"running"`
+}
 
 // SshConfigDiscovery defines model for SshConfigDiscovery.
 type SshConfigDiscovery struct {
@@ -2715,8 +2715,8 @@ type VaultEntry struct {
 	Name string `json:"name"`
 
 	// Scope Shared across dex or scoped to one agent.
-	Scope     ExtensionScope `json:"scope"`
-	UpdatedAt time.Time      `json:"updatedAt"`
+	Scope     IntegrationScope `json:"scope"`
+	UpdatedAt time.Time        `json:"updatedAt"`
 }
 
 // Wechat defines model for Wechat.
@@ -2741,8 +2741,8 @@ type AutomationId = string
 // ChatId defines model for ChatId.
 type ChatId = int64
 
-// EnvironmentId defines model for EnvironmentId.
-type EnvironmentId = string
+// RunnerId defines model for RunnerId.
+type RunnerId = string
 
 // TaskKey defines model for TaskKey.
 type TaskKey = string
@@ -2790,22 +2790,17 @@ type ContinueChatJSONBody struct {
 	Id string `json:"id"`
 }
 
-// SetChatEnvironmentJSONBody defines parameters for SetChatEnvironment.
-type SetChatEnvironmentJSONBody struct {
-	EnvironmentId string `json:"environmentId"`
-}
-
 // ForkChatJSONBody defines parameters for ForkChat.
 type ForkChatJSONBody struct {
 	// Before End the history just before the entry.
 	Before  *bool `json:"before,omitempty"`
 	EntryId int64 `json:"entryId"`
 
-	// EnvironmentId The execution environment of the new Chat.
-	EnvironmentId *string `json:"environmentId,omitempty"`
-
 	// Id Optional client UUID for safe retries.
 	Id *string `json:"id,omitempty"`
+
+	// RunnerId The Runner of the new Chat.
+	RunnerId *string `json:"runnerId,omitempty"`
 }
 
 // GetChatHistoryParams defines parameters for GetChatHistory.
@@ -2826,10 +2821,15 @@ type SetChatProjectJSONBody struct {
 	Cwd string `json:"cwd"`
 }
 
+// SetChatRunnerJSONBody defines parameters for SetChatRunner.
+type SetChatRunnerJSONBody struct {
+	RunnerId string `json:"runnerId"`
+}
+
 // StartMcpOAuthJSONBody defines parameters for StartMcpOAuth.
 type StartMcpOAuthJSONBody struct {
 	// Scope Shared across dex or scoped to one agent.
-	Scope ExtensionScope `json:"scope"`
+	Scope IntegrationScope `json:"scope"`
 }
 
 // SetPrimaryNotificationTargetJSONBody defines parameters for SetPrimaryNotificationTarget.
@@ -2840,8 +2840,8 @@ type SetPrimaryNotificationTargetJSONBody struct {
 
 // ListRecentProjectsParams defines parameters for ListRecentProjects.
 type ListRecentProjectsParams struct {
-	// EnvironmentId An execution environment of the agent. Absent selects the environment of the agent.
-	EnvironmentId *string `form:"environmentId,omitempty" json:"environmentId,omitempty"`
+	// RunnerId A Runner ID. Omit to use the default Runner of the agent.
+	RunnerId *string `form:"runnerId,omitempty" json:"runnerId,omitempty"`
 }
 
 // CreateUploadMultipartBody defines parameters for CreateUpload.
@@ -2851,8 +2851,8 @@ type CreateUploadMultipartBody struct {
 
 // DeleteVaultParams defines parameters for DeleteVault.
 type DeleteVaultParams struct {
-	Scope ExtensionScope `form:"scope" json:"scope"`
-	Name  string         `form:"name" json:"name"`
+	Scope IntegrationScope `form:"scope" json:"scope"`
+	Name  string           `form:"name" json:"name"`
 }
 
 // PutVaultJSONBody defines parameters for PutVault.
@@ -2860,8 +2860,8 @@ type PutVaultJSONBody struct {
 	Name string `json:"name"`
 
 	// Scope Shared across dex or scoped to one agent.
-	Scope ExtensionScope `json:"scope"`
-	Value *string        `json:"value,omitempty"`
+	Scope IntegrationScope `json:"scope"`
+	Value *string          `json:"value,omitempty"`
 }
 
 // ListDirectoriesParams defines parameters for ListDirectories.
@@ -2869,8 +2869,8 @@ type ListDirectoriesParams struct {
 	Path    *string `form:"path,omitempty" json:"path,omitempty"`
 	AgentId *string `form:"agentId,omitempty" json:"agentId,omitempty"`
 
-	// EnvironmentId An execution environment of the agent. Absent selects the environment of the agent.
-	EnvironmentId *string `form:"environmentId,omitempty" json:"environmentId,omitempty"`
+	// RunnerId A Runner ID. Omit to use the default Runner of the agent.
+	RunnerId *string `form:"runnerId,omitempty" json:"runnerId,omitempty"`
 }
 
 // ListInboxParams defines parameters for ListInbox.
@@ -2884,8 +2884,8 @@ type AttachHeldEventJSONBody struct {
 	TaskId  string `json:"taskId"`
 }
 
-// SetPluginJSONBody defines parameters for SetPlugin.
-type SetPluginJSONBody struct {
+// SetSourceEnabledJSONBody defines parameters for SetSourceEnabled.
+type SetSourceEnabledJSONBody struct {
 	Enabled bool `json:"enabled"`
 }
 
@@ -3016,9 +3016,6 @@ type CompactChatJSONRequestBody CompactChatJSONBody
 // ContinueChatJSONRequestBody defines body for ContinueChat for application/json ContentType.
 type ContinueChatJSONRequestBody ContinueChatJSONBody
 
-// SetChatEnvironmentJSONRequestBody defines body for SetChatEnvironment for application/json ContentType.
-type SetChatEnvironmentJSONRequestBody SetChatEnvironmentJSONBody
-
 // ForkChatJSONRequestBody defines body for ForkChat for application/json ContentType.
 type ForkChatJSONRequestBody ForkChatJSONBody
 
@@ -3027,6 +3024,9 @@ type SendMessageJSONRequestBody = MessageInput
 
 // SetChatProjectJSONRequestBody defines body for SetChatProject for application/json ContentType.
 type SetChatProjectJSONRequestBody SetChatProjectJSONBody
+
+// SetChatRunnerJSONRequestBody defines body for SetChatRunner for application/json ContentType.
+type SetChatRunnerJSONRequestBody SetChatRunnerJSONBody
 
 // SetChatSettingsJSONRequestBody defines body for SetChatSettings for application/json ContentType.
 type SetChatSettingsJSONRequestBody = ChatSettings
@@ -3052,26 +3052,26 @@ type AttachHeldEventJSONRequestBody AttachHeldEventJSONBody
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = NewSession
 
-// CreateEnvironmentJSONRequestBody defines body for CreateEnvironment for application/json ContentType.
-type CreateEnvironmentJSONRequestBody = EnvironmentInput
-
-// ProbeEnvironmentJSONRequestBody defines body for ProbeEnvironment for application/json ContentType.
-type ProbeEnvironmentJSONRequestBody = EnvironmentProbeInput
-
-// UpdateEnvironmentJSONRequestBody defines body for UpdateEnvironment for application/json ContentType.
-type UpdateEnvironmentJSONRequestBody = EnvironmentInput
-
 // SetOnePasswordJSONRequestBody defines body for SetOnePassword for application/json ContentType.
 type SetOnePasswordJSONRequestBody = OnePasswordInput
-
-// SetPluginJSONRequestBody defines body for SetPlugin for application/json ContentType.
-type SetPluginJSONRequestBody SetPluginJSONBody
 
 // ListProviderModelsJSONRequestBody defines body for ListProviderModels for application/json ContentType.
 type ListProviderModelsJSONRequestBody = ProviderModelsInput
 
 // SetProviderJSONRequestBody defines body for SetProvider for application/json ContentType.
 type SetProviderJSONRequestBody = ProviderInput
+
+// CreateRunnerJSONRequestBody defines body for CreateRunner for application/json ContentType.
+type CreateRunnerJSONRequestBody = RunnerInput
+
+// ProbeRunnerJSONRequestBody defines body for ProbeRunner for application/json ContentType.
+type ProbeRunnerJSONRequestBody = RunnerProbeInput
+
+// UpdateRunnerJSONRequestBody defines body for UpdateRunner for application/json ContentType.
+type UpdateRunnerJSONRequestBody = RunnerInput
+
+// SetSourceEnabledJSONRequestBody defines body for SetSourceEnabled for application/json ContentType.
+type SetSourceEnabledJSONRequestBody SetSourceEnabledJSONBody
 
 // RestartSystemJSONRequestBody defines body for RestartSystem for application/json ContentType.
 type RestartSystemJSONRequestBody RestartSystemJSONBody
@@ -3773,9 +3773,6 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/continue)
 	ContinueChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
-	// (PUT /api/agents/{agentId}/chats/{chatId}/environment)
-	SetChatEnvironment(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
-
 	// (GET /api/agents/{agentId}/chats/{chatId}/events)
 	WatchChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
@@ -3806,23 +3803,20 @@ type ServerInterface interface {
 	// (PUT /api/agents/{agentId}/chats/{chatId}/project)
 	SetChatProject(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
+	// (PUT /api/agents/{agentId}/chats/{chatId}/runner)
+	SetChatRunner(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
 	// (PUT /api/agents/{agentId}/chats/{chatId}/settings)
 	SetChatSettings(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
-	// (POST /api/agents/{agentId}/environment/reset)
-	ResetAgentEnvironment(w http.ResponseWriter, r *http.Request, agentId string)
+	// (GET /api/agents/{agentId}/integrations)
+	GetBotIntegrations(w http.ResponseWriter, r *http.Request, agentId string)
 
-	// (GET /api/agents/{agentId}/environments)
-	ListAgentEnvironments(w http.ResponseWriter, r *http.Request, agentId string)
-
-	// (GET /api/agents/{agentId}/extensions)
-	GetExtensions(w http.ResponseWriter, r *http.Request, agentId string)
-
-	// (POST /api/agents/{agentId}/extensions/mcp/{name}/oauth)
+	// (POST /api/agents/{agentId}/integrations/mcp/{name}/oauth)
 	StartMcpOAuth(w http.ResponseWriter, r *http.Request, agentId string, name string)
 
-	// (POST /api/agents/{agentId}/extensions/reload)
-	ReloadExtensions(w http.ResponseWriter, r *http.Request, agentId string)
+	// (POST /api/agents/{agentId}/integrations/reload)
+	ReloadBotIntegrations(w http.ResponseWriter, r *http.Request, agentId string)
 
 	// (GET /api/agents/{agentId}/notification-targets)
 	GetNotificationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId)
@@ -3832,6 +3826,12 @@ type ServerInterface interface {
 
 	// (GET /api/agents/{agentId}/projects)
 	ListRecentProjects(w http.ResponseWriter, r *http.Request, agentId string, params ListRecentProjectsParams)
+
+	// (POST /api/agents/{agentId}/runner/reset)
+	ResetAgentRunner(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (GET /api/agents/{agentId}/runners)
+	ListAgentRunners(w http.ResponseWriter, r *http.Request, agentId string)
 
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, agentId string)
@@ -3896,47 +3896,11 @@ type ServerInterface interface {
 	// (GET /api/settings)
 	GetSettings(w http.ResponseWriter, r *http.Request)
 
-	// (GET /api/settings/environments)
-	ListEnvironments(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/settings/environments)
-	CreateEnvironment(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/settings/environments/probe)
-	ProbeEnvironment(w http.ResponseWriter, r *http.Request)
-
-	// (GET /api/settings/environments/ssh-config)
-	DiscoverSshConfig(w http.ResponseWriter, r *http.Request)
-
-	// (DELETE /api/settings/environments/{environmentId})
-	DeleteEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
-
-	// (PUT /api/settings/environments/{environmentId})
-	UpdateEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
-
-	// (POST /api/settings/environments/{environmentId}/forget-host-key)
-	ForgetEnvironmentHostKey(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
-
-	// (DELETE /api/settings/environments/{environmentId}/runner-pairing)
-	RevokeRunner(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
-
-	// (POST /api/settings/environments/{environmentId}/runner-pairing)
-	IssueRunnerCode(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
-
-	// (POST /api/settings/environments/{environmentId}/test)
-	TestEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
-
 	// (GET /api/settings/onepassword)
 	GetOnePassword(w http.ResponseWriter, r *http.Request)
 
 	// (PUT /api/settings/onepassword)
 	SetOnePassword(w http.ResponseWriter, r *http.Request)
-
-	// (GET /api/settings/plugins)
-	ListPlugins(w http.ResponseWriter, r *http.Request)
-
-	// (PUT /api/settings/plugins/{name})
-	SetPlugin(w http.ResponseWriter, r *http.Request, name string)
 
 	// (POST /api/settings/provider-models)
 	ListProviderModels(w http.ResponseWriter, r *http.Request)
@@ -3946,6 +3910,42 @@ type ServerInterface interface {
 
 	// (PUT /api/settings/providers/{providerId})
 	SetProvider(w http.ResponseWriter, r *http.Request, providerId string)
+
+	// (GET /api/settings/runners)
+	ListRunners(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/settings/runners)
+	CreateRunner(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/settings/runners/probe)
+	ProbeRunner(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/settings/runners/ssh-config)
+	DiscoverSshConfig(w http.ResponseWriter, r *http.Request)
+
+	// (DELETE /api/settings/runners/{runnerId})
+	DeleteRunner(w http.ResponseWriter, r *http.Request, runnerId RunnerId)
+
+	// (PUT /api/settings/runners/{runnerId})
+	UpdateRunner(w http.ResponseWriter, r *http.Request, runnerId RunnerId)
+
+	// (POST /api/settings/runners/{runnerId}/forget-host-key)
+	ForgetRunnerHostKey(w http.ResponseWriter, r *http.Request, runnerId RunnerId)
+
+	// (DELETE /api/settings/runners/{runnerId}/pairing)
+	RevokeRunner(w http.ResponseWriter, r *http.Request, runnerId RunnerId)
+
+	// (POST /api/settings/runners/{runnerId}/pairing)
+	IssueRunnerCode(w http.ResponseWriter, r *http.Request, runnerId RunnerId)
+
+	// (POST /api/settings/runners/{runnerId}/test)
+	TestRunner(w http.ResponseWriter, r *http.Request, runnerId RunnerId)
+
+	// (GET /api/settings/sources)
+	ListSources(w http.ResponseWriter, r *http.Request)
+
+	// (PUT /api/settings/sources/{name})
+	SetSourceEnabled(w http.ResponseWriter, r *http.Request, name string)
 
 	// (POST /api/system/backup)
 	BackupSystemDatabase(w http.ResponseWriter, r *http.Request)
@@ -5281,41 +5281,6 @@ func (siw *ServerInterfaceWrapper) ContinueChat(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
-// SetChatEnvironment operation middleware
-func (siw *ServerInterfaceWrapper) SetChatEnvironment(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetChatEnvironment(w, r, agentId, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // WatchChat operation middleware
 func (siw *ServerInterfaceWrapper) WatchChat(w http.ResponseWriter, r *http.Request) {
 
@@ -5751,6 +5716,41 @@ func (siw *ServerInterfaceWrapper) SetChatProject(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// SetChatRunner operation middleware
+func (siw *ServerInterfaceWrapper) SetChatRunner(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetChatRunner(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetChatSettings operation middleware
 func (siw *ServerInterfaceWrapper) SetChatSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -5786,8 +5786,8 @@ func (siw *ServerInterfaceWrapper) SetChatSettings(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// ResetAgentEnvironment operation middleware
-func (siw *ServerInterfaceWrapper) ResetAgentEnvironment(w http.ResponseWriter, r *http.Request) {
+// GetBotIntegrations operation middleware
+func (siw *ServerInterfaceWrapper) GetBotIntegrations(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
@@ -5802,59 +5802,7 @@ func (siw *ServerInterfaceWrapper) ResetAgentEnvironment(w http.ResponseWriter, 
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ResetAgentEnvironment(w, r, agentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListAgentEnvironments operation middleware
-func (siw *ServerInterfaceWrapper) ListAgentEnvironments(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListAgentEnvironments(w, r, agentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetExtensions operation middleware
-func (siw *ServerInterfaceWrapper) GetExtensions(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetExtensions(w, r, agentId)
+		siw.Handler.GetBotIntegrations(w, r, agentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5899,8 +5847,8 @@ func (siw *ServerInterfaceWrapper) StartMcpOAuth(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
-// ReloadExtensions operation middleware
-func (siw *ServerInterfaceWrapper) ReloadExtensions(w http.ResponseWriter, r *http.Request) {
+// ReloadBotIntegrations operation middleware
+func (siw *ServerInterfaceWrapper) ReloadBotIntegrations(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
@@ -5915,7 +5863,7 @@ func (siw *ServerInterfaceWrapper) ReloadExtensions(w http.ResponseWriter, r *ht
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ReloadExtensions(w, r, agentId)
+		siw.Handler.ReloadBotIntegrations(w, r, agentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5995,21 +5943,73 @@ func (siw *ServerInterfaceWrapper) ListRecentProjects(w http.ResponseWriter, r *
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListRecentProjectsParams
 
-	// ------------- Optional query parameter "environmentId" -------------
+	// ------------- Optional query parameter "runnerId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "environmentId", r.URL.Query(), &params.EnvironmentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "runnerId", r.URL.Query(), &params.RunnerId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "environmentId"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "runnerId"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runnerId", Err: err})
 		}
 		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListRecentProjects(w, r, agentId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetAgentRunner operation middleware
+func (siw *ServerInterfaceWrapper) ResetAgentRunner(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetAgentRunner(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAgentRunners operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentRunners(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentRunners(w, r, agentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6250,15 +6250,15 @@ func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// ------------- Optional query parameter "environmentId" -------------
+	// ------------- Optional query parameter "runnerId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "environmentId", r.URL.Query(), &params.EnvironmentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "runnerId", r.URL.Query(), &params.RunnerId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "environmentId"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "runnerId"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runnerId", Err: err})
 		}
 		return
 	}
@@ -6523,218 +6523,6 @@ func (siw *ServerInterfaceWrapper) GetSettings(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
-// ListEnvironments operation middleware
-func (siw *ServerInterfaceWrapper) ListEnvironments(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListEnvironments(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateEnvironment operation middleware
-func (siw *ServerInterfaceWrapper) CreateEnvironment(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateEnvironment(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ProbeEnvironment operation middleware
-func (siw *ServerInterfaceWrapper) ProbeEnvironment(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ProbeEnvironment(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DiscoverSshConfig operation middleware
-func (siw *ServerInterfaceWrapper) DiscoverSshConfig(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DiscoverSshConfig(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteEnvironment operation middleware
-func (siw *ServerInterfaceWrapper) DeleteEnvironment(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "environmentId" -------------
-	var environmentId EnvironmentId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "environmentId", r.PathValue("environmentId"), &environmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteEnvironment(w, r, environmentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// UpdateEnvironment operation middleware
-func (siw *ServerInterfaceWrapper) UpdateEnvironment(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "environmentId" -------------
-	var environmentId EnvironmentId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "environmentId", r.PathValue("environmentId"), &environmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateEnvironment(w, r, environmentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ForgetEnvironmentHostKey operation middleware
-func (siw *ServerInterfaceWrapper) ForgetEnvironmentHostKey(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "environmentId" -------------
-	var environmentId EnvironmentId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "environmentId", r.PathValue("environmentId"), &environmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ForgetEnvironmentHostKey(w, r, environmentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// RevokeRunner operation middleware
-func (siw *ServerInterfaceWrapper) RevokeRunner(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "environmentId" -------------
-	var environmentId EnvironmentId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "environmentId", r.PathValue("environmentId"), &environmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RevokeRunner(w, r, environmentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// IssueRunnerCode operation middleware
-func (siw *ServerInterfaceWrapper) IssueRunnerCode(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "environmentId" -------------
-	var environmentId EnvironmentId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "environmentId", r.PathValue("environmentId"), &environmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.IssueRunnerCode(w, r, environmentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// TestEnvironment operation middleware
-func (siw *ServerInterfaceWrapper) TestEnvironment(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "environmentId" -------------
-	var environmentId EnvironmentId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "environmentId", r.PathValue("environmentId"), &environmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.TestEnvironment(w, r, environmentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetOnePassword operation middleware
 func (siw *ServerInterfaceWrapper) GetOnePassword(w http.ResponseWriter, r *http.Request) {
 
@@ -6754,46 +6542,6 @@ func (siw *ServerInterfaceWrapper) SetOnePassword(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetOnePassword(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListPlugins operation middleware
-func (siw *ServerInterfaceWrapper) ListPlugins(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListPlugins(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SetPlugin operation middleware
-func (siw *ServerInterfaceWrapper) SetPlugin(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "name" -------------
-	var name string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetPlugin(w, r, name)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6860,6 +6608,258 @@ func (siw *ServerInterfaceWrapper) SetProvider(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetProvider(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRunners operation middleware
+func (siw *ServerInterfaceWrapper) ListRunners(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRunners(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRunner operation middleware
+func (siw *ServerInterfaceWrapper) CreateRunner(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRunner(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ProbeRunner operation middleware
+func (siw *ServerInterfaceWrapper) ProbeRunner(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProbeRunner(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DiscoverSshConfig operation middleware
+func (siw *ServerInterfaceWrapper) DiscoverSshConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DiscoverSshConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteRunner operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRunner(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runnerId" -------------
+	var runnerId RunnerId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runnerId", r.PathValue("runnerId"), &runnerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runnerId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteRunner(w, r, runnerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateRunner operation middleware
+func (siw *ServerInterfaceWrapper) UpdateRunner(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runnerId" -------------
+	var runnerId RunnerId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runnerId", r.PathValue("runnerId"), &runnerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runnerId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateRunner(w, r, runnerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ForgetRunnerHostKey operation middleware
+func (siw *ServerInterfaceWrapper) ForgetRunnerHostKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runnerId" -------------
+	var runnerId RunnerId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runnerId", r.PathValue("runnerId"), &runnerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runnerId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ForgetRunnerHostKey(w, r, runnerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeRunner operation middleware
+func (siw *ServerInterfaceWrapper) RevokeRunner(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runnerId" -------------
+	var runnerId RunnerId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runnerId", r.PathValue("runnerId"), &runnerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runnerId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeRunner(w, r, runnerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// IssueRunnerCode operation middleware
+func (siw *ServerInterfaceWrapper) IssueRunnerCode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runnerId" -------------
+	var runnerId RunnerId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runnerId", r.PathValue("runnerId"), &runnerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runnerId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.IssueRunnerCode(w, r, runnerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestRunner operation middleware
+func (siw *ServerInterfaceWrapper) TestRunner(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runnerId" -------------
+	var runnerId RunnerId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runnerId", r.PathValue("runnerId"), &runnerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runnerId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestRunner(w, r, runnerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSources operation middleware
+func (siw *ServerInterfaceWrapper) ListSources(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSources(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetSourceEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetSourceEnabled(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetSourceEnabled(w, r, name)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7859,21 +7859,21 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/system/cancel", wrapper.CancelSystemOperation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/system/backup", wrapper.BackupSystemDatabase)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/system/logs", wrapper.GetSystemLogs)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/plugins", wrapper.ListPlugins)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/plugins/{name}", wrapper.SetPlugin)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/sources", wrapper.ListSources)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/sources/{name}", wrapper.SetSourceEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings", wrapper.GetSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/onepassword", wrapper.GetOnePassword)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/onepassword", wrapper.SetOnePassword)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/environments", wrapper.ListEnvironments)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments", wrapper.CreateEnvironment)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/environments/ssh-config", wrapper.DiscoverSshConfig)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments/probe", wrapper.ProbeEnvironment)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/environments/{environmentId}", wrapper.DeleteEnvironment)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/environments/{environmentId}", wrapper.UpdateEnvironment)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments/{environmentId}/test", wrapper.TestEnvironment)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments/{environmentId}/forget-host-key", wrapper.ForgetEnvironmentHostKey)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/environments/{environmentId}/runner-pairing", wrapper.RevokeRunner)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments/{environmentId}/runner-pairing", wrapper.IssueRunnerCode)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/runners", wrapper.ListRunners)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/runners", wrapper.CreateRunner)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/runners/ssh-config", wrapper.DiscoverSshConfig)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/runners/probe", wrapper.ProbeRunner)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/runners/{runnerId}", wrapper.DeleteRunner)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/runners/{runnerId}", wrapper.UpdateRunner)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/runners/{runnerId}/test", wrapper.TestRunner)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/runners/{runnerId}/forget-host-key", wrapper.ForgetRunnerHostKey)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/runners/{runnerId}/pairing", wrapper.RevokeRunner)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/runners/{runnerId}/pairing", wrapper.IssueRunnerCode)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/models", wrapper.ListModels)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/provider-models", wrapper.ListProviderModels)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.DeleteProvider)
@@ -7903,8 +7903,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.UpdateAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/archived-agents", wrapper.ListArchivedAgents)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/archive", wrapper.RestoreAgent)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/environments", wrapper.ListAgentEnvironments)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/environment/reset", wrapper.ResetAgentEnvironment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/runners", wrapper.ListAgentRunners)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/runner/reset", wrapper.ResetAgentRunner)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.CreateChat)
@@ -7913,7 +7913,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.ArchiveChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/projects", wrapper.ListRecentProjects)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/environment", wrapper.SetChatEnvironment)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/runner", wrapper.SetChatRunner)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/project", wrapper.SetChatProject)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/settings", wrapper.SetChatSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages", wrapper.SendMessage)
@@ -7935,12 +7935,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/artifacts/{artifactName}", wrapper.DeleteArtifact)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/artifacts/{artifactName}", wrapper.GetArtifact)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/agents/{agentId}/artifacts/{artifactName}", wrapper.RenameArtifact)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/extensions", wrapper.GetExtensions)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/extensions/mcp/{name}/oauth", wrapper.StartMcpOAuth)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/integrations", wrapper.GetBotIntegrations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/integrations/mcp/{name}/oauth", wrapper.StartMcpOAuth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/vault", wrapper.DeleteVault)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/vault", wrapper.ListVault)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/vault", wrapper.PutVault)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/extensions/reload", wrapper.ReloadExtensions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/integrations/reload", wrapper.ReloadBotIntegrations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/automations", wrapper.ListAutomations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/automations", wrapper.CreateAutomation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/automations/targets", wrapper.ListAutomationTargets)
@@ -10255,103 +10255,6 @@ func (response ContinueChatdefaultJSONResponse) VisitContinueChatResponse(w http
 	return err
 }
 
-type SetChatEnvironmentRequestObject struct {
-	AgentId string `json:"agentId"`
-	ChatId  ChatId `json:"chatId"`
-	Body    *SetChatEnvironmentJSONRequestBody
-}
-
-type SetChatEnvironmentResponseObject interface {
-	VisitSetChatEnvironmentResponse(w http.ResponseWriter) error
-}
-
-type SetChatEnvironment200JSONResponse Chat
-
-func (response SetChatEnvironment200JSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatEnvironment400JSONResponse struct{ ErrorJSONResponse }
-
-func (response SetChatEnvironment400JSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatEnvironment403JSONResponse Error
-
-func (response SetChatEnvironment403JSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatEnvironment404JSONResponse Error
-
-func (response SetChatEnvironment404JSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatEnvironment409JSONResponse Error
-
-func (response SetChatEnvironment409JSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetChatEnvironmentdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SetChatEnvironmentdefaultJSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type WatchChatRequestObject struct {
 	AgentId string `json:"agentId"`
 	ChatId  ChatId `json:"chatId"`
@@ -11087,6 +10990,103 @@ func (response SetChatProjectdefaultJSONResponse) VisitSetChatProjectResponse(w 
 	return err
 }
 
+type SetChatRunnerRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+	Body    *SetChatRunnerJSONRequestBody
+}
+
+type SetChatRunnerResponseObject interface {
+	VisitSetChatRunnerResponse(w http.ResponseWriter) error
+}
+
+type SetChatRunner200JSONResponse Chat
+
+func (response SetChatRunner200JSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatRunner400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SetChatRunner400JSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatRunner403JSONResponse Error
+
+func (response SetChatRunner403JSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatRunner404JSONResponse Error
+
+func (response SetChatRunner404JSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatRunner409JSONResponse Error
+
+func (response SetChatRunner409JSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatRunnerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetChatRunnerdefaultJSONResponse) VisitSetChatRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SetChatSettingsRequestObject struct {
 	AgentId string `json:"agentId"`
 	ChatId  ChatId `json:"chatId"`
@@ -11170,17 +11170,17 @@ func (response SetChatSettingsdefaultJSONResponse) VisitSetChatSettingsResponse(
 	return err
 }
 
-type ResetAgentEnvironmentRequestObject struct {
+type GetBotIntegrationsRequestObject struct {
 	AgentId string `json:"agentId"`
 }
 
-type ResetAgentEnvironmentResponseObject interface {
-	VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error
+type GetBotIntegrationsResponseObject interface {
+	VisitGetBotIntegrationsResponse(w http.ResponseWriter) error
 }
 
-type ResetAgentEnvironment200JSONResponse Ok
+type GetBotIntegrations200JSONResponse BotIntegrations
 
-func (response ResetAgentEnvironment200JSONResponse) VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error {
+func (response GetBotIntegrations200JSONResponse) VisitGetBotIntegrationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -11192,23 +11192,9 @@ func (response ResetAgentEnvironment200JSONResponse) VisitResetAgentEnvironmentR
 	return err
 }
 
-type ResetAgentEnvironment400JSONResponse struct{ ErrorJSONResponse }
+type GetBotIntegrations404JSONResponse struct{ ErrorJSONResponse }
 
-func (response ResetAgentEnvironment400JSONResponse) VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ResetAgentEnvironment404JSONResponse Error
-
-func (response ResetAgentEnvironment404JSONResponse) VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error {
+func (response GetBotIntegrations404JSONResponse) VisitGetBotIntegrationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -11220,132 +11206,12 @@ func (response ResetAgentEnvironment404JSONResponse) VisitResetAgentEnvironmentR
 	return err
 }
 
-type ResetAgentEnvironment409JSONResponse Error
-
-func (response ResetAgentEnvironment409JSONResponse) VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ResetAgentEnvironmentdefaultJSONResponse struct {
+type GetBotIntegrationsdefaultJSONResponse struct {
 	Body       Error
 	StatusCode int
 }
 
-func (response ResetAgentEnvironmentdefaultJSONResponse) VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListAgentEnvironmentsRequestObject struct {
-	AgentId string `json:"agentId"`
-}
-
-type ListAgentEnvironmentsResponseObject interface {
-	VisitListAgentEnvironmentsResponse(w http.ResponseWriter) error
-}
-
-type ListAgentEnvironments200JSONResponse AgentEnvironments
-
-func (response ListAgentEnvironments200JSONResponse) VisitListAgentEnvironmentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListAgentEnvironments404JSONResponse struct{ ErrorJSONResponse }
-
-func (response ListAgentEnvironments404JSONResponse) VisitListAgentEnvironmentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListAgentEnvironmentsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListAgentEnvironmentsdefaultJSONResponse) VisitListAgentEnvironmentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetExtensionsRequestObject struct {
-	AgentId string `json:"agentId"`
-}
-
-type GetExtensionsResponseObject interface {
-	VisitGetExtensionsResponse(w http.ResponseWriter) error
-}
-
-type GetExtensions200JSONResponse Extensions
-
-func (response GetExtensions200JSONResponse) VisitGetExtensionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetExtensions404JSONResponse struct{ ErrorJSONResponse }
-
-func (response GetExtensions404JSONResponse) VisitGetExtensionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetExtensionsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetExtensionsdefaultJSONResponse) VisitGetExtensionsResponse(w http.ResponseWriter) error {
+func (response GetBotIntegrationsdefaultJSONResponse) VisitGetBotIntegrationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11410,17 +11276,17 @@ func (response StartMcpOAuthdefaultJSONResponse) VisitStartMcpOAuthResponse(w ht
 	return err
 }
 
-type ReloadExtensionsRequestObject struct {
+type ReloadBotIntegrationsRequestObject struct {
 	AgentId string `json:"agentId"`
 }
 
-type ReloadExtensionsResponseObject interface {
-	VisitReloadExtensionsResponse(w http.ResponseWriter) error
+type ReloadBotIntegrationsResponseObject interface {
+	VisitReloadBotIntegrationsResponse(w http.ResponseWriter) error
 }
 
-type ReloadExtensions200JSONResponse Extensions
+type ReloadBotIntegrations200JSONResponse BotIntegrations
 
-func (response ReloadExtensions200JSONResponse) VisitReloadExtensionsResponse(w http.ResponseWriter) error {
+func (response ReloadBotIntegrations200JSONResponse) VisitReloadBotIntegrationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -11432,9 +11298,9 @@ func (response ReloadExtensions200JSONResponse) VisitReloadExtensionsResponse(w 
 	return err
 }
 
-type ReloadExtensions400JSONResponse struct{ ErrorJSONResponse }
+type ReloadBotIntegrations400JSONResponse struct{ ErrorJSONResponse }
 
-func (response ReloadExtensions400JSONResponse) VisitReloadExtensionsResponse(w http.ResponseWriter) error {
+func (response ReloadBotIntegrations400JSONResponse) VisitReloadBotIntegrationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -11446,9 +11312,9 @@ func (response ReloadExtensions400JSONResponse) VisitReloadExtensionsResponse(w 
 	return err
 }
 
-type ReloadExtensions404JSONResponse Error
+type ReloadBotIntegrations404JSONResponse Error
 
-func (response ReloadExtensions404JSONResponse) VisitReloadExtensionsResponse(w http.ResponseWriter) error {
+func (response ReloadBotIntegrations404JSONResponse) VisitReloadBotIntegrationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -11460,9 +11326,9 @@ func (response ReloadExtensions404JSONResponse) VisitReloadExtensionsResponse(w 
 	return err
 }
 
-type ReloadExtensions409JSONResponse Error
+type ReloadBotIntegrations409JSONResponse Error
 
-func (response ReloadExtensions409JSONResponse) VisitReloadExtensionsResponse(w http.ResponseWriter) error {
+func (response ReloadBotIntegrations409JSONResponse) VisitReloadBotIntegrationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -11474,12 +11340,12 @@ func (response ReloadExtensions409JSONResponse) VisitReloadExtensionsResponse(w 
 	return err
 }
 
-type ReloadExtensionsdefaultJSONResponse struct {
+type ReloadBotIntegrationsdefaultJSONResponse struct {
 	Body       Error
 	StatusCode int
 }
 
-func (response ReloadExtensionsdefaultJSONResponse) VisitReloadExtensionsResponse(w http.ResponseWriter) error {
+func (response ReloadBotIntegrationsdefaultJSONResponse) VisitReloadBotIntegrationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11615,6 +11481,140 @@ type ListRecentProjectsdefaultJSONResponse struct {
 }
 
 func (response ListRecentProjectsdefaultJSONResponse) VisitListRecentProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetAgentRunnerRequestObject struct {
+	AgentId string `json:"agentId"`
+}
+
+type ResetAgentRunnerResponseObject interface {
+	VisitResetAgentRunnerResponse(w http.ResponseWriter) error
+}
+
+type ResetAgentRunner200JSONResponse Ok
+
+func (response ResetAgentRunner200JSONResponse) VisitResetAgentRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetAgentRunner400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ResetAgentRunner400JSONResponse) VisitResetAgentRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetAgentRunner404JSONResponse Error
+
+func (response ResetAgentRunner404JSONResponse) VisitResetAgentRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetAgentRunner409JSONResponse Error
+
+func (response ResetAgentRunner409JSONResponse) VisitResetAgentRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetAgentRunnerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ResetAgentRunnerdefaultJSONResponse) VisitResetAgentRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentRunnersRequestObject struct {
+	AgentId string `json:"agentId"`
+}
+
+type ListAgentRunnersResponseObject interface {
+	VisitListAgentRunnersResponse(w http.ResponseWriter) error
+}
+
+type ListAgentRunners200JSONResponse AgentRunners
+
+func (response ListAgentRunners200JSONResponse) VisitListAgentRunnersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentRunners404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListAgentRunners404JSONResponse) VisitListAgentRunnersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentRunnersdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAgentRunnersdefaultJSONResponse) VisitListAgentRunnersResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12678,551 +12678,6 @@ func (response GetSettingsdefaultJSONResponse) VisitGetSettingsResponse(w http.R
 	return err
 }
 
-type ListEnvironmentsRequestObject struct {
-}
-
-type ListEnvironmentsResponseObject interface {
-	VisitListEnvironmentsResponse(w http.ResponseWriter) error
-}
-
-type ListEnvironments200JSONResponse EnvironmentList
-
-func (response ListEnvironments200JSONResponse) VisitListEnvironmentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListEnvironmentsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListEnvironmentsdefaultJSONResponse) VisitListEnvironmentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateEnvironmentRequestObject struct {
-	Body *CreateEnvironmentJSONRequestBody
-}
-
-type CreateEnvironmentResponseObject interface {
-	VisitCreateEnvironmentResponse(w http.ResponseWriter) error
-}
-
-type CreateEnvironment201JSONResponse Environment
-
-func (response CreateEnvironment201JSONResponse) VisitCreateEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateEnvironment400JSONResponse struct{ ErrorJSONResponse }
-
-func (response CreateEnvironment400JSONResponse) VisitCreateEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateEnvironmentdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response CreateEnvironmentdefaultJSONResponse) VisitCreateEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ProbeEnvironmentRequestObject struct {
-	Body *ProbeEnvironmentJSONRequestBody
-}
-
-type ProbeEnvironmentResponseObject interface {
-	VisitProbeEnvironmentResponse(w http.ResponseWriter) error
-}
-
-type ProbeEnvironment200JSONResponse EnvironmentTestResult
-
-func (response ProbeEnvironment200JSONResponse) VisitProbeEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ProbeEnvironment400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ProbeEnvironment400JSONResponse) VisitProbeEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ProbeEnvironment404JSONResponse Error
-
-func (response ProbeEnvironment404JSONResponse) VisitProbeEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ProbeEnvironmentdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ProbeEnvironmentdefaultJSONResponse) VisitProbeEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DiscoverSshConfigRequestObject struct {
-}
-
-type DiscoverSshConfigResponseObject interface {
-	VisitDiscoverSshConfigResponse(w http.ResponseWriter) error
-}
-
-type DiscoverSshConfig200JSONResponse SshConfigDiscovery
-
-func (response DiscoverSshConfig200JSONResponse) VisitDiscoverSshConfigResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DiscoverSshConfigdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DiscoverSshConfigdefaultJSONResponse) VisitDiscoverSshConfigResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteEnvironmentRequestObject struct {
-	EnvironmentId EnvironmentId `json:"environmentId"`
-}
-
-type DeleteEnvironmentResponseObject interface {
-	VisitDeleteEnvironmentResponse(w http.ResponseWriter) error
-}
-
-type DeleteEnvironment200JSONResponse Ok
-
-func (response DeleteEnvironment200JSONResponse) VisitDeleteEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteEnvironment404JSONResponse struct{ ErrorJSONResponse }
-
-func (response DeleteEnvironment404JSONResponse) VisitDeleteEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteEnvironment409JSONResponse Error
-
-func (response DeleteEnvironment409JSONResponse) VisitDeleteEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteEnvironmentdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DeleteEnvironmentdefaultJSONResponse) VisitDeleteEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateEnvironmentRequestObject struct {
-	EnvironmentId EnvironmentId `json:"environmentId"`
-	Body          *UpdateEnvironmentJSONRequestBody
-}
-
-type UpdateEnvironmentResponseObject interface {
-	VisitUpdateEnvironmentResponse(w http.ResponseWriter) error
-}
-
-type UpdateEnvironment200JSONResponse Environment
-
-func (response UpdateEnvironment200JSONResponse) VisitUpdateEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateEnvironment400JSONResponse struct{ ErrorJSONResponse }
-
-func (response UpdateEnvironment400JSONResponse) VisitUpdateEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateEnvironment404JSONResponse Error
-
-func (response UpdateEnvironment404JSONResponse) VisitUpdateEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateEnvironmentdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response UpdateEnvironmentdefaultJSONResponse) VisitUpdateEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ForgetEnvironmentHostKeyRequestObject struct {
-	EnvironmentId EnvironmentId `json:"environmentId"`
-}
-
-type ForgetEnvironmentHostKeyResponseObject interface {
-	VisitForgetEnvironmentHostKeyResponse(w http.ResponseWriter) error
-}
-
-type ForgetEnvironmentHostKey200JSONResponse Ok
-
-func (response ForgetEnvironmentHostKey200JSONResponse) VisitForgetEnvironmentHostKeyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ForgetEnvironmentHostKey400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ForgetEnvironmentHostKey400JSONResponse) VisitForgetEnvironmentHostKeyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ForgetEnvironmentHostKey404JSONResponse Error
-
-func (response ForgetEnvironmentHostKey404JSONResponse) VisitForgetEnvironmentHostKeyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ForgetEnvironmentHostKeydefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ForgetEnvironmentHostKeydefaultJSONResponse) VisitForgetEnvironmentHostKeyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RevokeRunnerRequestObject struct {
-	EnvironmentId EnvironmentId `json:"environmentId"`
-}
-
-type RevokeRunnerResponseObject interface {
-	VisitRevokeRunnerResponse(w http.ResponseWriter) error
-}
-
-type RevokeRunner200JSONResponse Ok
-
-func (response RevokeRunner200JSONResponse) VisitRevokeRunnerResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RevokeRunnerdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response RevokeRunnerdefaultJSONResponse) VisitRevokeRunnerResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type IssueRunnerCodeRequestObject struct {
-	EnvironmentId EnvironmentId `json:"environmentId"`
-}
-
-type IssueRunnerCodeResponseObject interface {
-	VisitIssueRunnerCodeResponse(w http.ResponseWriter) error
-}
-
-type IssueRunnerCode200JSONResponse struct {
-	Code string `json:"code"`
-}
-
-func (response IssueRunnerCode200JSONResponse) VisitIssueRunnerCodeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type IssueRunnerCodedefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response IssueRunnerCodedefaultJSONResponse) VisitIssueRunnerCodeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type TestEnvironmentRequestObject struct {
-	EnvironmentId EnvironmentId `json:"environmentId"`
-}
-
-type TestEnvironmentResponseObject interface {
-	VisitTestEnvironmentResponse(w http.ResponseWriter) error
-}
-
-type TestEnvironment200JSONResponse EnvironmentTestResult
-
-func (response TestEnvironment200JSONResponse) VisitTestEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type TestEnvironment400JSONResponse struct{ ErrorJSONResponse }
-
-func (response TestEnvironment400JSONResponse) VisitTestEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type TestEnvironment404JSONResponse Error
-
-func (response TestEnvironment404JSONResponse) VisitTestEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type TestEnvironmentdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response TestEnvironmentdefaultJSONResponse) VisitTestEnvironmentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetOnePasswordRequestObject struct {
 }
 
@@ -13303,80 +12758,6 @@ type SetOnePassworddefaultJSONResponse struct {
 }
 
 func (response SetOnePassworddefaultJSONResponse) VisitSetOnePasswordResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListPluginsRequestObject struct {
-}
-
-type ListPluginsResponseObject interface {
-	VisitListPluginsResponse(w http.ResponseWriter) error
-}
-
-type ListPlugins200JSONResponse struct {
-	Plugins []PluginSetting `json:"plugins"`
-}
-
-func (response ListPlugins200JSONResponse) VisitListPluginsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListPluginsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListPluginsdefaultJSONResponse) VisitListPluginsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetPluginRequestObject struct {
-	Name string `json:"name"`
-	Body *SetPluginJSONRequestBody
-}
-
-type SetPluginResponseObject interface {
-	VisitSetPluginResponse(w http.ResponseWriter) error
-}
-
-type SetPlugin204Response struct {
-}
-
-func (response SetPlugin204Response) VisitSetPluginResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type SetPlugindefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SetPlugindefaultJSONResponse) VisitSetPluginResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -13523,6 +12904,625 @@ type SetProviderdefaultJSONResponse struct {
 }
 
 func (response SetProviderdefaultJSONResponse) VisitSetProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRunnersRequestObject struct {
+}
+
+type ListRunnersResponseObject interface {
+	VisitListRunnersResponse(w http.ResponseWriter) error
+}
+
+type ListRunners200JSONResponse RunnerList
+
+func (response ListRunners200JSONResponse) VisitListRunnersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRunnersdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListRunnersdefaultJSONResponse) VisitListRunnersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRunnerRequestObject struct {
+	Body *CreateRunnerJSONRequestBody
+}
+
+type CreateRunnerResponseObject interface {
+	VisitCreateRunnerResponse(w http.ResponseWriter) error
+}
+
+type CreateRunner201JSONResponse Runner
+
+func (response CreateRunner201JSONResponse) VisitCreateRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRunner400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateRunner400JSONResponse) VisitCreateRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRunnerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateRunnerdefaultJSONResponse) VisitCreateRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeRunnerRequestObject struct {
+	Body *ProbeRunnerJSONRequestBody
+}
+
+type ProbeRunnerResponseObject interface {
+	VisitProbeRunnerResponse(w http.ResponseWriter) error
+}
+
+type ProbeRunner200JSONResponse RunnerTestResult
+
+func (response ProbeRunner200JSONResponse) VisitProbeRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeRunner400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ProbeRunner400JSONResponse) VisitProbeRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeRunner404JSONResponse Error
+
+func (response ProbeRunner404JSONResponse) VisitProbeRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeRunnerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ProbeRunnerdefaultJSONResponse) VisitProbeRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverSshConfigRequestObject struct {
+}
+
+type DiscoverSshConfigResponseObject interface {
+	VisitDiscoverSshConfigResponse(w http.ResponseWriter) error
+}
+
+type DiscoverSshConfig200JSONResponse SshConfigDiscovery
+
+func (response DiscoverSshConfig200JSONResponse) VisitDiscoverSshConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverSshConfigdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DiscoverSshConfigdefaultJSONResponse) VisitDiscoverSshConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRunnerRequestObject struct {
+	RunnerId RunnerId `json:"runnerId"`
+}
+
+type DeleteRunnerResponseObject interface {
+	VisitDeleteRunnerResponse(w http.ResponseWriter) error
+}
+
+type DeleteRunner200JSONResponse Ok
+
+func (response DeleteRunner200JSONResponse) VisitDeleteRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRunner404JSONResponse struct{ ErrorJSONResponse }
+
+func (response DeleteRunner404JSONResponse) VisitDeleteRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRunner409JSONResponse Error
+
+func (response DeleteRunner409JSONResponse) VisitDeleteRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRunnerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteRunnerdefaultJSONResponse) VisitDeleteRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRunnerRequestObject struct {
+	RunnerId RunnerId `json:"runnerId"`
+	Body     *UpdateRunnerJSONRequestBody
+}
+
+type UpdateRunnerResponseObject interface {
+	VisitUpdateRunnerResponse(w http.ResponseWriter) error
+}
+
+type UpdateRunner200JSONResponse Runner
+
+func (response UpdateRunner200JSONResponse) VisitUpdateRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRunner400JSONResponse struct{ ErrorJSONResponse }
+
+func (response UpdateRunner400JSONResponse) VisitUpdateRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRunner404JSONResponse Error
+
+func (response UpdateRunner404JSONResponse) VisitUpdateRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRunnerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateRunnerdefaultJSONResponse) VisitUpdateRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForgetRunnerHostKeyRequestObject struct {
+	RunnerId RunnerId `json:"runnerId"`
+}
+
+type ForgetRunnerHostKeyResponseObject interface {
+	VisitForgetRunnerHostKeyResponse(w http.ResponseWriter) error
+}
+
+type ForgetRunnerHostKey200JSONResponse Ok
+
+func (response ForgetRunnerHostKey200JSONResponse) VisitForgetRunnerHostKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForgetRunnerHostKey400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ForgetRunnerHostKey400JSONResponse) VisitForgetRunnerHostKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForgetRunnerHostKey404JSONResponse Error
+
+func (response ForgetRunnerHostKey404JSONResponse) VisitForgetRunnerHostKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForgetRunnerHostKeydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ForgetRunnerHostKeydefaultJSONResponse) VisitForgetRunnerHostKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRunnerRequestObject struct {
+	RunnerId RunnerId `json:"runnerId"`
+}
+
+type RevokeRunnerResponseObject interface {
+	VisitRevokeRunnerResponse(w http.ResponseWriter) error
+}
+
+type RevokeRunner200JSONResponse Ok
+
+func (response RevokeRunner200JSONResponse) VisitRevokeRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRunnerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RevokeRunnerdefaultJSONResponse) VisitRevokeRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueRunnerCodeRequestObject struct {
+	RunnerId RunnerId `json:"runnerId"`
+}
+
+type IssueRunnerCodeResponseObject interface {
+	VisitIssueRunnerCodeResponse(w http.ResponseWriter) error
+}
+
+type IssueRunnerCode200JSONResponse struct {
+	Code string `json:"code"`
+}
+
+func (response IssueRunnerCode200JSONResponse) VisitIssueRunnerCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueRunnerCodedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response IssueRunnerCodedefaultJSONResponse) VisitIssueRunnerCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestRunnerRequestObject struct {
+	RunnerId RunnerId `json:"runnerId"`
+}
+
+type TestRunnerResponseObject interface {
+	VisitTestRunnerResponse(w http.ResponseWriter) error
+}
+
+type TestRunner200JSONResponse RunnerTestResult
+
+func (response TestRunner200JSONResponse) VisitTestRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestRunner400JSONResponse struct{ ErrorJSONResponse }
+
+func (response TestRunner400JSONResponse) VisitTestRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestRunner404JSONResponse Error
+
+func (response TestRunner404JSONResponse) VisitTestRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestRunnerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response TestRunnerdefaultJSONResponse) VisitTestRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSourcesRequestObject struct {
+}
+
+type ListSourcesResponseObject interface {
+	VisitListSourcesResponse(w http.ResponseWriter) error
+}
+
+type ListSources200JSONResponse struct {
+	Sources []SourceSetting `json:"sources"`
+}
+
+func (response ListSources200JSONResponse) VisitListSourcesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSourcesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListSourcesdefaultJSONResponse) VisitListSourcesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSourceEnabledRequestObject struct {
+	Name string `json:"name"`
+	Body *SetSourceEnabledJSONRequestBody
+}
+
+type SetSourceEnabledResponseObject interface {
+	VisitSetSourceEnabledResponse(w http.ResponseWriter) error
+}
+
+type SetSourceEnabled204Response struct {
+}
+
+func (response SetSourceEnabled204Response) VisitSetSourceEnabledResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetSourceEnableddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetSourceEnableddefaultJSONResponse) VisitSetSourceEnabledResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -15128,9 +15128,6 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/continue)
 	ContinueChat(ctx context.Context, request ContinueChatRequestObject) (ContinueChatResponseObject, error)
 
-	// (PUT /api/agents/{agentId}/chats/{chatId}/environment)
-	SetChatEnvironment(ctx context.Context, request SetChatEnvironmentRequestObject) (SetChatEnvironmentResponseObject, error)
-
 	// (GET /api/agents/{agentId}/chats/{chatId}/events)
 	WatchChat(ctx context.Context, request WatchChatRequestObject) (WatchChatResponseObject, error)
 
@@ -15161,23 +15158,20 @@ type StrictServerInterface interface {
 	// (PUT /api/agents/{agentId}/chats/{chatId}/project)
 	SetChatProject(ctx context.Context, request SetChatProjectRequestObject) (SetChatProjectResponseObject, error)
 
+	// (PUT /api/agents/{agentId}/chats/{chatId}/runner)
+	SetChatRunner(ctx context.Context, request SetChatRunnerRequestObject) (SetChatRunnerResponseObject, error)
+
 	// (PUT /api/agents/{agentId}/chats/{chatId}/settings)
 	SetChatSettings(ctx context.Context, request SetChatSettingsRequestObject) (SetChatSettingsResponseObject, error)
 
-	// (POST /api/agents/{agentId}/environment/reset)
-	ResetAgentEnvironment(ctx context.Context, request ResetAgentEnvironmentRequestObject) (ResetAgentEnvironmentResponseObject, error)
+	// (GET /api/agents/{agentId}/integrations)
+	GetBotIntegrations(ctx context.Context, request GetBotIntegrationsRequestObject) (GetBotIntegrationsResponseObject, error)
 
-	// (GET /api/agents/{agentId}/environments)
-	ListAgentEnvironments(ctx context.Context, request ListAgentEnvironmentsRequestObject) (ListAgentEnvironmentsResponseObject, error)
-
-	// (GET /api/agents/{agentId}/extensions)
-	GetExtensions(ctx context.Context, request GetExtensionsRequestObject) (GetExtensionsResponseObject, error)
-
-	// (POST /api/agents/{agentId}/extensions/mcp/{name}/oauth)
+	// (POST /api/agents/{agentId}/integrations/mcp/{name}/oauth)
 	StartMcpOAuth(ctx context.Context, request StartMcpOAuthRequestObject) (StartMcpOAuthResponseObject, error)
 
-	// (POST /api/agents/{agentId}/extensions/reload)
-	ReloadExtensions(ctx context.Context, request ReloadExtensionsRequestObject) (ReloadExtensionsResponseObject, error)
+	// (POST /api/agents/{agentId}/integrations/reload)
+	ReloadBotIntegrations(ctx context.Context, request ReloadBotIntegrationsRequestObject) (ReloadBotIntegrationsResponseObject, error)
 
 	// (GET /api/agents/{agentId}/notification-targets)
 	GetNotificationTargets(ctx context.Context, request GetNotificationTargetsRequestObject) (GetNotificationTargetsResponseObject, error)
@@ -15187,6 +15181,12 @@ type StrictServerInterface interface {
 
 	// (GET /api/agents/{agentId}/projects)
 	ListRecentProjects(ctx context.Context, request ListRecentProjectsRequestObject) (ListRecentProjectsResponseObject, error)
+
+	// (POST /api/agents/{agentId}/runner/reset)
+	ResetAgentRunner(ctx context.Context, request ResetAgentRunnerRequestObject) (ResetAgentRunnerResponseObject, error)
+
+	// (GET /api/agents/{agentId}/runners)
+	ListAgentRunners(ctx context.Context, request ListAgentRunnersRequestObject) (ListAgentRunnersResponseObject, error)
 
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(ctx context.Context, request CreateUploadRequestObject) (CreateUploadResponseObject, error)
@@ -15251,47 +15251,11 @@ type StrictServerInterface interface {
 	// (GET /api/settings)
 	GetSettings(ctx context.Context, request GetSettingsRequestObject) (GetSettingsResponseObject, error)
 
-	// (GET /api/settings/environments)
-	ListEnvironments(ctx context.Context, request ListEnvironmentsRequestObject) (ListEnvironmentsResponseObject, error)
-
-	// (POST /api/settings/environments)
-	CreateEnvironment(ctx context.Context, request CreateEnvironmentRequestObject) (CreateEnvironmentResponseObject, error)
-
-	// (POST /api/settings/environments/probe)
-	ProbeEnvironment(ctx context.Context, request ProbeEnvironmentRequestObject) (ProbeEnvironmentResponseObject, error)
-
-	// (GET /api/settings/environments/ssh-config)
-	DiscoverSshConfig(ctx context.Context, request DiscoverSshConfigRequestObject) (DiscoverSshConfigResponseObject, error)
-
-	// (DELETE /api/settings/environments/{environmentId})
-	DeleteEnvironment(ctx context.Context, request DeleteEnvironmentRequestObject) (DeleteEnvironmentResponseObject, error)
-
-	// (PUT /api/settings/environments/{environmentId})
-	UpdateEnvironment(ctx context.Context, request UpdateEnvironmentRequestObject) (UpdateEnvironmentResponseObject, error)
-
-	// (POST /api/settings/environments/{environmentId}/forget-host-key)
-	ForgetEnvironmentHostKey(ctx context.Context, request ForgetEnvironmentHostKeyRequestObject) (ForgetEnvironmentHostKeyResponseObject, error)
-
-	// (DELETE /api/settings/environments/{environmentId}/runner-pairing)
-	RevokeRunner(ctx context.Context, request RevokeRunnerRequestObject) (RevokeRunnerResponseObject, error)
-
-	// (POST /api/settings/environments/{environmentId}/runner-pairing)
-	IssueRunnerCode(ctx context.Context, request IssueRunnerCodeRequestObject) (IssueRunnerCodeResponseObject, error)
-
-	// (POST /api/settings/environments/{environmentId}/test)
-	TestEnvironment(ctx context.Context, request TestEnvironmentRequestObject) (TestEnvironmentResponseObject, error)
-
 	// (GET /api/settings/onepassword)
 	GetOnePassword(ctx context.Context, request GetOnePasswordRequestObject) (GetOnePasswordResponseObject, error)
 
 	// (PUT /api/settings/onepassword)
 	SetOnePassword(ctx context.Context, request SetOnePasswordRequestObject) (SetOnePasswordResponseObject, error)
-
-	// (GET /api/settings/plugins)
-	ListPlugins(ctx context.Context, request ListPluginsRequestObject) (ListPluginsResponseObject, error)
-
-	// (PUT /api/settings/plugins/{name})
-	SetPlugin(ctx context.Context, request SetPluginRequestObject) (SetPluginResponseObject, error)
 
 	// (POST /api/settings/provider-models)
 	ListProviderModels(ctx context.Context, request ListProviderModelsRequestObject) (ListProviderModelsResponseObject, error)
@@ -15301,6 +15265,42 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/providers/{providerId})
 	SetProvider(ctx context.Context, request SetProviderRequestObject) (SetProviderResponseObject, error)
+
+	// (GET /api/settings/runners)
+	ListRunners(ctx context.Context, request ListRunnersRequestObject) (ListRunnersResponseObject, error)
+
+	// (POST /api/settings/runners)
+	CreateRunner(ctx context.Context, request CreateRunnerRequestObject) (CreateRunnerResponseObject, error)
+
+	// (POST /api/settings/runners/probe)
+	ProbeRunner(ctx context.Context, request ProbeRunnerRequestObject) (ProbeRunnerResponseObject, error)
+
+	// (GET /api/settings/runners/ssh-config)
+	DiscoverSshConfig(ctx context.Context, request DiscoverSshConfigRequestObject) (DiscoverSshConfigResponseObject, error)
+
+	// (DELETE /api/settings/runners/{runnerId})
+	DeleteRunner(ctx context.Context, request DeleteRunnerRequestObject) (DeleteRunnerResponseObject, error)
+
+	// (PUT /api/settings/runners/{runnerId})
+	UpdateRunner(ctx context.Context, request UpdateRunnerRequestObject) (UpdateRunnerResponseObject, error)
+
+	// (POST /api/settings/runners/{runnerId}/forget-host-key)
+	ForgetRunnerHostKey(ctx context.Context, request ForgetRunnerHostKeyRequestObject) (ForgetRunnerHostKeyResponseObject, error)
+
+	// (DELETE /api/settings/runners/{runnerId}/pairing)
+	RevokeRunner(ctx context.Context, request RevokeRunnerRequestObject) (RevokeRunnerResponseObject, error)
+
+	// (POST /api/settings/runners/{runnerId}/pairing)
+	IssueRunnerCode(ctx context.Context, request IssueRunnerCodeRequestObject) (IssueRunnerCodeResponseObject, error)
+
+	// (POST /api/settings/runners/{runnerId}/test)
+	TestRunner(ctx context.Context, request TestRunnerRequestObject) (TestRunnerResponseObject, error)
+
+	// (GET /api/settings/sources)
+	ListSources(ctx context.Context, request ListSourcesRequestObject) (ListSourcesResponseObject, error)
+
+	// (PUT /api/settings/sources/{name})
+	SetSourceEnabled(ctx context.Context, request SetSourceEnabledRequestObject) (SetSourceEnabledResponseObject, error)
 
 	// (POST /api/system/backup)
 	BackupSystemDatabase(ctx context.Context, request BackupSystemDatabaseRequestObject) (BackupSystemDatabaseResponseObject, error)
@@ -16624,40 +16624,6 @@ func (sh *strictHandler) ContinueChat(w http.ResponseWriter, r *http.Request, ag
 	}
 }
 
-// SetChatEnvironment operation middleware
-func (sh *strictHandler) SetChatEnvironment(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
-	var request SetChatEnvironmentRequestObject
-
-	request.AgentId = agentId
-	request.ChatId = chatId
-
-	var body SetChatEnvironmentJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetChatEnvironment(ctx, request.(SetChatEnvironmentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetChatEnvironment")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetChatEnvironmentResponseObject); ok {
-		if err := validResponse.VisitSetChatEnvironmentResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // WatchChat operation middleware
 func (sh *strictHandler) WatchChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
 	var request WatchChatRequestObject
@@ -16954,6 +16920,40 @@ func (sh *strictHandler) SetChatProject(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// SetChatRunner operation middleware
+func (sh *strictHandler) SetChatRunner(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+	var request SetChatRunnerRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	var body SetChatRunnerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetChatRunner(ctx, request.(SetChatRunnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetChatRunner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetChatRunnerResponseObject); ok {
+		if err := validResponse.VisitSetChatRunnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // SetChatSettings operation middleware
 func (sh *strictHandler) SetChatSettings(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
 	var request SetChatSettingsRequestObject
@@ -16988,77 +16988,25 @@ func (sh *strictHandler) SetChatSettings(w http.ResponseWriter, r *http.Request,
 	}
 }
 
-// ResetAgentEnvironment operation middleware
-func (sh *strictHandler) ResetAgentEnvironment(w http.ResponseWriter, r *http.Request, agentId string) {
-	var request ResetAgentEnvironmentRequestObject
+// GetBotIntegrations operation middleware
+func (sh *strictHandler) GetBotIntegrations(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request GetBotIntegrationsRequestObject
 
 	request.AgentId = agentId
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ResetAgentEnvironment(ctx, request.(ResetAgentEnvironmentRequestObject))
+		return sh.ssi.GetBotIntegrations(ctx, request.(GetBotIntegrationsRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ResetAgentEnvironment")
+		handler = middleware(handler, "GetBotIntegrations")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ResetAgentEnvironmentResponseObject); ok {
-		if err := validResponse.VisitResetAgentEnvironmentResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListAgentEnvironments operation middleware
-func (sh *strictHandler) ListAgentEnvironments(w http.ResponseWriter, r *http.Request, agentId string) {
-	var request ListAgentEnvironmentsRequestObject
-
-	request.AgentId = agentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListAgentEnvironments(ctx, request.(ListAgentEnvironmentsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListAgentEnvironments")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListAgentEnvironmentsResponseObject); ok {
-		if err := validResponse.VisitListAgentEnvironmentsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetExtensions operation middleware
-func (sh *strictHandler) GetExtensions(w http.ResponseWriter, r *http.Request, agentId string) {
-	var request GetExtensionsRequestObject
-
-	request.AgentId = agentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetExtensions(ctx, request.(GetExtensionsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetExtensions")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetExtensionsResponseObject); ok {
-		if err := validResponse.VisitGetExtensionsResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetBotIntegrationsResponseObject); ok {
+		if err := validResponse.VisitGetBotIntegrationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -17100,25 +17048,25 @@ func (sh *strictHandler) StartMcpOAuth(w http.ResponseWriter, r *http.Request, a
 	}
 }
 
-// ReloadExtensions operation middleware
-func (sh *strictHandler) ReloadExtensions(w http.ResponseWriter, r *http.Request, agentId string) {
-	var request ReloadExtensionsRequestObject
+// ReloadBotIntegrations operation middleware
+func (sh *strictHandler) ReloadBotIntegrations(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request ReloadBotIntegrationsRequestObject
 
 	request.AgentId = agentId
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ReloadExtensions(ctx, request.(ReloadExtensionsRequestObject))
+		return sh.ssi.ReloadBotIntegrations(ctx, request.(ReloadBotIntegrationsRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ReloadExtensions")
+		handler = middleware(handler, "ReloadBotIntegrations")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ReloadExtensionsResponseObject); ok {
-		if err := validResponse.VisitReloadExtensionsResponse(w); err != nil {
+	} else if validResponse, ok := response.(ReloadBotIntegrationsResponseObject); ok {
+		if err := validResponse.VisitReloadBotIntegrationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -17205,6 +17153,58 @@ func (sh *strictHandler) ListRecentProjects(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListRecentProjectsResponseObject); ok {
 		if err := validResponse.VisitListRecentProjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResetAgentRunner operation middleware
+func (sh *strictHandler) ResetAgentRunner(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request ResetAgentRunnerRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResetAgentRunner(ctx, request.(ResetAgentRunnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResetAgentRunner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResetAgentRunnerResponseObject); ok {
+		if err := validResponse.VisitResetAgentRunnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAgentRunners operation middleware
+func (sh *strictHandler) ListAgentRunners(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request ListAgentRunnersRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentRunners(ctx, request.(ListAgentRunnersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentRunners")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentRunnersResponseObject); ok {
+		if err := validResponse.VisitListAgentRunnersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -17775,279 +17775,6 @@ func (sh *strictHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ListEnvironments operation middleware
-func (sh *strictHandler) ListEnvironments(w http.ResponseWriter, r *http.Request) {
-	var request ListEnvironmentsRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListEnvironments(ctx, request.(ListEnvironmentsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListEnvironments")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListEnvironmentsResponseObject); ok {
-		if err := validResponse.VisitListEnvironmentsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateEnvironment operation middleware
-func (sh *strictHandler) CreateEnvironment(w http.ResponseWriter, r *http.Request) {
-	var request CreateEnvironmentRequestObject
-
-	var body CreateEnvironmentJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateEnvironment(ctx, request.(CreateEnvironmentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateEnvironment")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CreateEnvironmentResponseObject); ok {
-		if err := validResponse.VisitCreateEnvironmentResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ProbeEnvironment operation middleware
-func (sh *strictHandler) ProbeEnvironment(w http.ResponseWriter, r *http.Request) {
-	var request ProbeEnvironmentRequestObject
-
-	var body ProbeEnvironmentJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ProbeEnvironment(ctx, request.(ProbeEnvironmentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ProbeEnvironment")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ProbeEnvironmentResponseObject); ok {
-		if err := validResponse.VisitProbeEnvironmentResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DiscoverSshConfig operation middleware
-func (sh *strictHandler) DiscoverSshConfig(w http.ResponseWriter, r *http.Request) {
-	var request DiscoverSshConfigRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DiscoverSshConfig(ctx, request.(DiscoverSshConfigRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DiscoverSshConfig")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DiscoverSshConfigResponseObject); ok {
-		if err := validResponse.VisitDiscoverSshConfigResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DeleteEnvironment operation middleware
-func (sh *strictHandler) DeleteEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId) {
-	var request DeleteEnvironmentRequestObject
-
-	request.EnvironmentId = environmentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteEnvironment(ctx, request.(DeleteEnvironmentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteEnvironment")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DeleteEnvironmentResponseObject); ok {
-		if err := validResponse.VisitDeleteEnvironmentResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// UpdateEnvironment operation middleware
-func (sh *strictHandler) UpdateEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId) {
-	var request UpdateEnvironmentRequestObject
-
-	request.EnvironmentId = environmentId
-
-	var body UpdateEnvironmentJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.UpdateEnvironment(ctx, request.(UpdateEnvironmentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "UpdateEnvironment")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(UpdateEnvironmentResponseObject); ok {
-		if err := validResponse.VisitUpdateEnvironmentResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ForgetEnvironmentHostKey operation middleware
-func (sh *strictHandler) ForgetEnvironmentHostKey(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId) {
-	var request ForgetEnvironmentHostKeyRequestObject
-
-	request.EnvironmentId = environmentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ForgetEnvironmentHostKey(ctx, request.(ForgetEnvironmentHostKeyRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ForgetEnvironmentHostKey")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ForgetEnvironmentHostKeyResponseObject); ok {
-		if err := validResponse.VisitForgetEnvironmentHostKeyResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// RevokeRunner operation middleware
-func (sh *strictHandler) RevokeRunner(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId) {
-	var request RevokeRunnerRequestObject
-
-	request.EnvironmentId = environmentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.RevokeRunner(ctx, request.(RevokeRunnerRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "RevokeRunner")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(RevokeRunnerResponseObject); ok {
-		if err := validResponse.VisitRevokeRunnerResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// IssueRunnerCode operation middleware
-func (sh *strictHandler) IssueRunnerCode(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId) {
-	var request IssueRunnerCodeRequestObject
-
-	request.EnvironmentId = environmentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.IssueRunnerCode(ctx, request.(IssueRunnerCodeRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "IssueRunnerCode")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(IssueRunnerCodeResponseObject); ok {
-		if err := validResponse.VisitIssueRunnerCodeResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// TestEnvironment operation middleware
-func (sh *strictHandler) TestEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId) {
-	var request TestEnvironmentRequestObject
-
-	request.EnvironmentId = environmentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.TestEnvironment(ctx, request.(TestEnvironmentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "TestEnvironment")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(TestEnvironmentResponseObject); ok {
-		if err := validResponse.VisitTestEnvironmentResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // GetOnePassword operation middleware
 func (sh *strictHandler) GetOnePassword(w http.ResponseWriter, r *http.Request) {
 	var request GetOnePasswordRequestObject
@@ -18096,63 +17823,6 @@ func (sh *strictHandler) SetOnePassword(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetOnePasswordResponseObject); ok {
 		if err := validResponse.VisitSetOnePasswordResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListPlugins operation middleware
-func (sh *strictHandler) ListPlugins(w http.ResponseWriter, r *http.Request) {
-	var request ListPluginsRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListPlugins(ctx, request.(ListPluginsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListPlugins")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListPluginsResponseObject); ok {
-		if err := validResponse.VisitListPluginsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SetPlugin operation middleware
-func (sh *strictHandler) SetPlugin(w http.ResponseWriter, r *http.Request, name string) {
-	var request SetPluginRequestObject
-
-	request.Name = name
-
-	var body SetPluginJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetPlugin(ctx, request.(SetPluginRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetPlugin")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetPluginResponseObject); ok {
-		if err := validResponse.VisitSetPluginResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -18243,6 +17913,336 @@ func (sh *strictHandler) SetProvider(w http.ResponseWriter, r *http.Request, pro
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetProviderResponseObject); ok {
 		if err := validResponse.VisitSetProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRunners operation middleware
+func (sh *strictHandler) ListRunners(w http.ResponseWriter, r *http.Request) {
+	var request ListRunnersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRunners(ctx, request.(ListRunnersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRunners")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRunnersResponseObject); ok {
+		if err := validResponse.VisitListRunnersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRunner operation middleware
+func (sh *strictHandler) CreateRunner(w http.ResponseWriter, r *http.Request) {
+	var request CreateRunnerRequestObject
+
+	var body CreateRunnerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRunner(ctx, request.(CreateRunnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRunner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRunnerResponseObject); ok {
+		if err := validResponse.VisitCreateRunnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ProbeRunner operation middleware
+func (sh *strictHandler) ProbeRunner(w http.ResponseWriter, r *http.Request) {
+	var request ProbeRunnerRequestObject
+
+	var body ProbeRunnerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ProbeRunner(ctx, request.(ProbeRunnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ProbeRunner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ProbeRunnerResponseObject); ok {
+		if err := validResponse.VisitProbeRunnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DiscoverSshConfig operation middleware
+func (sh *strictHandler) DiscoverSshConfig(w http.ResponseWriter, r *http.Request) {
+	var request DiscoverSshConfigRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DiscoverSshConfig(ctx, request.(DiscoverSshConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DiscoverSshConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DiscoverSshConfigResponseObject); ok {
+		if err := validResponse.VisitDiscoverSshConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteRunner operation middleware
+func (sh *strictHandler) DeleteRunner(w http.ResponseWriter, r *http.Request, runnerId RunnerId) {
+	var request DeleteRunnerRequestObject
+
+	request.RunnerId = runnerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteRunner(ctx, request.(DeleteRunnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteRunner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteRunnerResponseObject); ok {
+		if err := validResponse.VisitDeleteRunnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateRunner operation middleware
+func (sh *strictHandler) UpdateRunner(w http.ResponseWriter, r *http.Request, runnerId RunnerId) {
+	var request UpdateRunnerRequestObject
+
+	request.RunnerId = runnerId
+
+	var body UpdateRunnerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateRunner(ctx, request.(UpdateRunnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateRunner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateRunnerResponseObject); ok {
+		if err := validResponse.VisitUpdateRunnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ForgetRunnerHostKey operation middleware
+func (sh *strictHandler) ForgetRunnerHostKey(w http.ResponseWriter, r *http.Request, runnerId RunnerId) {
+	var request ForgetRunnerHostKeyRequestObject
+
+	request.RunnerId = runnerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ForgetRunnerHostKey(ctx, request.(ForgetRunnerHostKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ForgetRunnerHostKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ForgetRunnerHostKeyResponseObject); ok {
+		if err := validResponse.VisitForgetRunnerHostKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeRunner operation middleware
+func (sh *strictHandler) RevokeRunner(w http.ResponseWriter, r *http.Request, runnerId RunnerId) {
+	var request RevokeRunnerRequestObject
+
+	request.RunnerId = runnerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeRunner(ctx, request.(RevokeRunnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeRunner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeRunnerResponseObject); ok {
+		if err := validResponse.VisitRevokeRunnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// IssueRunnerCode operation middleware
+func (sh *strictHandler) IssueRunnerCode(w http.ResponseWriter, r *http.Request, runnerId RunnerId) {
+	var request IssueRunnerCodeRequestObject
+
+	request.RunnerId = runnerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.IssueRunnerCode(ctx, request.(IssueRunnerCodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "IssueRunnerCode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(IssueRunnerCodeResponseObject); ok {
+		if err := validResponse.VisitIssueRunnerCodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestRunner operation middleware
+func (sh *strictHandler) TestRunner(w http.ResponseWriter, r *http.Request, runnerId RunnerId) {
+	var request TestRunnerRequestObject
+
+	request.RunnerId = runnerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestRunner(ctx, request.(TestRunnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestRunner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestRunnerResponseObject); ok {
+		if err := validResponse.VisitTestRunnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSources operation middleware
+func (sh *strictHandler) ListSources(w http.ResponseWriter, r *http.Request) {
+	var request ListSourcesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSources(ctx, request.(ListSourcesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSources")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSourcesResponseObject); ok {
+		if err := validResponse.VisitListSourcesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetSourceEnabled operation middleware
+func (sh *strictHandler) SetSourceEnabled(w http.ResponseWriter, r *http.Request, name string) {
+	var request SetSourceEnabledRequestObject
+
+	request.Name = name
+
+	var body SetSourceEnabledJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetSourceEnabled(ctx, request.(SetSourceEnabledRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetSourceEnabled")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetSourceEnabledResponseObject); ok {
+		if err := validResponse.VisitSetSourceEnabledResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

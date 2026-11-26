@@ -24,7 +24,7 @@ func (d *dex) applied(t *testing.T) {
 	t.Helper()
 	eventually(t, "automatic reload", func() (bool, any) {
 		var got apiExtensionsPending
-		d.must(t, http.MethodGet, "/api/agents/default/extensions", nil, &got)
+		d.must(t, http.MethodGet, "/api/agents/default/integrations", nil, &got)
 		return !got.ReloadPending, got
 	})
 }
@@ -108,7 +108,7 @@ func TestUserShellEditWaitsForRestart(t *testing.T) {
 wait:
 	for {
 		var info apiExtensionsPending
-		d.must(t, http.MethodGet, "/api/agents/default/extensions", nil, &info)
+		d.must(t, http.MethodGet, "/api/agents/default/integrations", nil, &info)
 		if !info.ReloadPending {
 			t.Fatal("dex reloaded after only a shell rc edit")
 		}

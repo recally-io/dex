@@ -18,7 +18,7 @@ func TestUserReceivesDistinctNotificationsFromTheSameRun(t *testing.T) {
 	if err := r.q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{AgentID: "bot", BotID: "wx", Owner: "owner"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.q.InsertRoutineNotificationTarget(ctx, sqlc.InsertRoutineNotificationTargetParams{
+	if err := r.q.InsertAutomationNotificationTarget(ctx, sqlc.InsertAutomationNotificationTargetParams{
 		ID: "tg", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42",
 	}); err != nil {
 		t.Fatal(err)

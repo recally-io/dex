@@ -12,7 +12,7 @@ import (
 	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
-func TestUserManagesE2BSandboxResetsAndSwitchesEnvironments(t *testing.T) {
+func TestUserManagesE2BSandboxResetsAndSwitchesRunners(t *testing.T) {
 	t.Setenv("HOST_E2B_SECRET", "host-secret-must-not-leak")
 	fake := runnertest.NewFakeE2B(t, "e2b_live_secret")
 	dataDir := t.TempDir()
@@ -28,7 +28,7 @@ func TestUserManagesE2BSandboxResetsAndSwitchesEnvironments(t *testing.T) {
 
 	// Create E2B environment without leaking write-only secret in response.
 	const apiKey = "e2b_live_secret"
-	status, rawCreate := d.call(t, http.MethodPost, "/api/settings/environments", map[string]any{
+	status, rawCreate := d.call(t, http.MethodPost, "/api/settings/runners", map[string]any{
 		"name":   "Cloud Sandbox",
 		"kind":   "e2b",
 		"config": map[string]any{"template": "base", "timeoutSeconds": 300},
@@ -38,23 +38,23 @@ func TestUserManagesE2BSandboxResetsAndSwitchesEnvironments(t *testing.T) {
 		t.Fatalf("create e2b status=%d body=%s", status, rawCreate)
 	}
 	var envs struct {
-		Environments []apiEnvironment `json:"environments"`
+		Runners []apiRunner `json:"runners"`
 	}
-	d.must(t, http.MethodGet, "/api/settings/environments", nil, &envs)
-	if len(envs.Environments) != 1 || !envs.Environments[0].SecretSet {
-		t.Fatalf("environments=%+v", envs.Environments)
+	d.must(t, http.MethodGet, "/api/settings/runners", nil, &envs)
+	if len(envs.Runners) != 1 || !envs.Runners[0].SecretSet {
+		t.Fatalf("environments=%+v", envs.Runners)
 	}
-	envID := envs.Environments[0].ID
+	envID := envs.Runners[0].ID
 
 	// Probe environment succeeds.
-	var probe apiEnvironmentTestResult
-	d.must(t, http.MethodPost, "/api/settings/environments/"+envID+"/test", nil, &probe, http.StatusOK)
+	var probe apiRunnerTestResult
+	d.must(t, http.MethodPost, "/api/settings/runners/"+envID+"/test", nil, &probe, http.StatusOK)
 	if !probe.OK || probe.Home != "/home/user" {
 		t.Fatalf("probe=%+v", probe)
 	}
 
 	// Resetting a local bot fails with 400.
-	d.must(t, http.MethodPost, "/api/agents/default/environment/reset", nil, nil, http.StatusBadRequest)
+	d.must(t, http.MethodPost, "/api/agents/default/runner/reset", nil, nil, http.StatusBadRequest)
 
 	// Bind default bot to E2B and execute bash, write/read/deliver_file, and memory_* tools.
 	var defAgent apiAgent
@@ -62,9 +62,9 @@ func TestUserManagesE2BSandboxResetsAndSwitchesEnvironments(t *testing.T) {
 	defAgent.Provider = "faux"
 	defAgent.ModelID = "bash"
 	defAgent.ThinkingLevel = "off"
-	defAgent.EnvironmentID = envID
+	defAgent.RunnerID = envID
 	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
-	d.must(t, http.MethodPost, "/api/agents/default/extensions/reload", nil, nil)
+	d.must(t, http.MethodPost, "/api/agents/default/integrations/reload", nil, nil)
 
 	chatID := d.newSession(t).ID
 	out := taskTurn(t, d, chatID, `printf "%s|%s|%s" "$REMOTE_E2B_MARKER" "${HOST_E2B_SECRET:-}" "${LOGIN_E2B_SECRET:-}"`)
@@ -94,7 +94,7 @@ func TestUserManagesE2BSandboxResetsAndSwitchesEnvironments(t *testing.T) {
 		return !info.Busy, info.Busy
 	})
 	killsBefore := fake.Counts().Killed
-	d.must(t, http.MethodPost, "/api/agents/default/environment/reset", nil, nil, http.StatusOK)
+	d.must(t, http.MethodPost, "/api/agents/default/runner/reset", nil, nil, http.StatusOK)
 	if fake.Counts().Killed <= killsBefore {
 		t.Fatalf("expected sandbox kill on reset, counts=%+v", fake.Counts())
 	}
@@ -112,7 +112,7 @@ func TestUserManagesE2BSandboxResetsAndSwitchesEnvironments(t *testing.T) {
 	})
 	killsBeforeSwitch := fake.Counts().Killed
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &defAgent)
-	defAgent.EnvironmentID = ""
+	defAgent.RunnerID = ""
 	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
 	if fake.Counts().Killed <= killsBeforeSwitch {
 		t.Fatalf("expected sandbox cleanup on environment switch, counts=%+v", fake.Counts())
@@ -128,8 +128,8 @@ func TestUserManagesCustomE2BEndpointWithoutKeyOverHTTP(t *testing.T) {
 	d := startDexWith(t, app.Config{DataDir: dataDir})
 
 	// Pre-save probe succeeds with no secret and autoPause=false.
-	var preProbe apiEnvironmentTestResult
-	d.must(t, http.MethodPost, "/api/settings/environments/probe", map[string]any{
+	var preProbe apiRunnerTestResult
+	d.must(t, http.MethodPost, "/api/settings/runners/probe", map[string]any{
 		"kind": "e2b",
 		"config": map[string]any{
 			"apiUrl":    fake.APIURL(),
@@ -154,7 +154,7 @@ func TestUserManagesCustomE2BEndpointWithoutKeyOverHTTP(t *testing.T) {
 			AutoPause *bool  `json:"autoPause"`
 		} `json:"config"`
 	}
-	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
 		"name": "Local Docker Gateway",
 		"kind": "e2b",
 		"config": map[string]any{
@@ -175,9 +175,9 @@ func TestUserManagesCustomE2BEndpointWithoutKeyOverHTTP(t *testing.T) {
 	defAgent.Provider = "faux"
 	defAgent.ModelID = "bash"
 	defAgent.ThinkingLevel = "off"
-	defAgent.EnvironmentID = created.ID
+	defAgent.RunnerID = created.ID
 	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
-	d.must(t, http.MethodPost, "/api/agents/default/extensions/reload", nil, nil)
+	d.must(t, http.MethodPost, "/api/agents/default/integrations/reload", nil, nil)
 
 	chatID := d.newSession(t).ID
 	out := taskTurn(t, d, chatID, `printf "%s" "$REMOTE_E2B_MARKER"`)
@@ -191,7 +191,7 @@ func TestUserManagesCustomE2BEndpointWithoutKeyOverHTTP(t *testing.T) {
 		return !info.Busy, info.Busy
 	})
 	killsBefore := fake.Counts().Killed
-	d.must(t, http.MethodPost, "/api/agents/default/environment/reset", nil, nil, http.StatusOK)
+	d.must(t, http.MethodPost, "/api/agents/default/runner/reset", nil, nil, http.StatusOK)
 	if fake.Counts().Killed <= killsBefore {
 		t.Fatalf("expected sandbox delete on keyless reset, counts=%+v", fake.Counts())
 	}

@@ -482,7 +482,8 @@ once and the bot reloads.
 lifecycle (`Normalize`, `Probe`, `Changed`, `ForgetHostKey`) and the agent
 lifecycle (`CanResetAgent`, `ResetAgent`, `ReleaseAgent`). This keeps
 `internal/settings` independent of backend config schemas and SSH `known_hosts`
-storage. `runner.Runners` owns machine enrollment for the HTTP routes. SSH environments default `loginShell` to
+storage. `runner.Runners` owns machine enrollment at
+`/api/settings/runners/{runnerId}/pairing`. SSH Runners default `loginShell` to
 `true`: they start the daemon via `$SHELL -lc` and capture interactive login
 shell exports via `$SHELL -l -i -c '... env -0'` on open.
 At startup, a runner uses a bounded interactive login shell probe on its own
@@ -496,13 +497,13 @@ tools keep the service `PATH`. Bash tool
 commands still run in a non-login, non-interactive shell. An explicit command
 `PATH` takes precedence; commands that disable environment inheritance do not
 receive the login or service `PATH`.
-`GET /api/settings/environments/ssh-config` parses `~/.ssh/config` (including
+`GET /api/settings/runners/ssh-config` parses `~/.ssh/config` (including
 `Include` directives) and lists private key filenames without reading key bytes.
-`POST /api/settings/environments/probe` validates and probes unsaved settings,
+`POST /api/settings/runners/probe` validates and probes unsaved settings,
 using a temporary `known_hosts` file for new SSH endpoints and reusing saved
 trust entries when the host and port match an existing environment. When a remote
 SSH host key rotates, probes report `hostKeyChanged`, and
-`POST /api/settings/environments/{environmentId}/forget-host-key` clears the
+`POST /api/settings/runners/{runnerId}/forget-host-key` clears the
 saved entry. For `e2b`, each environment can select E2B Cloud or override
 `apiUrl`, `domain`, `envdUrl` (header-routed or `{sandboxId}`/`{port}`
 templates), and `autoPause`, with optional secrets on custom endpoints,
@@ -519,22 +520,21 @@ whichever limit comes first; complete output goes to a temporary file.
 A durable checkpoint does not attach a CLI after restart or guarantee that
 external actions occurred once.
 
-## Session environments
+## Session Runners
 
-Each session runs its command and file tools in one execution
-environment. `conversations.environment_id` in `control.sqlite` is the source
-of truth. Empty means that the session follows the bot's environment
-(`agents.environment_id`). `local` or an environment ID is an explicit
-selection, which does not change when the bot's environment changes. A
-session can select local or any registered SSH, runner, or E2B environment in the
-same Dex instance. Bots that use the same runner share its connection, not their
+Each session runs its command and file tools on one Runner.
+`conversations.runner_id` in `control.sqlite` is the source of truth. An empty
+value follows the bot's Runner (`agents.runner_id`). `local` or a registered
+Runner ID pins the selection even if the bot's Runner changes. The `runners`
+table stores registered SSH Machines, Outbound Machines, and E2B Sandboxes.
+`GET /api/agents/{agentId}/runners` lists the available choices. Bots that use the same runner share its connection, not their
 workspaces. Calls on one Runner can overlap, including calls to the same files.
 Sequence dependent operations explicitly. SSH and runner
 use the same `<base>/<bot-id>/workspace` layout under their respective base
 directories. These workspaces are not permission boundaries.
 
 The engine resolves the environment of a session at each call, through the
-`SessionEnvironment` callback that chat provides. One resolver
+`SessionRunner` callback that chat provides. One resolver
 ([`internal/engine/session_env.go`](../../internal/engine/session_env.go))
 serves the Harness `Env` hook, the `bash` tool, background commands, upload
 staging, project paths, the project `AGENTS.md`, and artifact delivery. The open
@@ -577,21 +577,21 @@ work opens a fresh sandbox in the same selected environment; old files do not
 carry over.
 Automations support explicit overrides for Local and SSH Machines only.
 
-A web chat selects its environment before its first message
-(`PUT /api/agents/{agentId}/chats/{chatId}/environment`); a started chat answers
-409. `session_new` takes `environment`. A child of the same bot runs in its
-parent's environment unless it selects another one. A child of another bot runs
-in that bot's environment unless it selects another one. `environment_list`
-shows Local and the registered Runners with ID, name, kind, and status, with
+A web chat sets `runnerId` before its first message with
+`PUT /api/agents/{agentId}/chats/{chatId}/runner`. A started chat returns 409.
+`POST /api/agents/{agentId}/runner/reset` resets an idle bot's E2B Sandbox.
+`session_new` takes `runnerId`. If omitted, a child of the same bot uses the
+parent's Runner. A child of another bot uses that bot's Runner. `runner_list`
+returns Local and the registered Runners in `runners`, with ID, name, kind, and status, with
 the bot's default first. The stored kind `runner` identifies an Outbound
 Machine that connects through `dex-agent`. An offline Machine remains listed. The tool includes
 `desc` when the owner sets a description on the saved environment in Settings.
 This plain text is data. It does not change selection or access and does not go
 into the system prompt. The tool does not show configuration or secrets.
 
-A fork keeps the environment selection of its source unless it selects local or a registered
-environment (`environmentId` of `POST /api/agents/{agentId}/chats/{chatId}/fork`, `environment`
-of `session_fork`). When the effective environment changes, the fork has no cwd. When the copied
+A fork keeps its source Runner unless it selects Local or a registered Runner.
+Use `runnerId` in `POST /api/agents/{agentId}/chats/{chatId}/fork` or `session_fork`.
+When the Runner changes, the fork has no cwd. When the copied
 history last ran in another environment than the fork, the engine ends the copied history with one
 `dex.environment` entry. The entry holds the notice as a user message, so the model reads it
 before the next input, and the transcript shows it as an `environment` boundary. The entry data

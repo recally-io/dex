@@ -435,7 +435,7 @@ function StepsRow({
   );
 }
 
-// With other environments, Fork from here asks where the new chat runs.
+// With other runners, Fork from here asks where the new chat runs.
 function ForkAction({ actions, entryId }: { actions: MessageActions; entryId: number }) {
   const targets = actions.forkTargets ?? [];
 
@@ -590,7 +590,7 @@ export type MessageActions = {
   pending: boolean;
   /** Environments other than the current one that a fork can move to. */
   forkTargets?: { id: string; name: string; status: string }[];
-  fork: (entryId: number, before: boolean, text?: string, environmentId?: string) => void;
+  fork: (entryId: number, before: boolean, text?: string, runnerId?: string) => void;
 };
 
 export type QueuedActions = {

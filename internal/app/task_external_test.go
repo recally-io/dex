@@ -122,7 +122,7 @@ func TestUserDispatchesExternalBoardRunThroughARunnerProcess(t *testing.T) {
 	m.connect(d)
 	var bot apiAgent
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
-	bot.Provider, bot.ModelID, bot.ThinkingLevel, bot.EnvironmentID = "faux", "tool", "off", m.envID
+	bot.Provider, bot.ModelID, bot.ThinkingLevel, bot.RunnerID = "faux", "tool", "off", m.envID
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
 	var main chatInfo
 	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)

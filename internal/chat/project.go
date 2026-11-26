@@ -47,9 +47,9 @@ func ProjectPath(path string) (string, error) {
 }
 
 // resolveProjectPath validates and normalizes a project path inside an execution environment of
-// the agent. An empty environmentID selects the environment of the agent.
-func (s *Service) resolveProjectPath(ctx context.Context, agentID, environmentID, path string) (string, error) {
-	return s.engine.ResolveProjectPath(ctx, agentID, environmentID, path)
+// the agent. An empty runnerID selects the environment of the agent.
+func (s *Service) resolveProjectPath(ctx context.Context, agentID, runnerID, path string) (string, error) {
+	return s.engine.ResolveProjectPath(ctx, agentID, runnerID, path)
 }
 
 // SetProject saves control state first. API changes apply on the next submit.
@@ -64,7 +64,7 @@ func (s *Service) SetProject(ctx context.Context, agentID string, id int64, path
 	if !acceptsInput(conv.ChannelKey, conv.ParentID) {
 		return "", ErrProjectForbidden
 	}
-	path, err = s.resolveProjectPath(ctx, agentID, conv.EnvironmentID, path)
+	path, err = s.resolveProjectPath(ctx, agentID, conv.RunnerID, path)
 	if err != nil {
 		return "", err
 	}
@@ -83,11 +83,11 @@ func (s *Service) ToolSetProject(ctx context.Context, source engine.TaskContext,
 }
 
 // RecentProjects reads activity once and filters paths that do not exist in the environment of the
-// agent or in environmentID.
-func (s *Service) RecentProjects(ctx context.Context, agentID, environmentID string) ([]string, error) {
+// agent or in runnerID.
+func (s *Service) RecentProjects(ctx context.Context, agentID, runnerID string) ([]string, error) {
 	paths, err := s.q.ListRecentProjects(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
-	return s.engine.FilterProjectPaths(ctx, agentID, environmentID, paths, 8)
+	return s.engine.FilterProjectPaths(ctx, agentID, runnerID, paths, 8)
 }

@@ -33,7 +33,7 @@ func (h *handler) CreateAgent(ctx context.Context, req api.CreateAgentRequestObj
 		FallbackProvider: b.FallbackProvider,
 		FallbackModelID:  b.FallbackModelId,
 		Instructions:     b.Instructions,
-		EnvironmentID:    b.EnvironmentId,
+		RunnerID:         b.RunnerId,
 	})
 	if err != nil {
 		return nil, err

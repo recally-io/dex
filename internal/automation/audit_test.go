@@ -176,13 +176,13 @@ func TestUserIntervalCatchUpKeepsScheduleAlignment(t *testing.T) {
 // Given a routine that follows a bot on an SSH environment, when the bot moves to another
 // environment during the reachability check, then no run is stored for the environment that was
 // not checked, and the caller is told to run it again.
-func TestUserRoutineRunsOnlyOnTheCheckedEnvironment(t *testing.T) {
+func TestUserRoutineRunsOnlyOnTheCheckedRunner(t *testing.T) {
 	f := newRoutineFixture(t)
 	ctx := t.Context()
-	if _, err := f.conn.ExecContext(ctx, `INSERT INTO execution_environments (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
+	if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.conn.ExecContext(ctx, `UPDATE agents SET environment_id = 'box' WHERE id = 'a'`); err != nil {
+	if _, err := f.conn.ExecContext(ctx, `UPDATE agents SET runner_id = 'box' WHERE id = 'a'`); err != nil {
 		t.Fatal(err)
 	}
 	a, err := f.routines.Create(ctx, "a", routineInput())
@@ -190,9 +190,9 @@ func TestUserRoutineRunsOnlyOnTheCheckedEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	var probed []string
-	f.routines.ConfigureProbe(func(ctx context.Context, agentID, environmentID string) error {
-		probed = append(probed, environmentID)
-		_, err := f.conn.ExecContext(ctx, `UPDATE agents SET environment_id = '' WHERE id = ?`, agentID)
+	f.routines.ConfigureProbe(func(ctx context.Context, agentID, runnerID string) error {
+		probed = append(probed, runnerID)
+		_, err := f.conn.ExecContext(ctx, `UPDATE agents SET runner_id = '' WHERE id = ?`, agentID)
 		return err
 	})
 	if _, err := f.routines.RunNow(ctx, "a", a.ID); !errors.Is(err, engine.ErrBusy) {
@@ -212,17 +212,17 @@ func TestUserRoutineRunsOnlyOnTheCheckedEnvironment(t *testing.T) {
 func TestUserRoutineEditDuringRunNowCheckStartsNoRun(t *testing.T) {
 	f := newRoutineFixture(t)
 	ctx := t.Context()
-	if _, err := f.conn.ExecContext(ctx, `INSERT INTO execution_environments (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
+	if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
 		t.Fatal(err)
 	}
 	in := routineInput()
-	in.EnvironmentID = "box"
+	in.RunnerID = "box"
 	a, err := f.routines.Create(ctx, "a", in)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.routines.ConfigureProbe(func(ctx context.Context, agentID, _ string) error {
-		in.EnvironmentID = runner.LocalID
+		in.RunnerID = runner.LocalID
 		_, err := f.routines.Update(ctx, agentID, a.ID, in)
 		return err
 	})
@@ -251,22 +251,22 @@ func TestUserRoutineSkipsATargetInvalidatedDuringPreflight(t *testing.T) {
 				t.Fatal(err)
 			}
 			if _, err := f.conn.ExecContext(ctx, `INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('a', '123:fixture', '42');
-INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
+INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.conn.ExecContext(ctx, `INSERT INTO execution_environments (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
+			if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
 				t.Fatal(err)
 			}
 			conv, err := f.q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: "a", ChannelKey: "chat:bound-target"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.q.SetChatEnvironment(ctx, sqlc.SetChatEnvironmentParams{ID: conv.ID, AgentID: "a", EnvironmentID: "box"}); err != nil {
+			if _, err := f.q.SetChatRunner(ctx, sqlc.SetChatRunnerParams{ID: conv.ID, AgentID: "a", RunnerID: "box"}); err != nil {
 				t.Fatal(err)
 			}
 			in := routineInput()
 			in.Session, in.TargetConversationID = "session", conv.ID
-			in.Notification = &automation.RoutineNotification{Mode: "default"}
+			in.Notification = &automation.Notification{Mode: "default"}
 			a, err := f.routines.Create(ctx, "a", in)
 			if err != nil {
 				t.Fatal(err)
@@ -287,7 +287,7 @@ INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) 
 			}
 			// The existing failure routing enqueues one alert, without a model input.
 			var count, submissions int
-			if err := f.conn.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM outbox_messages WHERE kind = 'routine' AND body = ?), (SELECT count(*) FROM submissions)`, "routine: failed\n"+run.Reason).Scan(&count, &submissions); err != nil || count != 1 || submissions != 0 {
+			if err := f.conn.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM outbox_messages WHERE kind = 'automation' AND body = ?), (SELECT count(*) FROM submissions)`, "routine: failed\n"+run.Reason).Scan(&count, &submissions); err != nil || count != 1 || submissions != 0 {
 				t.Fatalf("alerts=%d, submissions=%d, err=%v", count, submissions, err)
 			}
 		})

@@ -33,8 +33,8 @@ type machine struct {
 // addMachine creates a machine environment in d. The machine is not enrolled yet.
 func addMachine(t *testing.T, d *dex, name string) *machine {
 	t.Helper()
-	var created apiEnvironment
-	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{"name": name, "kind": "runner"}, &created, http.StatusCreated)
+	var created apiRunner
+	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{"name": name, "kind": "runner"}, &created, http.StatusCreated)
 	m := &machine{t: t, envID: created.ID, state: t.TempDir()}
 	if err := os.Mkdir(filepath.Join(m.state, "workspace"), 0o700); err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func (m *machine) issue(d *dex) string {
 	var issued struct {
 		Code string `json:"code"`
 	}
-	d.must(m.t, http.MethodPost, "/api/settings/environments/"+m.envID+"/runner-pairing", nil, &issued)
+	d.must(m.t, http.MethodPost, "/api/settings/runners/"+m.envID+"/pairing", nil, &issued)
 	return issued.Code
 }
 
@@ -123,8 +123,8 @@ func (m *machine) disconnect() {
 func (m *machine) waitOnline(d *dex, online bool) {
 	m.t.Helper()
 	eventually(m.t, fmt.Sprintf("machine online=%t", online), func() (bool, any) {
-		var probe apiEnvironmentTestResult
-		d.must(m.t, http.MethodPost, "/api/settings/environments/"+m.envID+"/test", nil, &probe)
+		var probe apiRunnerTestResult
+		d.must(m.t, http.MethodPost, "/api/settings/runners/"+m.envID+"/test", nil, &probe)
 		return probe.OK == online, probe
 	})
 }
@@ -153,7 +153,7 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	d.srv.Client().Jar = jar
 	d.must(t, http.MethodPost, "/api/session", map[string]string{"token": "test-admin"}, nil, http.StatusNoContent)
 	m := addMachine(t, d, "Debian VM")
-	settingsPath := "/api/settings/environments/" + m.envID
+	settingsPath := "/api/settings/runners/" + m.envID
 	code := m.issue(d)
 
 	// The code needs no certificate, and a browser request is refused.
@@ -193,11 +193,11 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{
 		"name": "Second bot", "provider": "faux", "modelId": "bash", "thinkingLevel": "off",
 	}, &second, http.StatusCreated)
-	newChat := func(agentID, environmentID string) botChat {
+	newChat := func(agentID, runnerID string) botChat {
 		var session sessionInfo
 		d.must(t, http.MethodPost, "/api/agents/"+agentID+"/chats", nil, &session, http.StatusCreated)
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/%s/chats/%d/environment", agentID, session.ID),
-			map[string]string{"environmentId": environmentID}, nil)
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/%s/chats/%d/runner", agentID, session.ID),
+			map[string]string{"runnerId": runnerID}, nil)
 		return botChat{bots: &bots{t: t, d: d}, agent: agentID, id: session.ID}
 	}
 	first, other := newChat("default", m.envID), newChat(second.ID, m.envID)
@@ -215,7 +215,7 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	// Changing the bot default still connects to the machine and survives an extension reload.
 	var bot apiAgent
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
-	bot.EnvironmentID = m.envID
+	bot.RunnerID = m.envID
 	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
 	for range 2 {
 		reloadBot(t, d)
@@ -230,7 +230,7 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	assertVaultCommand(t, d, chat)
 	d.setModel(t, "bash")
 
-	d.must(t, http.MethodDelete, settingsPath+"/runner-pairing", nil, nil)
+	d.must(t, http.MethodDelete, settingsPath+"/pairing", nil, nil)
 	select {
 	case <-m.done:
 	case <-ctx.Done():
@@ -243,11 +243,11 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 
 	// An offline runner remains listed, but an explicit session never runs on local.
 	var listed struct {
-		Environments []apiSessionEnvironment `json:"environments"`
+		Runners []apiSessionRunner `json:"runners"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/"+second.ID+"/environments", nil, &listed)
-	if len(listed.Environments) != 2 || listed.Environments[1].ID != m.envID || listed.Environments[1].Status != "offline" {
-		t.Fatalf("offline runner: %+v", listed.Environments)
+	d.must(t, http.MethodGet, "/api/agents/"+second.ID+"/runners", nil, &listed)
+	if len(listed.Runners) != 2 || listed.Runners[1].ID != m.envID || listed.Runners[1].Status != "offline" {
+		t.Fatalf("offline runner: %+v", listed.Runners)
 	}
 	other.send(`printf 'offline-fallback' > offline.txt`)
 	other.watch().until(t, "offline runner refuses the tool", func(tr *transcript) bool {
@@ -277,7 +277,7 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 func reloadBot(t *testing.T, d *dex) {
 	t.Helper()
 	eventually(t, "reload of the default bot", func() (bool, any) {
-		status, body := d.call(t, http.MethodPost, "/api/agents/default/extensions/reload", nil)
+		status, body := d.call(t, http.MethodPost, "/api/agents/default/integrations/reload", nil)
 		if status != http.StatusOK && status != http.StatusConflict {
 			t.Fatalf("reload: %d %s", status, body)
 		}
@@ -290,7 +290,7 @@ func useMachine(t *testing.T, d *dex, m *machine, model string) {
 	t.Helper()
 	var bot apiAgent
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
-	bot.Provider, bot.ModelID, bot.ThinkingLevel, bot.EnvironmentID = "faux", model, "off", m.envID
+	bot.Provider, bot.ModelID, bot.ThinkingLevel, bot.RunnerID = "faux", model, "off", m.envID
 	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
 	reloadBot(t, d)
 }
@@ -308,7 +308,7 @@ func TestUserBotKeepsItsMachineAcrossAReconnect(t *testing.T) {
 		t.Fatalf("turn before the reconnect: %q", got)
 	}
 	var other apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Busy", "provider": "faux", "modelId": "bash", "thinkingLevel": "off", "environmentId": "local"}, &other, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Busy", "provider": "faux", "modelId": "bash", "thinkingLevel": "off", "runnerId": "local"}, &other, http.StatusCreated)
 	var session sessionInfo
 	d.must(t, http.MethodPost, "/api/agents/"+other.ID+"/chats", nil, &session, http.StatusCreated)
 	busy := botChat{bots: &bots{t: t, d: d}, agent: other.ID, id: session.ID}
@@ -325,7 +325,7 @@ func TestUserBotKeepsItsMachineAcrossAReconnect(t *testing.T) {
 	d.watch(t, chat).until(t, "answer to "+id+" after the reconnect", answeredWith("bash: before after"))
 	busy.watch().until(t, "the other bot still runs", func(tr *transcript) bool { return tr.running })
 	var ext apiExtensionsPending
-	d.must(t, http.MethodGet, "/api/agents/default/extensions", nil, &ext)
+	d.must(t, http.MethodGet, "/api/agents/default/integrations", nil, &ext)
 	if ext.ReloadPending {
 		t.Fatal("a reconnect of the same machine made the bot stale")
 	}
@@ -348,7 +348,7 @@ func TestUserBotRecoversItsMachineAfterAnOfflineStart(t *testing.T) {
 	id := d.send(t, chat, "skills")
 	// The extensions of a bot that is not open need its machine, so success means the bot opened.
 	eventually(t, "the bot opens without its machine", func() (bool, any) {
-		status, body := d.call(t, http.MethodGet, "/api/agents/default/extensions", nil)
+		status, body := d.call(t, http.MethodGet, "/api/agents/default/integrations", nil)
 		return status == http.StatusOK, body
 	})
 

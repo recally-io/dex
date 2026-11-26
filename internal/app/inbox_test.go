@@ -120,14 +120,14 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 		Agents []struct {
 			ID       string `json:"id"`
 			Activity struct {
-				RoutineFailed bool `json:"routineFailed"`
+				AutomationFailed bool `json:"automationFailed"`
 			} `json:"activity"`
 		} `json:"agents"`
 	}
 	d.must(t, http.MethodGet, "/api/agents", nil, &response)
 	for _, agent := range response.Agents {
-		if !agent.Activity.RoutineFailed {
-			t.Fatalf("agent %s activity=%+v, want routineFailed=true", agent.ID, agent.Activity)
+		if !agent.Activity.AutomationFailed {
+			t.Fatalf("agent %s activity=%+v, want automationFailed=true", agent.ID, agent.Activity)
 		}
 	}
 	// When the owner reads and dismisses one bot's results, repeated writes are safe.

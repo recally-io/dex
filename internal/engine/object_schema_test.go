@@ -31,7 +31,7 @@ func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
 	const id = "bot"
 	runtime := engine.ExtensionRuntime{AgentID: id}
 	extensions := append(engine.BuiltInSchemaExtensions(),
-		chat.CheckExtension(id, nil), automation.RoutineExtension(id, automation.RoutineTools{}),
+		chat.CheckExtension(id, nil), automation.ToolExtension(id, automation.ToolHandlers{}),
 		chat.SessionExtension(id, chat.SessionHandlers{}), chat.SessionReadExtension(id, chat.SessionHandlers{}),
 		chat.WorkLoopExtension(), artifact.Extension(runtime, nil), chat.FrontDeskExtension(),
 		chat.OutboxExtension(id, chat.OutboxTools{}), chat.ChildOutboxExtension(id, chat.OutboxTools{}), chat.MonitorExtension(runtime, chat.MonitorTools{}),

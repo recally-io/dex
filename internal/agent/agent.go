@@ -30,9 +30,9 @@ import (
 // ErrInvalid means that a requested agent or channel change is invalid.
 var ErrInvalid = errors.New("invalid settings")
 
-// ErrEnvironmentBusy is a change of the bot's environment while sessions that follow it have
+// ErrRunnerBusy is a change of the bot's environment while sessions that follow it have
 // queued input or running background commands.
-var ErrEnvironmentBusy = errors.New("sessions that use the environment of the bot have queued input or running background commands")
+var ErrRunnerBusy = errors.New("sessions that use the environment of the bot have queued input or running background commands")
 
 // ErrNotFound means that the agent does not exist.
 var ErrNotFound = errors.New("bot not found")
@@ -41,20 +41,20 @@ var thinkingLevels = []string{"off", "minimal", "low", "medium", "high", "xhigh"
 
 // Service owns agent writes and channel setup sessions.
 type Service struct {
-	q                    *sqlc.Queries
-	checkModel           func(context.Context, string, string) error
-	wechatOptions        wechat.Options
-	onWechat             func(string, *wechat.Config)
-	db                   *sql.DB
-	ChannelStatus        func(string, string) channel.Status
-	OnEnvironmentChanged func(ctx context.Context, agentID, oldEnvID, oldSandboxID string)
-	apiURL               string
-	onTelegram           func(string, *telegram.Config)
-	telegramVault        *vault.Store
-	manager              *telegramManager
-	feishuAPIURL         string
-	feishuRegistrar      feishu.Registrar
-	onFeishu             func(string, *feishu.Config)
+	q               *sqlc.Queries
+	checkModel      func(context.Context, string, string) error
+	wechatOptions   wechat.Options
+	onWechat        func(string, *wechat.Config)
+	db              *sql.DB
+	ChannelStatus   func(string, string) channel.Status
+	OnRunnerChanged func(ctx context.Context, agentID, oldEnvID, oldSandboxID string)
+	apiURL          string
+	onTelegram      func(string, *telegram.Config)
+	telegramVault   *vault.Store
+	manager         *telegramManager
+	feishuAPIURL    string
+	feishuRegistrar feishu.Registrar
+	onFeishu        func(string, *feishu.Config)
 	// One lock orders credential checks, saves, runtime changes, and setup sessions
 	// across agents. Model checks take the settings lock; settings never takes this lock.
 	mu               sync.Mutex
@@ -69,7 +69,7 @@ func New(q *sqlc.Queries, checkModel func(context.Context, string, string) error
 
 // Activity summarizes one agent for the agent list.
 type Activity struct {
-	RoutineFailed      bool  `json:"routineFailed"`
+	AutomationFailed   bool  `json:"automationFailed"`
 	ActiveSessions     int64 `json:"activeSessions"`
 	RunningChannels    int64 `json:"runningChannels"`
 	EnabledAutomations int64 `json:"enabledAutomations"`
@@ -86,7 +86,7 @@ type Agent struct {
 	FallbackProvider string    `json:"fallbackProvider"`
 	FallbackModelID  string    `json:"fallbackModelId"`
 	Instructions     string    `json:"instructions"`
-	EnvironmentID    string    `json:"environmentId"`
+	RunnerID         string    `json:"runnerId"`
 	// ArchivedAt is the archive time in Unix milliseconds; zero for an active bot.
 	ArchivedAt int64 `json:"archivedAt,omitzero"`
 }
@@ -117,7 +117,7 @@ func agentView(row sqlc.Agent) Agent {
 	return Agent{
 		ID: row.ID, Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
 		ThinkingLevel: row.ThinkingLevel, FallbackProvider: row.FallbackProvider, FallbackModelID: row.FallbackModelID,
-		Instructions: row.Instructions, EnvironmentID: row.EnvironmentID, ArchivedAt: row.ArchivedAt.Int64,
+		Instructions: row.Instructions, RunnerID: row.RunnerID, ArchivedAt: row.ArchivedAt.Int64,
 	}
 }
 
@@ -130,7 +130,7 @@ func (s *Service) ListAgents(ctx context.Context) ([]Agent, error) {
 	agents := make([]Agent, len(rows))
 	for i, row := range rows {
 		agents[i] = agentView(row.Agent)
-		current := Activity{RoutineFailed: row.RoutineFailed == 1, ActiveSessions: row.ActiveSessions, EnabledAutomations: row.EnabledAutomations}
+		current := Activity{AutomationFailed: row.AutomationFailed == 1, ActiveSessions: row.ActiveSessions, EnabledAutomations: row.EnabledAutomations}
 		if s.ChannelStatus != nil {
 			for _, platform := range []string{"telegram", "wechat", "feishu"} {
 				if s.ChannelStatus(row.Agent.ID, platform).State == "running" {
@@ -165,7 +165,7 @@ func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 		if err := s.saveSettings(ctx, oldRow, sqlc.UpdateAgentSettingsParams{
 			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel,
 			FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
-			Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
+			Instructions: a.Instructions, RunnerID: a.RunnerID, ID: id, Name: a.Name,
 		}); err != nil {
 			return err
 		}
@@ -174,8 +174,8 @@ func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 	if err != nil {
 		return err
 	}
-	if oldRow.EnvironmentID != a.EnvironmentID && s.OnEnvironmentChanged != nil {
-		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID, oldRow.EnvironmentSandboxID)
+	if oldRow.RunnerID != a.RunnerID && s.OnRunnerChanged != nil {
+		s.OnRunnerChanged(ctx, id, oldRow.RunnerID, oldRow.RunnerSandboxID)
 	}
 	return nil
 }
@@ -196,7 +196,7 @@ func (s *Service) CreateAgent(ctx context.Context, p Patch) (Agent, error) {
 	row, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{
 		ID: uuid.NewV7().String(), Name: a.Name, ModelProvider: a.Provider, ModelID: a.ModelID,
 		ThinkingLevel: a.ThinkingLevel, FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
-		Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, CreatedAt: time.Now().UnixMilli(),
+		Instructions: a.Instructions, RunnerID: a.RunnerID, CreatedAt: time.Now().UnixMilli(),
 	})
 	return agentView(row), err
 }
@@ -244,8 +244,8 @@ func (s *Service) withDefaults(ctx context.Context, p Patch) (Patch, error) {
 	if p.ThinkingLevel == nil {
 		p.ThinkingLevel = &d.ThinkingLevel
 	}
-	if p.EnvironmentID == nil {
-		p.EnvironmentID = &d.EnvironmentID
+	if p.RunnerID == nil {
+		p.RunnerID = &d.RunnerID
 	}
 	return p, nil
 }
@@ -258,13 +258,13 @@ func (s *Service) cleanAgent(ctx context.Context, a Agent) (Agent, error) {
 	if !slices.Contains(thinkingLevels, a.ThinkingLevel) {
 		return a, fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, a.ThinkingLevel)
 	}
-	a.EnvironmentID = strings.TrimSpace(a.EnvironmentID)
-	if a.EnvironmentID == "local" {
-		a.EnvironmentID = ""
+	a.RunnerID = strings.TrimSpace(a.RunnerID)
+	if a.RunnerID == "local" {
+		a.RunnerID = ""
 	}
-	if a.EnvironmentID != "" {
-		if _, err := s.q.GetEnvironment(ctx, a.EnvironmentID); errors.Is(err, sql.ErrNoRows) {
-			return a, fmt.Errorf("%w: execution environment %q does not exist", ErrInvalid, a.EnvironmentID)
+	if a.RunnerID != "" {
+		if _, err := s.q.GetRunner(ctx, a.RunnerID); errors.Is(err, sql.ErrNoRows) {
+			return a, fmt.Errorf("%w: execution environment %q does not exist", ErrInvalid, a.RunnerID)
 		} else if err != nil {
 			return a, err
 		}

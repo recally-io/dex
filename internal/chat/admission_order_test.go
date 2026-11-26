@@ -52,7 +52,7 @@ func openNativeTest(t *testing.T, dir, model string, wrap ...func(runner.Provide
 	report := func(ctx context.Context, c engine.TaskContext, a ReportParentArgs) (string, error) {
 		return service.ToolReportParent(ctx, c, a)
 	}
-	agents, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, FakeInputSuffix: BoundRoutineCheckSuffix, ExecEnv: provider, SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionEnvironment(ctx, ref) }, Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
+	agents, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, FakeInputSuffix: BoundRoutineCheckSuffix, ExecEnv: provider, SessionRunner: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionRunner(ctx, ref) }, Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
 		id := rt.AgentID
 		handlers := SessionHandlers{Sessions: SessionTools{
 			New: service.ToolSessionNew, Send: service.ToolSessionSend, Stop: service.ToolSessionStop, List: service.ToolSessionList,

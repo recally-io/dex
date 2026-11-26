@@ -24,19 +24,19 @@ const (
 )
 
 const (
-	routineEnvironmentPrefix = "the environment "
+	routineRunnerPrefix      = "the environment "
 	routineUnavailableSuffix = " is unavailable"
 	routineRemovedSuffix     = " was removed"
 )
 
-// RoutineUnavailableEnvironment describes a failed probe without including its diagnostics.
-func RoutineUnavailableEnvironment(name string) string {
-	return routineEnvironmentPrefix + name + routineUnavailableSuffix
+// RoutineUnavailableRunner describes a failed probe without including its diagnostics.
+func RoutineUnavailableRunner(name string) string {
+	return routineRunnerPrefix + name + routineUnavailableSuffix
 }
 
-// RoutineRemovedEnvironment describes a deleted environment by its saved ID.
-func RoutineRemovedEnvironment(id string) string {
-	return routineEnvironmentPrefix + id + routineRemovedSuffix
+// RoutineRemovedRunner describes a deleted environment by its saved ID.
+func RoutineRemovedRunner(id string) string {
+	return routineRunnerPrefix + id + routineRemovedSuffix
 }
 
 // AutomationInput binds one run record to its durable message intent.
@@ -44,8 +44,8 @@ type AutomationInput struct {
 	Expected                                 *sqlc.Automation
 	Run                                      sqlc.CreateAutomationRunParams
 	AgentID, ChannelKey, Title, Content, Cwd string
-	// EnvironmentID is the environment of the routine: empty follows the bot.
-	EnvironmentID string
+	// RunnerID is the environment of the routine: empty follows the bot.
+	RunnerID string
 	// Target is the effective environment that the preflight checked, and Skip is its reason to
 	// skip the run. The input is stored only when the environment is still Target.
 	Target, Skip string
@@ -97,21 +97,21 @@ func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (Au
 	if out.ConversationID != 0 {
 		s.WakeConversation(out.ConversationID)
 	} else {
-		s.WakeRoutineOutbox(ctx, in.Run.ID)
+		s.WakeAutomationOutbox(ctx, in.Run.ID)
 	}
 	return out, nil
 }
 
-// bindAutomationEnvironment selects the environment of the routine for its chat. A reused chat
+// bindAutomationRunner selects the environment of the routine for its chat. A reused chat
 // continues only in the effective environment (ranIn) of its last run, because its history, paths,
 // and tool results belong to that machine. A chat cannot change its environment after its first
 // message, so a reused chat from another environment moves to the key of this run, where it stays
 // readable, and the run starts a new chat. This also covers a routine that follows the bot after
 // the bot's environment changed.
-func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, in AutomationInput, ranIn string) (sqlc.Conversation, error) {
+func bindAutomationRunner(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, in AutomationInput, ranIn string) (sqlc.Conversation, error) {
 	// A chat with no run stays. A last run with an empty binding is from before runs stored their
 	// environment, so where it ran is not known, and the chat starts again.
-	last, err := q.LastAutomationRunEnvironment(ctx, conv.ID)
+	last, err := q.LastAutomationRunRunner(ctx, conv.ID)
 	moved := err == nil && last != ranIn
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
@@ -120,10 +120,10 @@ func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.C
 		return conv, err
 	}
 	if !moved {
-		if conv.EnvironmentID == in.EnvironmentID {
+		if conv.RunnerID == in.RunnerID {
 			return conv, nil
 		}
-		n, err := q.SetChatEnvironment(ctx, sqlc.SetChatEnvironmentParams{EnvironmentID: in.EnvironmentID, ID: conv.ID, AgentID: in.AgentID})
+		n, err := q.SetChatRunner(ctx, sqlc.SetChatRunnerParams{RunnerID: in.RunnerID, ID: conv.ID, AgentID: in.AgentID})
 		if err != nil || n == 1 {
 			return conv, err
 		}
@@ -135,9 +135,9 @@ func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.C
 	if err != nil {
 		return conv, err
 	}
-	n, err := q.SetChatEnvironment(ctx, sqlc.SetChatEnvironmentParams{EnvironmentID: in.EnvironmentID, ID: conv.ID, AgentID: in.AgentID})
+	n, err := q.SetChatRunner(ctx, sqlc.SetChatRunnerParams{RunnerID: in.RunnerID, ID: conv.ID, AgentID: in.AgentID})
 	if err == nil && n != 1 {
-		err = fmt.Errorf("routine chat %d did not take environment %q", conv.ID, in.EnvironmentID)
+		err = fmt.Errorf("routine chat %d did not take environment %q", conv.ID, in.RunnerID)
 	}
 	return conv, err
 }
@@ -147,7 +147,7 @@ func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.C
 // A skipped run has no input and its chat ID is 0.
 func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInput) (AutomationInputResult, error) {
 	// Take the SQLite writer before reading, so an edit or an archive cannot pass a check before the insert.
-	if err := q.LockRoutineTools(ctx); err != nil {
+	if err := q.LockAutomationTools(ctx); err != nil {
 		return AutomationInputResult{}, err
 	}
 	if err := db.RequireActive(ctx, q, in.AgentID); err != nil {
@@ -176,7 +176,7 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 	}
 	bound := current.Session == "session"
 	var conv sqlc.Conversation
-	ranIn, cwd := effectiveEnvironment(bot, in.EnvironmentID), in.Cwd
+	ranIn, cwd := effectiveRunner(bot, in.RunnerID), in.Cwd
 	if bound && in.Skip != RoutineSkipMissed {
 		conv, err = AutomationTarget(ctx, q, in.AgentID, current.TargetConversationID)
 		switch {
@@ -185,7 +185,7 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 		case err != nil:
 			return AutomationInputResult{}, err
 		default:
-			ranIn, cwd = effectiveEnvironment(bot, conv.EnvironmentID), conv.Cwd
+			ranIn, cwd = effectiveRunner(bot, conv.RunnerID), conv.Cwd
 			busy, err := q.CountBoundAutomationPending(ctx, current.ID)
 			if err != nil {
 				return AutomationInputResult{}, err
@@ -206,12 +206,12 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 		if err != nil || created == 0 {
 			return AutomationInputResult{}, err
 		}
-		if err := queueRoutineOutbox(ctx, q, in.Run.ID, 0, in.Run.CreatedAt); err != nil {
+		if err := queueAutomationOutbox(ctx, q, in.Run.ID, 0, in.Run.CreatedAt); err != nil {
 			return AutomationInputResult{}, err
 		}
 		return AutomationInputResult{Skip: in.Skip, Created: true}, nil
 	}
-	in.Run.EnvironmentID, in.Run.Cwd = ranIn, cwd
+	in.Run.RunnerID, in.Run.Cwd = ranIn, cwd
 	created, err := q.CreateAutomationRun(ctx, in.Run)
 	if err != nil || created == 0 {
 		return AutomationInputResult{}, err
@@ -221,7 +221,7 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 		if err != nil {
 			return AutomationInputResult{}, err
 		}
-		if conv, err = bindAutomationEnvironment(ctx, q, conv, in, ranIn); err != nil {
+		if conv, err = bindAutomationRunner(ctx, q, conv, in, ranIn); err != nil {
 			return AutomationInputResult{}, err
 		}
 		if err = q.SetConversationCwd(ctx, sqlc.SetConversationCwdParams{ID: conv.ID, AgentID: in.AgentID, Cwd: in.Cwd}); err != nil {

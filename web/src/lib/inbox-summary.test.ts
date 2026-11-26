@@ -98,7 +98,7 @@ test("Inbox shows open questions, unhandled failures and changes, and missing mo
         createdAt: 1,
         read: false,
         dismissed: false,
-        environmentId: "local",
+        runnerId: "local",
         cwd: "",
       },
       {
@@ -113,7 +113,7 @@ test("Inbox shows open questions, unhandled failures and changes, and missing mo
         createdAt: 1,
         read: true,
         dismissed: true,
-        environmentId: "local",
+        runnerId: "local",
         cwd: "",
       },
     ],

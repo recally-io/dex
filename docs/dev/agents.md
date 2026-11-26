@@ -11,12 +11,12 @@ One owner can create several agents. `GET /api/agents` returns
 counts sessions and automations across all agents. A child session counts when it has pending input, like any other visible session. Each session
 counts once. Channel counts come from the app registry. The web polls this
 list every three seconds and shares its cache across agent pages. The same
-response includes per-agent `routineFailed`.
+response includes per-agent `automationFailed`.
 These fields come from the activity SQL query. `POST /api/agents` accepts a name
 and optional primary model, thinking level, fallback model, instructions, and
-execution environment. Omitted fields copy the built-in `default` agent; a model
+Runner (`runnerId`). Omitted fields copy the built-in `default` agent; a model
 that is no longer available is not copied. Empty strings choose no model or the
-local environment. `POST /api/agents` returns the created agent with a UUID v7
+Local Runner. `POST /api/agents` returns the created agent with a UUID v7
 ID (`201`). The ID is read-only. `GET` and `PUT` on `/api/agents/{agentId}` read
 and save one agent. Names and models use the same validation for creation and
 updates. A fallback model needs a primary model. `agentModels` wraps the runtime model catalog for each agent: if an
@@ -42,7 +42,7 @@ no archive route: only an approved `bot_delete` question archives (see
 agent. The archive guard is one `UPDATE ... WHERE` in `internal/db`: the agent
 exists, is not `default`, is not archived, and has no pending input in any
 conversation, which covers queued tasks, automation runs and dreams. Every input
-writer (user and channel input, a context reset, a routine run, a child session
+writer (user and channel input, a context reset, an automation run, a child session
 turn and a child result) calls `db.RequireActive` after it takes the SQLite
 writer, in the transaction that stores the input. Input first makes the archive
 fail as busy. Archive first makes the input fail with `ErrAgentArchived`, so an
@@ -63,7 +63,7 @@ The lock order is agent, then settings. Settings never takes the agent
 lock. Each service writes separate rows. Creating or selecting an agent does
 not configure providers.
 One scheduler job checks automations across all agents and posts each prompt
-with the saved agent ID. See [Extensions](extensions.md#extensions) for the reload lifecycle.
+with the saved agent ID. See [Integrations](extensions.md) for the reload lifecycle.
 
 The web UI uses the nested agent routes, including live events and upload
 links. Agent resources require an explicit ID, including the default agent.

@@ -19,12 +19,12 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	d := startDex(t, dir, "")
 	d.setModel(t, "context")
 	// Given a bot on a paired runner that is not connected.
-	var machine apiEnvironment
-	d.must(t, http.MethodPost, "/api/settings/environments", map[string]string{"name": "Runner", "kind": "runner"}, &machine, http.StatusCreated)
+	var machine apiRunner
+	d.must(t, http.MethodPost, "/api/settings/runners", map[string]string{"name": "Runner", "kind": "runner"}, &machine, http.StatusCreated)
 	var issued struct {
 		Code string `json:"code"`
 	}
-	d.must(t, http.MethodPost, "/api/settings/environments/"+machine.ID+"/runner-pairing", nil, &issued)
+	d.must(t, http.MethodPost, "/api/settings/runners/"+machine.ID+"/pairing", nil, &issued)
 	pair, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/machine/"+machine.ID+"/pair", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	}
 	var bot apiAgent
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
-	bot.EnvironmentID = machine.ID
+	bot.RunnerID = machine.ID
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
 	secret := strings.Repeat("r", 40)
 	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret, "issueAgentId": "default"}, nil, http.StatusNoContent)

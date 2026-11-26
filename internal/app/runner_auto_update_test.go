@@ -88,8 +88,8 @@ func TestUserRunnerHandshakeReportsVersionAndCachesReleaseProxy(t *testing.T) {
 	})
 
 	// Create and enroll a runner environment.
-	var created api.Environment
-	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+	var created api.Runner
+	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
 		"name":   "Build Mac",
 		"kind":   "runner",
 		"config": map[string]any{},
@@ -97,7 +97,7 @@ func TestUserRunnerHandshakeReportsVersionAndCachesReleaseProxy(t *testing.T) {
 	var issued struct {
 		Code string `json:"code"`
 	}
-	d.must(t, http.MethodPost, "/api/settings/environments/"+created.Id+"/runner-pairing", nil, &issued)
+	d.must(t, http.MethodPost, "/api/settings/runners/"+created.Id+"/pairing", nil, &issued)
 
 	pairReq, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/machine/"+created.Id+"/pair", nil)
 	if err != nil {
@@ -157,14 +157,14 @@ func TestUserRunnerHandshakeReportsVersionAndCachesReleaseProxy(t *testing.T) {
 	})
 
 	eventually(t, "runner status visible in environments API", func() (bool, any) {
-		var list api.EnvironmentList
-		d.must(t, http.MethodGet, "/api/settings/environments", nil, &list)
-		for _, env := range list.Environments {
+		var list api.RunnerList
+		d.must(t, http.MethodGet, "/api/settings/runners", nil, &list)
+		for _, env := range list.Runners {
 			if env.Id == created.Id && env.Runner != nil && env.Runner.Online {
 				return env.Runner.Version != nil && *env.Runner.Version == "v1.0.0" && env.Runner.CanSelfUpdate != nil && *env.Runner.CanSelfUpdate, env.Runner
 			}
 		}
-		return false, list.Environments
+		return false, list.Runners
 	})
 
 	// Unauthenticated release proxy requests are refused.

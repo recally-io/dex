@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, addTaskDependency, archiveChat, attachHeldEvent, attachTaskExecution, backupSystemDatabase, beginFeishu, beginTelegramManagedSetup, beginWechatLogin, bindTaskGitHubPull, cancelChatMonitor, cancelSystemOperation, cancelTelegramManagedSetup, checkSystemUpdate, clearContext, compactChat, continueChat, createAgent, createAutomation, createChat, createEnvironment, createSession, createTask, createTaskEntry, createTelegramPairing, createUpload, deleteArtifact, deleteAutomation, deleteEmailImapPull, deleteEmailSource, deleteEnvironment, deleteFeishu, deleteGitHubReviewPull, deleteGitHubWebhook, deleteProvider, deleteTelegram, deleteVault, deleteWebhookSource, deleteWechat, discoverSshConfig, dismissHeldEvent, dismissInboxItem, finishTaskExecution, forgetEnvironmentHostKey, forkChat, getAgent, getArtifact, getAutomation, getChannels, getChat, getChatHistory, getChatItem, getExtensions, getFeishu, getHealth, getInboxSummary, getMainChat, getNotificationTargets, getOnePassword, getSettings, getSystemLogs, getSystemStatus, getTask, getTelegramManagedSetup, getUpload, heartbeatTaskExecution, issueRunnerCode, listAgentEnvironments, listAgents, listArchivedAgents, listArtifacts, listAutomationRuns, listAutomations, listAutomationTargets, listChatMonitors, listChatOutbox, listChats, listDirectories, listEnvironments, listHeldEvents, listInbox, listModels, listPlugins, listProviderModels, listRecentProjects, listTaskExecutions, listTasks, listVault, type Options, pollFeishu, pollWechatLogin, postTaskExternalEntry, previewSchedule, probeEnvironment, putVault, readInboxItem, readTaskExternalTask, releaseMaintenance, reloadExtensions, removeTaskDependency, renameArtifact, resetAgentEnvironment, restartSystem, restoreAgent, resumeTaskExecution, reviewTask, revokeRunner, runAutomation, saveEmailImapPull, saveEmailSource, saveGitHubReviewPull, saveGitHubWebhook, saveWebhookSource, sendMessage, setChatEnvironment, setChatProject, setChatSettings, setFeishu, setOnePassword, setPlugin, setPrimaryNotificationTarget, setProvider, setTelegram, setTelegramManager, splitTask, startMcpOAuth, testEnvironment, unarchiveChat, updateAgent, updateAutomation, updateEnvironment, updateSystemSettings, updateTask, upgradeSystem, withdrawMessage } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, AddTaskDependencyData, AddTaskDependencyError, AddTaskDependencyResponse, ArchiveChatData, ArchiveChatError, ArchiveChatResponse, AttachHeldEventData, AttachHeldEventError, AttachHeldEventResponse, AttachTaskExecutionData, AttachTaskExecutionError, AttachTaskExecutionResponse, BackupSystemDatabaseData, BackupSystemDatabaseError, BackupSystemDatabaseResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginTelegramManagedSetupData, BeginTelegramManagedSetupError, BeginTelegramManagedSetupResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, BindTaskGitHubPullData, BindTaskGitHubPullError, BindTaskGitHubPullResponse, CancelChatMonitorData, CancelChatMonitorError, CancelChatMonitorResponse, CancelSystemOperationData, CancelSystemOperationError, CancelSystemOperationResponse, CancelTelegramManagedSetupData, CancelTelegramManagedSetupError, CancelTelegramManagedSetupResponse, CheckSystemUpdateData, CheckSystemUpdateError, CheckSystemUpdateResponse, ClearContextData, ClearContextError, ClearContextResponse, CompactChatData, CompactChatError, ContinueChatData, ContinueChatError, ContinueChatResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateEnvironmentData, CreateEnvironmentError, CreateEnvironmentResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTaskData, CreateTaskEntryData, CreateTaskEntryError, CreateTaskEntryResponse, CreateTaskError, CreateTaskResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteArtifactData, DeleteArtifactError, DeleteArtifactResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteEmailImapPullData, DeleteEmailImapPullError, DeleteEmailImapPullResponse, DeleteEmailSourceData, DeleteEmailSourceError, DeleteEmailSourceResponse, DeleteEnvironmentData, DeleteEnvironmentError, DeleteEnvironmentResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteGitHubReviewPullData, DeleteGitHubReviewPullError, DeleteGitHubReviewPullResponse, DeleteGitHubWebhookData, DeleteGitHubWebhookError, DeleteGitHubWebhookResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteVaultData, DeleteVaultError, DeleteVaultResponse, DeleteWebhookSourceData, DeleteWebhookSourceError, DeleteWebhookSourceResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, DiscoverSshConfigData, DiscoverSshConfigError, DiscoverSshConfigResponse, DismissHeldEventData, DismissHeldEventError, DismissHeldEventResponse, DismissInboxItemData, DismissInboxItemError, DismissInboxItemResponse, FinishTaskExecutionData, FinishTaskExecutionError, FinishTaskExecutionResponse, ForgetEnvironmentHostKeyData, ForgetEnvironmentHostKeyError, ForgetEnvironmentHostKeyResponse, ForkChatData, ForkChatError, ForkChatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetArtifactData, GetArtifactError, GetArtifactResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatItemData, GetChatItemError, GetChatItemResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetInboxSummaryData, GetInboxSummaryError, GetInboxSummaryResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetNotificationTargetsData, GetNotificationTargetsError, GetNotificationTargetsResponse, GetOnePasswordData, GetOnePasswordError, GetOnePasswordResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetSystemLogsData, GetSystemLogsError, GetSystemLogsResponse, GetSystemStatusData, GetSystemStatusError, GetSystemStatusResponse, GetTaskData, GetTaskError, GetTaskResponse, GetTelegramManagedSetupData, GetTelegramManagedSetupError, GetTelegramManagedSetupResponse, GetUploadData, GetUploadError, GetUploadResponse, HeartbeatTaskExecutionData, HeartbeatTaskExecutionError, HeartbeatTaskExecutionResponse, IssueRunnerCodeData, IssueRunnerCodeError, IssueRunnerCodeResponse, ListAgentEnvironmentsData, ListAgentEnvironmentsError, ListAgentEnvironmentsResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListArchivedAgentsData, ListArchivedAgentsError, ListArchivedAgentsResponse, ListArtifactsData, ListArtifactsError, ListArtifactsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListAutomationTargetsData, ListAutomationTargetsResponse, ListChatMonitorsData, ListChatMonitorsError, ListChatMonitorsResponse, ListChatOutboxData, ListChatOutboxError, ListChatOutboxResponse, ListChatsData, ListChatsError, ListChatsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListEnvironmentsData, ListEnvironmentsError, ListEnvironmentsResponse, ListHeldEventsData, ListHeldEventsError, ListHeldEventsResponse, ListInboxData, ListInboxError, ListInboxResponse, ListModelsData, ListModelsError, ListModelsResponse, ListPluginsData, ListPluginsError, ListPluginsResponse, ListProviderModelsData, ListProviderModelsError, ListProviderModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, ListTaskExecutionsData, ListTaskExecutionsError, ListTaskExecutionsResponse, ListTasksData, ListTasksError, ListTasksResponse, ListVaultData, ListVaultError, ListVaultResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PostTaskExternalEntryData, PostTaskExternalEntryError, PostTaskExternalEntryResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ProbeEnvironmentData, ProbeEnvironmentError, ProbeEnvironmentResponse, PutVaultData, PutVaultError, PutVaultResponse, ReadInboxItemData, ReadInboxItemError, ReadInboxItemResponse, ReadTaskExternalTaskData, ReadTaskExternalTaskError, ReadTaskExternalTaskResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RemoveTaskDependencyData, RemoveTaskDependencyError, RemoveTaskDependencyResponse, RenameArtifactData, RenameArtifactError, RenameArtifactResponse, ResetAgentEnvironmentData, ResetAgentEnvironmentError, ResetAgentEnvironmentResponse, RestartSystemData, RestartSystemError, RestartSystemResponse, RestoreAgentData, RestoreAgentError, RestoreAgentResponse, ResumeTaskExecutionData, ResumeTaskExecutionError, ResumeTaskExecutionResponse, ReviewTaskData, ReviewTaskError, ReviewTaskResponse, RevokeRunnerData, RevokeRunnerError, RevokeRunnerResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SaveEmailImapPullData, SaveEmailImapPullError, SaveEmailImapPullResponse, SaveEmailSourceData, SaveEmailSourceError, SaveEmailSourceResponse, SaveGitHubReviewPullData, SaveGitHubReviewPullError, SaveGitHubReviewPullResponse, SaveGitHubWebhookData, SaveGitHubWebhookError, SaveGitHubWebhookResponse, SaveWebhookSourceData, SaveWebhookSourceError, SaveWebhookSourceResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatEnvironmentData, SetChatEnvironmentError, SetChatEnvironmentResponse, SetChatProjectData, SetChatProjectError, SetChatProjectResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetOnePasswordData, SetOnePasswordError, SetOnePasswordResponse, SetPluginData, SetPluginError, SetPluginResponse, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetError, SetPrimaryNotificationTargetResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramManagerData, SetTelegramManagerError, SetTelegramManagerResponse, SetTelegramResponse, SplitTaskData, SplitTaskError, SplitTaskResponse, StartMcpOAuthData, StartMcpOAuthError, StartMcpOAuthResponse, TestEnvironmentData, TestEnvironmentError, TestEnvironmentResponse, UnarchiveChatData, UnarchiveChatError, UnarchiveChatResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse, UpdateEnvironmentData, UpdateEnvironmentError, UpdateEnvironmentResponse, UpdateSystemSettingsData, UpdateSystemSettingsError, UpdateSystemSettingsResponse, UpdateTaskData, UpdateTaskError, UpdateTaskResponse, UpgradeSystemData, UpgradeSystemError, UpgradeSystemResponse, WithdrawMessageData, WithdrawMessageError, WithdrawMessageResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, addTaskDependency, archiveChat, attachHeldEvent, attachTaskExecution, backupSystemDatabase, beginFeishu, beginTelegramManagedSetup, beginWechatLogin, bindTaskGitHubPull, cancelChatMonitor, cancelSystemOperation, cancelTelegramManagedSetup, checkSystemUpdate, clearContext, compactChat, continueChat, createAgent, createAutomation, createChat, createRunner, createSession, createTask, createTaskEntry, createTelegramPairing, createUpload, deleteArtifact, deleteAutomation, deleteEmailImapPull, deleteEmailSource, deleteFeishu, deleteGitHubReviewPull, deleteGitHubWebhook, deleteProvider, deleteRunner, deleteTelegram, deleteVault, deleteWebhookSource, deleteWechat, discoverSshConfig, dismissHeldEvent, dismissInboxItem, finishTaskExecution, forgetRunnerHostKey, forkChat, getAgent, getArtifact, getAutomation, getBotIntegrations, getChannels, getChat, getChatHistory, getChatItem, getFeishu, getHealth, getInboxSummary, getMainChat, getNotificationTargets, getOnePassword, getSettings, getSystemLogs, getSystemStatus, getTask, getTelegramManagedSetup, getUpload, heartbeatTaskExecution, issueRunnerCode, listAgentRunners, listAgents, listArchivedAgents, listArtifacts, listAutomationRuns, listAutomations, listAutomationTargets, listChatMonitors, listChatOutbox, listChats, listDirectories, listHeldEvents, listInbox, listModels, listProviderModels, listRecentProjects, listRunners, listSources, listTaskExecutions, listTasks, listVault, type Options, pollFeishu, pollWechatLogin, postTaskExternalEntry, previewSchedule, probeRunner, putVault, readInboxItem, readTaskExternalTask, releaseMaintenance, reloadBotIntegrations, removeTaskDependency, renameArtifact, resetAgentRunner, restartSystem, restoreAgent, resumeTaskExecution, reviewTask, revokeRunner, runAutomation, saveEmailImapPull, saveEmailSource, saveGitHubReviewPull, saveGitHubWebhook, saveWebhookSource, sendMessage, setChatProject, setChatRunner, setChatSettings, setFeishu, setOnePassword, setPrimaryNotificationTarget, setProvider, setSourceEnabled, setTelegram, setTelegramManager, splitTask, startMcpOAuth, testRunner, unarchiveChat, updateAgent, updateAutomation, updateRunner, updateSystemSettings, updateTask, upgradeSystem, withdrawMessage } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, AddTaskDependencyData, AddTaskDependencyError, AddTaskDependencyResponse, ArchiveChatData, ArchiveChatError, ArchiveChatResponse, AttachHeldEventData, AttachHeldEventError, AttachHeldEventResponse, AttachTaskExecutionData, AttachTaskExecutionError, AttachTaskExecutionResponse, BackupSystemDatabaseData, BackupSystemDatabaseError, BackupSystemDatabaseResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginTelegramManagedSetupData, BeginTelegramManagedSetupError, BeginTelegramManagedSetupResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, BindTaskGitHubPullData, BindTaskGitHubPullError, BindTaskGitHubPullResponse, CancelChatMonitorData, CancelChatMonitorError, CancelChatMonitorResponse, CancelSystemOperationData, CancelSystemOperationError, CancelSystemOperationResponse, CancelTelegramManagedSetupData, CancelTelegramManagedSetupError, CancelTelegramManagedSetupResponse, CheckSystemUpdateData, CheckSystemUpdateError, CheckSystemUpdateResponse, ClearContextData, ClearContextError, ClearContextResponse, CompactChatData, CompactChatError, ContinueChatData, ContinueChatError, ContinueChatResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateRunnerData, CreateRunnerError, CreateRunnerResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTaskData, CreateTaskEntryData, CreateTaskEntryError, CreateTaskEntryResponse, CreateTaskError, CreateTaskResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteArtifactData, DeleteArtifactError, DeleteArtifactResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteEmailImapPullData, DeleteEmailImapPullError, DeleteEmailImapPullResponse, DeleteEmailSourceData, DeleteEmailSourceError, DeleteEmailSourceResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteGitHubReviewPullData, DeleteGitHubReviewPullError, DeleteGitHubReviewPullResponse, DeleteGitHubWebhookData, DeleteGitHubWebhookError, DeleteGitHubWebhookResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteRunnerData, DeleteRunnerError, DeleteRunnerResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteVaultData, DeleteVaultError, DeleteVaultResponse, DeleteWebhookSourceData, DeleteWebhookSourceError, DeleteWebhookSourceResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, DiscoverSshConfigData, DiscoverSshConfigError, DiscoverSshConfigResponse, DismissHeldEventData, DismissHeldEventError, DismissHeldEventResponse, DismissInboxItemData, DismissInboxItemError, DismissInboxItemResponse, FinishTaskExecutionData, FinishTaskExecutionError, FinishTaskExecutionResponse, ForgetRunnerHostKeyData, ForgetRunnerHostKeyError, ForgetRunnerHostKeyResponse, ForkChatData, ForkChatError, ForkChatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetArtifactData, GetArtifactError, GetArtifactResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetBotIntegrationsData, GetBotIntegrationsError, GetBotIntegrationsResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatItemData, GetChatItemError, GetChatItemResponse, GetChatResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetInboxSummaryData, GetInboxSummaryError, GetInboxSummaryResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetNotificationTargetsData, GetNotificationTargetsError, GetNotificationTargetsResponse, GetOnePasswordData, GetOnePasswordError, GetOnePasswordResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetSystemLogsData, GetSystemLogsError, GetSystemLogsResponse, GetSystemStatusData, GetSystemStatusError, GetSystemStatusResponse, GetTaskData, GetTaskError, GetTaskResponse, GetTelegramManagedSetupData, GetTelegramManagedSetupError, GetTelegramManagedSetupResponse, GetUploadData, GetUploadError, GetUploadResponse, HeartbeatTaskExecutionData, HeartbeatTaskExecutionError, HeartbeatTaskExecutionResponse, IssueRunnerCodeData, IssueRunnerCodeError, IssueRunnerCodeResponse, ListAgentRunnersData, ListAgentRunnersError, ListAgentRunnersResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListArchivedAgentsData, ListArchivedAgentsError, ListArchivedAgentsResponse, ListArtifactsData, ListArtifactsError, ListArtifactsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListAutomationTargetsData, ListAutomationTargetsResponse, ListChatMonitorsData, ListChatMonitorsError, ListChatMonitorsResponse, ListChatOutboxData, ListChatOutboxError, ListChatOutboxResponse, ListChatsData, ListChatsError, ListChatsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListHeldEventsData, ListHeldEventsError, ListHeldEventsResponse, ListInboxData, ListInboxError, ListInboxResponse, ListModelsData, ListModelsError, ListModelsResponse, ListProviderModelsData, ListProviderModelsError, ListProviderModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, ListRunnersData, ListRunnersError, ListRunnersResponse, ListSourcesData, ListSourcesError, ListSourcesResponse, ListTaskExecutionsData, ListTaskExecutionsError, ListTaskExecutionsResponse, ListTasksData, ListTasksError, ListTasksResponse, ListVaultData, ListVaultError, ListVaultResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PostTaskExternalEntryData, PostTaskExternalEntryError, PostTaskExternalEntryResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ProbeRunnerData, ProbeRunnerError, ProbeRunnerResponse, PutVaultData, PutVaultError, PutVaultResponse, ReadInboxItemData, ReadInboxItemError, ReadInboxItemResponse, ReadTaskExternalTaskData, ReadTaskExternalTaskError, ReadTaskExternalTaskResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadBotIntegrationsData, ReloadBotIntegrationsError, ReloadBotIntegrationsResponse, RemoveTaskDependencyData, RemoveTaskDependencyError, RemoveTaskDependencyResponse, RenameArtifactData, RenameArtifactError, RenameArtifactResponse, ResetAgentRunnerData, ResetAgentRunnerError, ResetAgentRunnerResponse, RestartSystemData, RestartSystemError, RestartSystemResponse, RestoreAgentData, RestoreAgentError, RestoreAgentResponse, ResumeTaskExecutionData, ResumeTaskExecutionError, ResumeTaskExecutionResponse, ReviewTaskData, ReviewTaskError, ReviewTaskResponse, RevokeRunnerData, RevokeRunnerError, RevokeRunnerResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SaveEmailImapPullData, SaveEmailImapPullError, SaveEmailImapPullResponse, SaveEmailSourceData, SaveEmailSourceError, SaveEmailSourceResponse, SaveGitHubReviewPullData, SaveGitHubReviewPullError, SaveGitHubReviewPullResponse, SaveGitHubWebhookData, SaveGitHubWebhookError, SaveGitHubWebhookResponse, SaveWebhookSourceData, SaveWebhookSourceError, SaveWebhookSourceResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatProjectData, SetChatProjectError, SetChatProjectResponse, SetChatRunnerData, SetChatRunnerError, SetChatRunnerResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetOnePasswordData, SetOnePasswordError, SetOnePasswordResponse, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetError, SetPrimaryNotificationTargetResponse, SetProviderData, SetProviderError, SetProviderResponse, SetSourceEnabledData, SetSourceEnabledError, SetSourceEnabledResponse, SetTelegramData, SetTelegramError, SetTelegramManagerData, SetTelegramManagerError, SetTelegramManagerResponse, SetTelegramResponse, SplitTaskData, SplitTaskError, SplitTaskResponse, StartMcpOAuthData, StartMcpOAuthError, StartMcpOAuthResponse, TestRunnerData, TestRunnerError, TestRunnerResponse, UnarchiveChatData, UnarchiveChatError, UnarchiveChatResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse, UpdateRunnerData, UpdateRunnerError, UpdateRunnerResponse, UpdateSystemSettingsData, UpdateSystemSettingsError, UpdateSystemSettingsResponse, UpdateTaskData, UpdateTaskError, UpdateTaskResponse, UpgradeSystemData, UpgradeSystemError, UpgradeSystemResponse, WithdrawMessageData, WithdrawMessageError, WithdrawMessageResponse } from '../types.gen';
 
 /**
  * Bind a GitHub PR to one Task. Optionally add a wait for a review of a specific commit.
@@ -481,7 +481,7 @@ export const getInboxSummaryOptions = (options?: Options<GetInboxSummaryData>) =
 export const listInboxQueryKey = (options?: Options<ListInboxData>) => createQueryKey('listInbox', options);
 
 /**
- * Actionable routine results across all bots, newest first.
+ * Actionable automation results across all bots, newest first.
  */
 export const listInboxOptions = (options?: Options<ListInboxData>) => queryOptions<ListInboxResponse, ListInboxError, ListInboxResponse, ReturnType<typeof listInboxQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -784,14 +784,14 @@ export const getSystemLogsOptions = (options?: Options<GetSystemLogsData>) => qu
     queryKey: getSystemLogsQueryKey(options)
 });
 
-export const listPluginsQueryKey = (options?: Options<ListPluginsData>) => createQueryKey('listPlugins', options);
+export const listSourcesQueryKey = (options?: Options<ListSourcesData>) => createQueryKey('listSources', options);
 
 /**
- * List the plugins of this build, the stored choice, and whether each one runs now.
+ * List the sources of this build, the stored choice, and whether each one runs now.
  */
-export const listPluginsOptions = (options?: Options<ListPluginsData>) => queryOptions<ListPluginsResponse, ListPluginsError, ListPluginsResponse, ReturnType<typeof listPluginsQueryKey>>({
+export const listSourcesOptions = (options?: Options<ListSourcesData>) => queryOptions<ListSourcesResponse, ListSourcesError, ListSourcesResponse, ReturnType<typeof listSourcesQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listPlugins({
+        const { data } = await listSources({
             ...options,
             ...queryKey[0],
             signal,
@@ -799,16 +799,16 @@ export const listPluginsOptions = (options?: Options<ListPluginsData>) => queryO
         });
         return data;
     },
-    queryKey: listPluginsQueryKey(options)
+    queryKey: listSourcesQueryKey(options)
 });
 
 /**
  * Turn a plugin on or off. The change takes effect when dex starts again.
  */
-export const setPluginMutation = (options?: Partial<Options<SetPluginData>>): UseMutationOptions<SetPluginResponse, SetPluginError, Options<SetPluginData>> => {
-    const mutationOptions: UseMutationOptions<SetPluginResponse, SetPluginError, Options<SetPluginData>> = {
+export const setSourceEnabledMutation = (options?: Partial<Options<SetSourceEnabledData>>): UseMutationOptions<SetSourceEnabledResponse, SetSourceEnabledError, Options<SetSourceEnabledData>> => {
+    const mutationOptions: UseMutationOptions<SetSourceEnabledResponse, SetSourceEnabledError, Options<SetSourceEnabledData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await setPlugin({
+            const { data } = await setSourceEnabled({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -867,14 +867,14 @@ export const setOnePasswordMutation = (options?: Partial<Options<SetOnePasswordD
     return mutationOptions;
 };
 
-export const listEnvironmentsQueryKey = (options?: Options<ListEnvironmentsData>) => createQueryKey('listEnvironments', options);
+export const listRunnersQueryKey = (options?: Options<ListRunnersData>) => createQueryKey('listRunners', options);
 
 /**
- * Saved execution environments, without secrets. Built-in local is implicit when a bot has empty environmentId.
+ * Lists saved Runners without secrets. An empty runnerId selects the built-in Local Runner for a bot.
  */
-export const listEnvironmentsOptions = (options?: Options<ListEnvironmentsData>) => queryOptions<ListEnvironmentsResponse, ListEnvironmentsError, ListEnvironmentsResponse, ReturnType<typeof listEnvironmentsQueryKey>>({
+export const listRunnersOptions = (options?: Options<ListRunnersData>) => queryOptions<ListRunnersResponse, ListRunnersError, ListRunnersResponse, ReturnType<typeof listRunnersQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listEnvironments({
+        const { data } = await listRunners({
             ...options,
             ...queryKey[0],
             signal,
@@ -882,16 +882,16 @@ export const listEnvironmentsOptions = (options?: Options<ListEnvironmentsData>)
         });
         return data;
     },
-    queryKey: listEnvironmentsQueryKey(options)
+    queryKey: listRunnersQueryKey(options)
 });
 
 /**
- * Creates a new execution environment.
+ * Creates a Runner.
  */
-export const createEnvironmentMutation = (options?: Partial<Options<CreateEnvironmentData>>): UseMutationOptions<CreateEnvironmentResponse, CreateEnvironmentError, Options<CreateEnvironmentData>> => {
-    const mutationOptions: UseMutationOptions<CreateEnvironmentResponse, CreateEnvironmentError, Options<CreateEnvironmentData>> = {
+export const createRunnerMutation = (options?: Partial<Options<CreateRunnerData>>): UseMutationOptions<CreateRunnerResponse, CreateRunnerError, Options<CreateRunnerData>> => {
+    const mutationOptions: UseMutationOptions<CreateRunnerResponse, CreateRunnerError, Options<CreateRunnerData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await createEnvironment({
+            const { data } = await createRunner({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -921,12 +921,12 @@ export const discoverSshConfigOptions = (options?: Options<DiscoverSshConfigData
 });
 
 /**
- * Probes connectivity for an unsaved or edited execution environment configuration.
+ * Probes connectivity for a new or edited Runner configuration.
  */
-export const probeEnvironmentMutation = (options?: Partial<Options<ProbeEnvironmentData>>): UseMutationOptions<ProbeEnvironmentResponse, ProbeEnvironmentError, Options<ProbeEnvironmentData>> => {
-    const mutationOptions: UseMutationOptions<ProbeEnvironmentResponse, ProbeEnvironmentError, Options<ProbeEnvironmentData>> = {
+export const probeRunnerMutation = (options?: Partial<Options<ProbeRunnerData>>): UseMutationOptions<ProbeRunnerResponse, ProbeRunnerError, Options<ProbeRunnerData>> => {
+    const mutationOptions: UseMutationOptions<ProbeRunnerResponse, ProbeRunnerError, Options<ProbeRunnerData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await probeEnvironment({
+            const { data } = await probeRunner({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -938,12 +938,12 @@ export const probeEnvironmentMutation = (options?: Partial<Options<ProbeEnvironm
 };
 
 /**
- * Deletes an execution environment if no active bot uses it (409 when in use).
+ * Deletes a Runner if no active bot uses it (409 when in use).
  */
-export const deleteEnvironmentMutation = (options?: Partial<Options<DeleteEnvironmentData>>): UseMutationOptions<DeleteEnvironmentResponse, DeleteEnvironmentError, Options<DeleteEnvironmentData>> => {
-    const mutationOptions: UseMutationOptions<DeleteEnvironmentResponse, DeleteEnvironmentError, Options<DeleteEnvironmentData>> = {
+export const deleteRunnerMutation = (options?: Partial<Options<DeleteRunnerData>>): UseMutationOptions<DeleteRunnerResponse, DeleteRunnerError, Options<DeleteRunnerData>> => {
+    const mutationOptions: UseMutationOptions<DeleteRunnerResponse, DeleteRunnerError, Options<DeleteRunnerData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await deleteEnvironment({
+            const { data } = await deleteRunner({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -955,12 +955,12 @@ export const deleteEnvironmentMutation = (options?: Partial<Options<DeleteEnviro
 };
 
 /**
- * Updates an execution environment. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
+ * Updates a Runner. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
  */
-export const updateEnvironmentMutation = (options?: Partial<Options<UpdateEnvironmentData>>): UseMutationOptions<UpdateEnvironmentResponse, UpdateEnvironmentError, Options<UpdateEnvironmentData>> => {
-    const mutationOptions: UseMutationOptions<UpdateEnvironmentResponse, UpdateEnvironmentError, Options<UpdateEnvironmentData>> = {
+export const updateRunnerMutation = (options?: Partial<Options<UpdateRunnerData>>): UseMutationOptions<UpdateRunnerResponse, UpdateRunnerError, Options<UpdateRunnerData>> => {
+    const mutationOptions: UseMutationOptions<UpdateRunnerResponse, UpdateRunnerError, Options<UpdateRunnerData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await updateEnvironment({
+            const { data } = await updateRunner({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -974,10 +974,10 @@ export const updateEnvironmentMutation = (options?: Partial<Options<UpdateEnviro
 /**
  * Probes connectivity, platform metadata, and base workspace readiness.
  */
-export const testEnvironmentMutation = (options?: Partial<Options<TestEnvironmentData>>): UseMutationOptions<TestEnvironmentResponse, TestEnvironmentError, Options<TestEnvironmentData>> => {
-    const mutationOptions: UseMutationOptions<TestEnvironmentResponse, TestEnvironmentError, Options<TestEnvironmentData>> = {
+export const testRunnerMutation = (options?: Partial<Options<TestRunnerData>>): UseMutationOptions<TestRunnerResponse, TestRunnerError, Options<TestRunnerData>> => {
+    const mutationOptions: UseMutationOptions<TestRunnerResponse, TestRunnerError, Options<TestRunnerData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await testEnvironment({
+            const { data } = await testRunner({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -989,12 +989,12 @@ export const testEnvironmentMutation = (options?: Partial<Options<TestEnvironmen
 };
 
 /**
- * Removes stored SSH host key entries for an SSH environment so the next test or open re-trusts the host key via TOFU.
+ * Removes stored SSH host key entries for an SSH Runner so the next test or open re-trusts the host key via TOFU.
  */
-export const forgetEnvironmentHostKeyMutation = (options?: Partial<Options<ForgetEnvironmentHostKeyData>>): UseMutationOptions<ForgetEnvironmentHostKeyResponse, ForgetEnvironmentHostKeyError, Options<ForgetEnvironmentHostKeyData>> => {
-    const mutationOptions: UseMutationOptions<ForgetEnvironmentHostKeyResponse, ForgetEnvironmentHostKeyError, Options<ForgetEnvironmentHostKeyData>> = {
+export const forgetRunnerHostKeyMutation = (options?: Partial<Options<ForgetRunnerHostKeyData>>): UseMutationOptions<ForgetRunnerHostKeyResponse, ForgetRunnerHostKeyError, Options<ForgetRunnerHostKeyData>> => {
+    const mutationOptions: UseMutationOptions<ForgetRunnerHostKeyResponse, ForgetRunnerHostKeyError, Options<ForgetRunnerHostKeyData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await forgetEnvironmentHostKey({
+            const { data } = await forgetRunnerHostKey({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -1510,15 +1510,15 @@ export const restoreAgentMutation = (options?: Partial<Options<RestoreAgentData>
     return mutationOptions;
 };
 
-export const listAgentEnvironmentsQueryKey = (options: Options<ListAgentEnvironmentsData>) => createQueryKey('listAgentEnvironments', options);
+export const listAgentRunnersQueryKey = (options: Options<ListAgentRunnersData>) => createQueryKey('listAgentRunners', options);
 
 /**
- * Lists the execution environments for the sessions of the agent: the environment of the agent first (default), then local and the other registered environments. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
+ * Lists the Runners that the agent's sessions can use. The default comes first, followed by Local and the other registered Runners. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
  *
  */
-export const listAgentEnvironmentsOptions = (options: Options<ListAgentEnvironmentsData>) => queryOptions<ListAgentEnvironmentsResponse, ListAgentEnvironmentsError, ListAgentEnvironmentsResponse, ReturnType<typeof listAgentEnvironmentsQueryKey>>({
+export const listAgentRunnersOptions = (options: Options<ListAgentRunnersData>) => queryOptions<ListAgentRunnersResponse, ListAgentRunnersError, ListAgentRunnersResponse, ReturnType<typeof listAgentRunnersQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listAgentEnvironments({
+        const { data } = await listAgentRunners({
             ...options,
             ...queryKey[0],
             signal,
@@ -1526,17 +1526,17 @@ export const listAgentEnvironmentsOptions = (options: Options<ListAgentEnvironme
         });
         return data;
     },
-    queryKey: listAgentEnvironmentsQueryKey(options)
+    queryKey: listAgentRunnersQueryKey(options)
 });
 
 /**
  * Kills any persisted E2B sandbox for an idle agent, clears its sandbox ID, and releases open resources so the next turn provisions a fresh sandbox.
  *
  */
-export const resetAgentEnvironmentMutation = (options?: Partial<Options<ResetAgentEnvironmentData>>): UseMutationOptions<ResetAgentEnvironmentResponse, ResetAgentEnvironmentError, Options<ResetAgentEnvironmentData>> => {
-    const mutationOptions: UseMutationOptions<ResetAgentEnvironmentResponse, ResetAgentEnvironmentError, Options<ResetAgentEnvironmentData>> = {
+export const resetAgentRunnerMutation = (options?: Partial<Options<ResetAgentRunnerData>>): UseMutationOptions<ResetAgentRunnerResponse, ResetAgentRunnerError, Options<ResetAgentRunnerData>> => {
+    const mutationOptions: UseMutationOptions<ResetAgentRunnerResponse, ResetAgentRunnerError, Options<ResetAgentRunnerData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await resetAgentEnvironment({
+            const { data } = await resetAgentRunner({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -1655,7 +1655,7 @@ export const archiveChatMutation = (options?: Partial<Options<ArchiveChatData>>)
 export const listDirectoriesQueryKey = (options?: Options<ListDirectoriesData>) => createQueryKey('listDirectories', options);
 
 /**
- * Lists visible directories in the selected agent's execution environment, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
+ * Lists visible directories on the selected Runner of the agent, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
  *
  */
 export const listDirectoriesOptions = (options?: Options<ListDirectoriesData>) => queryOptions<ListDirectoriesResponse, ListDirectoriesError, ListDirectoriesResponse, ReturnType<typeof listDirectoriesQueryKey>>({
@@ -1674,7 +1674,7 @@ export const listDirectoriesOptions = (options?: Options<ListDirectoriesData>) =
 export const listRecentProjectsQueryKey = (options: Options<ListRecentProjectsData>) => createQueryKey('listRecentProjects', options);
 
 /**
- * Returns up to eight distinct project directories that exist in the execution environment, newest activity first.
+ * Returns up to eight distinct project directories that exist on the selected Runner, newest activity first.
  *
  */
 export const listRecentProjectsOptions = (options: Options<ListRecentProjectsData>) => queryOptions<ListRecentProjectsResponse, ListRecentProjectsError, ListRecentProjectsResponse, ReturnType<typeof listRecentProjectsQueryKey>>({
@@ -1691,13 +1691,13 @@ export const listRecentProjectsOptions = (options: Options<ListRecentProjectsDat
 });
 
 /**
- * Selects the execution environment of a Chat session before its first message. The command and file tools of the chat run there. Empty environmentId makes the chat follow the environment of the agent. The selection clears the project directory. The environment must be local or a registered SSH, runner, or E2B environment (400). A chat that has started answers 409: fork it instead. Read-only conversations return 403.
+ * Selects the Runner of a Chat session before its first message. Its command and file tools use that Runner. An empty runnerId follows the agent's default. The selection clears the project directory. Specify Local or a registered Machine or Sandbox. An invalid selection returns 400. A started Chat returns 409. A read-only Chat returns 403.
  *
  */
-export const setChatEnvironmentMutation = (options?: Partial<Options<SetChatEnvironmentData>>): UseMutationOptions<SetChatEnvironmentResponse, SetChatEnvironmentError, Options<SetChatEnvironmentData>> => {
-    const mutationOptions: UseMutationOptions<SetChatEnvironmentResponse, SetChatEnvironmentError, Options<SetChatEnvironmentData>> = {
+export const setChatRunnerMutation = (options?: Partial<Options<SetChatRunnerData>>): UseMutationOptions<SetChatRunnerResponse, SetChatRunnerError, Options<SetChatRunnerData>> => {
+    const mutationOptions: UseMutationOptions<SetChatRunnerResponse, SetChatRunnerError, Options<SetChatRunnerData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await setChatEnvironment({
+            const { data } = await setChatRunner({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -1817,7 +1817,7 @@ export const continueChatMutation = (options?: Partial<Options<ContinueChatData>
 };
 
 /**
- * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With environmentId (local or a registered environment ID), the new Chat runs in that environment. When that moves the Chat to another environment, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without environmentId, the new Chat keeps the environment selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the environment does not exist or is not local or SSH. A scoped session with environmentId, and automation and channel sessions, return 403.
+ * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With runnerId (local or a registered Runner ID), the new Chat runs on that Runner. When that moves the Chat to another Runner, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without runnerId, the new Chat keeps the Runner selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the Runner does not exist or is not Local or an SSH Machine. A scoped session with runnerId, and automation and channel sessions, return 403.
  *
  */
 export const forkChatMutation = (options?: Partial<Options<ForkChatData>>): UseMutationOptions<ForkChatResponse, ForkChatError, Options<ForkChatData>> => {
@@ -2128,15 +2128,15 @@ export const renameArtifactMutation = (options?: Partial<Options<RenameArtifactD
     return mutationOptions;
 };
 
-export const getExtensionsQueryKey = (options: Options<GetExtensionsData>) => createQueryKey('getExtensions', options);
+export const getBotIntegrationsQueryKey = (options: Options<GetBotIntegrationsData>) => createQueryKey('getBotIntegrations', options);
 
 /**
  * The agent's skills and MCP servers. It does not start MCP servers. Before the agent starts, the servers are idle.
  *
  */
-export const getExtensionsOptions = (options: Options<GetExtensionsData>) => queryOptions<GetExtensionsResponse, GetExtensionsError, GetExtensionsResponse, ReturnType<typeof getExtensionsQueryKey>>({
+export const getBotIntegrationsOptions = (options: Options<GetBotIntegrationsData>) => queryOptions<GetBotIntegrationsResponse, GetBotIntegrationsError, GetBotIntegrationsResponse, ReturnType<typeof getBotIntegrationsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getExtensions({
+        const { data } = await getBotIntegrations({
             ...options,
             ...queryKey[0],
             signal,
@@ -2144,7 +2144,7 @@ export const getExtensionsOptions = (options: Options<GetExtensionsData>) => que
         });
         return data;
     },
-    queryKey: getExtensionsQueryKey(options)
+    queryKey: getBotIntegrationsQueryKey(options)
 });
 
 /**
@@ -2220,10 +2220,10 @@ export const putVaultMutation = (options?: Partial<Options<PutVaultData>>): UseM
  * Reloads only the selected agent's Harness and MCP connections. Opens that agent if needed and returns its server connection states. Skills need no reload. Checks idle execution across all agents before replacement; returns 409 when any agent has unfinished work. Other agents can start work after this check while the selected agent reloads. Returns 400 when a file is not valid and keeps the current resources. Returns 503 while model discovery is pending.
  *
  */
-export const reloadExtensionsMutation = (options?: Partial<Options<ReloadExtensionsData>>): UseMutationOptions<ReloadExtensionsResponse, ReloadExtensionsError, Options<ReloadExtensionsData>> => {
-    const mutationOptions: UseMutationOptions<ReloadExtensionsResponse, ReloadExtensionsError, Options<ReloadExtensionsData>> = {
+export const reloadBotIntegrationsMutation = (options?: Partial<Options<ReloadBotIntegrationsData>>): UseMutationOptions<ReloadBotIntegrationsResponse, ReloadBotIntegrationsError, Options<ReloadBotIntegrationsData>> => {
+    const mutationOptions: UseMutationOptions<ReloadBotIntegrationsResponse, ReloadBotIntegrationsError, Options<ReloadBotIntegrationsData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await reloadExtensions({
+            const { data } = await reloadBotIntegrations({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

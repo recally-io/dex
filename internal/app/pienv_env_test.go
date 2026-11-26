@@ -14,7 +14,7 @@ import (
 	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
-type apiEnvironmentConfig struct {
+type apiRunnerConfig struct {
 	Host         string `json:"host,omitempty"`
 	User         string `json:"user,omitempty"`
 	Port         *int   `json:"port,omitempty"`
@@ -22,17 +22,17 @@ type apiEnvironmentConfig struct {
 	WorkspaceDir string `json:"workspaceDir,omitempty"`
 }
 
-type apiEnvironment struct {
-	ID        string               `json:"id"`
-	Name      string               `json:"name"`
-	Kind      string               `json:"kind"`
-	Config    apiEnvironmentConfig `json:"config"`
-	SecretSet bool                 `json:"secretSet"`
-	CreatedAt int64                `json:"createdAt"`
-	UpdatedAt int64                `json:"updatedAt"`
+type apiRunner struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Kind      string          `json:"kind"`
+	Config    apiRunnerConfig `json:"config"`
+	SecretSet bool            `json:"secretSet"`
+	CreatedAt int64           `json:"createdAt"`
+	UpdatedAt int64           `json:"updatedAt"`
 }
 
-type apiEnvironmentTestResult struct {
+type apiRunnerTestResult struct {
 	OK             bool     `json:"ok"`
 	Platform       string   `json:"platform"`
 	Arch           string   `json:"arch"`
@@ -42,7 +42,7 @@ type apiEnvironmentTestResult struct {
 	Error          string   `json:"error"`
 }
 
-func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
+func TestUserManagesPiEnvRunnerAndExecutesBotRemotely(t *testing.T) {
 	t.Setenv("HOST_PIENV_SECRET", "do-not-leak")
 	dataDir := t.TempDir()
 	localHome := t.TempDir()
@@ -62,8 +62,8 @@ func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
 	})
 
 	// When creating and testing a pi-env SSH environment via Settings API.
-	var created apiEnvironment
-	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+	var created apiRunner
+	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
 		"name":   "Remote Box",
 		"kind":   "pi-env",
 		"config": map[string]any{"host": "remote.internal", "user": "dev"},
@@ -72,8 +72,8 @@ func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
 		t.Fatalf("unexpected created environment: %+v", created)
 	}
 
-	var probe apiEnvironmentTestResult
-	d.must(t, http.MethodPost, "/api/settings/environments/"+created.ID+"/test", nil, &probe, http.StatusOK)
+	var probe apiRunnerTestResult
+	d.must(t, http.MethodPost, "/api/settings/runners/"+created.ID+"/test", nil, &probe, http.StatusOK)
 	if !probe.OK || probe.Home != sshFix.RemoteHome {
 		t.Fatalf("unexpected probe: %+v", probe)
 	}
@@ -84,11 +84,11 @@ func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
 	defAgent.Provider = "faux"
 	defAgent.ModelID = "bash"
 	defAgent.ThinkingLevel = "off"
-	defAgent.EnvironmentID = created.ID
+	defAgent.RunnerID = created.ID
 	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
-	d.must(t, http.MethodPost, "/api/agents/default/extensions/reload", nil, nil)
+	d.must(t, http.MethodPost, "/api/agents/default/integrations/reload", nil, nil)
 
-	d.must(t, http.MethodDelete, "/api/settings/environments/"+created.ID, nil, nil, http.StatusConflict)
+	d.must(t, http.MethodDelete, "/api/settings/runners/"+created.ID, nil, nil, http.StatusConflict)
 
 	var dirs directoryListing
 	d.must(t, http.MethodGet, "/api/directories?agentId=default&path=~", nil, &dirs)
@@ -143,9 +143,9 @@ func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
 		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", chatID), nil, &info)
 		return !info.Busy, info.Busy
 	})
-	defAgent.EnvironmentID = ""
+	defAgent.RunnerID = ""
 	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
-	d.must(t, http.MethodDelete, "/api/settings/environments/"+created.ID, nil, nil, http.StatusOK)
+	d.must(t, http.MethodDelete, "/api/settings/runners/"+created.ID, nil, nil, http.StatusOK)
 }
 
 func TestUserDiscoversSSHConfigProbesAndRecoversHostKey(t *testing.T) {
@@ -184,7 +184,7 @@ func TestUserDiscoversSSHConfigProbesAndRecoversHostKey(t *testing.T) {
 		} `json:"hosts"`
 		IdentityFiles []string `json:"identityFiles"`
 	}
-	d.must(t, http.MethodGet, "/api/settings/environments/ssh-config", nil, &discovery)
+	d.must(t, http.MethodGet, "/api/settings/runners/ssh-config", nil, &discovery)
 	if len(discovery.Hosts) != 1 || discovery.Hosts[0].Alias != "buildbox" || discovery.Hosts[0].Port != 2200 || discovery.Hosts[0].ProxyJump != "gw" {
 		t.Fatalf("unexpected ssh discovery hosts: %+v", discovery.Hosts)
 	}
@@ -193,8 +193,8 @@ func TestUserDiscoversSSHConfigProbesAndRecoversHostKey(t *testing.T) {
 	}
 
 	// Pre-save probe verifies connectivity without creating <dataDir>/ssh_known_hosts.
-	var preProbe apiEnvironmentTestResult
-	d.must(t, http.MethodPost, "/api/settings/environments/probe", map[string]any{
+	var preProbe apiRunnerTestResult
+	d.must(t, http.MethodPost, "/api/settings/runners/probe", map[string]any{
 		"kind":   "pi-env",
 		"config": map[string]any{"host": "buildbox"},
 	}, &preProbe, http.StatusOK)
@@ -206,40 +206,40 @@ func TestUserDiscoversSSHConfigProbesAndRecoversHostKey(t *testing.T) {
 	}
 
 	// Save environment and trust initial host key via test.
-	var saved apiEnvironment
-	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+	var saved apiRunner
+	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
 		"name":   "Build Box",
 		"kind":   "pi-env",
 		"config": map[string]any{"host": "buildbox"},
 	}, &saved, http.StatusCreated)
 
-	var firstTest apiEnvironmentTestResult
-	d.must(t, http.MethodPost, "/api/settings/environments/"+saved.ID+"/test", nil, &firstTest, http.StatusOK)
+	var firstTest apiRunnerTestResult
+	d.must(t, http.MethodPost, "/api/settings/runners/"+saved.ID+"/test", nil, &firstTest, http.StatusOK)
 	if !firstTest.OK {
 		t.Fatalf("firstTest=%+v", firstTest)
 	}
 
 	// When remote host key rotates, test and edit-probe both flag hostKeyChanged=true until forgotten.
 	sshFix.RotateHostKey(t)
-	var rotatedTest apiEnvironmentTestResult
-	d.must(t, http.MethodPost, "/api/settings/environments/"+saved.ID+"/test", nil, &rotatedTest, http.StatusOK)
+	var rotatedTest apiRunnerTestResult
+	d.must(t, http.MethodPost, "/api/settings/runners/"+saved.ID+"/test", nil, &rotatedTest, http.StatusOK)
 	if rotatedTest.OK || !rotatedTest.HostKeyChanged {
 		t.Fatalf("expected HostKeyChanged=true after key rotation, got %+v", rotatedTest)
 	}
 
-	var editProbe apiEnvironmentTestResult
-	d.must(t, http.MethodPost, "/api/settings/environments/probe", map[string]any{
-		"environmentId": saved.ID,
-		"kind":          "pi-env",
-		"config":        map[string]any{"host": "buildbox"},
+	var editProbe apiRunnerTestResult
+	d.must(t, http.MethodPost, "/api/settings/runners/probe", map[string]any{
+		"runnerId": saved.ID,
+		"kind":     "pi-env",
+		"config":   map[string]any{"host": "buildbox"},
 	}, &editProbe, http.StatusOK)
 	if editProbe.OK || !editProbe.HostKeyChanged {
 		t.Fatalf("expected edit probe with unchanged host to detect HostKeyChanged=true, got %+v", editProbe)
 	}
 
-	d.must(t, http.MethodPost, "/api/settings/environments/"+saved.ID+"/forget-host-key", nil, nil, http.StatusOK)
-	var recoveredTest apiEnvironmentTestResult
-	d.must(t, http.MethodPost, "/api/settings/environments/"+saved.ID+"/test", nil, &recoveredTest, http.StatusOK)
+	d.must(t, http.MethodPost, "/api/settings/runners/"+saved.ID+"/forget-host-key", nil, nil, http.StatusOK)
+	var recoveredTest apiRunnerTestResult
+	d.must(t, http.MethodPost, "/api/settings/runners/"+saved.ID+"/test", nil, &recoveredTest, http.StatusOK)
 	if !recoveredTest.OK || recoveredTest.HostKeyChanged {
 		t.Fatalf("expected recovery after forget-host-key, got %+v", recoveredTest)
 	}

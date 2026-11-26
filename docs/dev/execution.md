@@ -55,7 +55,8 @@ provides [schedule Monitors](architecture.md#session-monitors).
 processes. [`internal/chat/background.go`](../../internal/chat/background.go)
 binds each command to its session. The Local executor owns a POSIX process
 group, so it can stop and sweep the group after the shell exits. Machine and
-Sandbox executors use the selected Runner's execution lease. That interface
+Sandbox executors use the Session's selected Runner through its execution
+lease. See [Session Runner selection](sessions.md#session-runners). That interface
 supports cancellation but does not give the control host a process group
 that it can signal.
 

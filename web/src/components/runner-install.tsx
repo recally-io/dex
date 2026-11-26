@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { issueRunnerCodeMutation } from "../api/generated/@tanstack/react-query.gen";
 import { useApp } from "../lib/app-state";
-import { machineAddress, machineInstallCommand } from "../lib/environments";
+import { machineAddress, machineInstallCommand } from "../lib/runners";
 import { Mono } from "./page";
 import { Button } from "./ui/button";
 import { Spinner } from "./feedback";
@@ -10,10 +10,10 @@ import { Spinner } from "./feedback";
 // RunnerInstall shows the one command that connects a machine to Dex. Dex issues the code only
 // for a saved environment, so the caller renders this after the save.
 export function RunnerInstall({
-  environmentId,
+  runnerId,
   autoIssue = false,
 }: {
-  environmentId: string;
+  runnerId: string;
   // autoIssue creates the first command without another click, for a new environment.
   autoIssue?: boolean;
 }) {
@@ -23,7 +23,7 @@ export function RunnerInstall({
   // The machine reaches Dex at the address the operator uses for the web UI, so the command
   // needs no address setting: it names the origin of this page.
   const origin = window.location.origin;
-  const command = issued ? machineInstallCommand(origin, environmentId, issued.code) : null;
+  const command = issued ? machineInstallCommand(origin, runnerId, issued.code) : null;
   const reachable = machineAddress(origin) !== null;
 
   const issue = useMutation({
@@ -37,8 +37,8 @@ export function RunnerInstall({
     if (!autoIssue || autoIssued.current || !reachable) return;
 
     autoIssued.current = true;
-    issue.mutate({ path: { environmentId } });
-  }, [autoIssue, environmentId, issue, reachable]);
+    issue.mutate({ path: { runnerId } });
+  }, [autoIssue, runnerId, issue, reachable]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -50,7 +50,7 @@ export function RunnerInstall({
           onClick={() => {
             setIssued(null);
             issue.reset();
-            issue.mutate({ path: { environmentId } });
+            issue.mutate({ path: { runnerId } });
           }}
         >
           {issue.isPending ? <Spinner /> : null}

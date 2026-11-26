@@ -261,4 +261,14 @@ func TestOwnerManagesBotsThroughChat(t *testing.T) {
 	if names := d.botNames(t, "/api/agents"); !slices.Equal(names, []string{"Dex", "Writer"}) {
 		t.Fatalf("bots: %v", names)
 	}
+	// The tools accept a registered Runner and report its ID on the saved bot.
+	var runner apiRunner
+	d.must(t, http.MethodPost, "/api/settings/runners", map[string]string{"name": "Machine", "kind": "runner"}, &runner, http.StatusCreated)
+	got = taskTool(t, d, chat, "bot_create", map[string]string{"name": "Remote writer", "runnerId": runner.ID})
+	var remote struct {
+		RunnerID string `json:"runnerId"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(got, "tool: ")), &remote); err != nil || remote.RunnerID != runner.ID {
+		t.Fatalf("bot_create runner: %s: %v", got, err)
+	}
 }

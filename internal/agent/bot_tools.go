@@ -14,7 +14,7 @@ import (
 
 // Patch changes the fields that are not nil.
 type Patch struct {
-	Name, Instructions, Provider, ModelID, ThinkingLevel, FallbackProvider, FallbackModelID, EnvironmentID *string
+	Name, Instructions, Provider, ModelID, ThinkingLevel, FallbackProvider, FallbackModelID, RunnerID *string
 }
 
 func applyPatch(a *Agent, p Patch) {
@@ -29,7 +29,7 @@ func applyPatch(a *Agent, p Patch) {
 		{&a.ThinkingLevel, p.ThinkingLevel},
 		{&a.FallbackProvider, p.FallbackProvider},
 		{&a.FallbackModelID, p.FallbackModelID},
-		{&a.EnvironmentID, p.EnvironmentID},
+		{&a.RunnerID, p.RunnerID},
 	} {
 		if f.src != nil {
 			*f.dst = *f.src
@@ -65,7 +65,7 @@ func (s *Service) patchAgent(ctx context.Context, id string, p Patch) (Agent, er
 		if err := s.saveSettings(ctx, oldRow, sqlc.UpdateAgentSettingsParams{
 			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel,
 			FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
-			Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
+			Instructions: a.Instructions, RunnerID: a.RunnerID, ID: id, Name: a.Name,
 		}); err != nil {
 			return err
 		}
@@ -76,8 +76,8 @@ func (s *Service) patchAgent(ctx context.Context, id string, p Patch) (Agent, er
 	if err != nil {
 		return Agent{}, err
 	}
-	if oldRow.EnvironmentID != out.EnvironmentID && s.OnEnvironmentChanged != nil {
-		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID, oldRow.EnvironmentSandboxID)
+	if oldRow.RunnerID != out.RunnerID && s.OnRunnerChanged != nil {
+		s.OnRunnerChanged(ctx, id, oldRow.RunnerID, oldRow.RunnerSandboxID)
 	}
 	return out, nil
 }
@@ -121,7 +121,7 @@ func botInfo(a Agent) BotInfo {
 	return BotInfo{
 		ID: a.ID, Name: a.Name, Provider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel,
 		FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
-		Instructions: a.Instructions, EnvironmentID: a.EnvironmentID,
+		Instructions: a.Instructions, RunnerID: a.RunnerID,
 	}
 }
 
@@ -187,7 +187,7 @@ func (t *BotTools) create(ctx context.Context, c engine.TaskContext, p BotPatch)
 	created, err := t.Agents.CreateAgent(ctx, Patch{
 		Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID,
 		ThinkingLevel: p.ThinkingLevel, FallbackProvider: p.FallbackProvider, FallbackModelID: p.FallbackModelID,
-		EnvironmentID: p.EnvironmentID,
+		RunnerID: p.RunnerID,
 	})
 	return botInfo(created), err
 }
@@ -203,7 +203,7 @@ func (t *BotTools) update(ctx context.Context, c engine.TaskContext, p BotPatch)
 	updated, err := t.Agents.patchAgent(ctx, target.ID, Patch{
 		Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID,
 		ThinkingLevel: p.ThinkingLevel, FallbackProvider: p.FallbackProvider, FallbackModelID: p.FallbackModelID,
-		EnvironmentID: p.EnvironmentID,
+		RunnerID: p.RunnerID,
 	})
 	return botInfo(updated), err
 }

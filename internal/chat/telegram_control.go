@@ -36,7 +36,7 @@ func checkTelegramControl(ctx context.Context, q *sqlc.Queries, source, agentID 
 	if !strings.HasPrefix(source, "telegram-callback:") {
 		return nil
 	}
-	if err := q.LockRoutineTools(ctx); err != nil {
+	if err := q.LockAutomationTools(ctx); err != nil {
 		return err
 	}
 	return ValidateTelegramControl(ctx, q, source, agentID, conversationID)
@@ -193,7 +193,7 @@ func (s *Service) ResumeChannelWorkflow(ctx context.Context, agentID, peer, oper
 	if err := checkTelegramControl(ctx, q, operation, agentID, target.ID); err != nil {
 		return err
 	}
-	if err := q.LockRoutineTools(ctx); err != nil {
+	if err := q.LockAutomationTools(ctx); err != nil {
 		return err
 	}
 	allowed, err := TelegramInputAllowed(ctx, q, agentID, peer, identity)

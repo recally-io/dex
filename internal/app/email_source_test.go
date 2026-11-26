@@ -28,7 +28,7 @@ func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
 	secret := strings.Repeat("m", 40)
 	source := map[string]any{"secret": secret, "taskAgentId": "default", "holdUnmatched": true}
 	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail", source, nil, http.StatusNotFound)
-	d.must(t, http.MethodPut, "/api/settings/plugins/email", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/settings/sources/email", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
 	d.stop()
 	d = startDex(t, dataDir, "")
 	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail", source, nil, http.StatusNoContent)
@@ -141,7 +141,7 @@ func TestUserLetsDexReadAMailboxFolder(t *testing.T) {
 	t.Cleanup(func() { _ = server.Close() })
 	dataDir := t.TempDir()
 	d := startDex(t, dataDir, "")
-	d.must(t, http.MethodPut, "/api/settings/plugins/email", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/settings/sources/email", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
 	d.stop()
 	d = startDex(t, dataDir, "")
 	source := map[string]any{"secret": strings.Repeat("m", 40), "taskAgentId": "default"}

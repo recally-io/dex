@@ -29,7 +29,7 @@ func TestUserManagesMCPServersFromRunner(t *testing.T) {
 	d.setModel(t, "tool")
 	var session sessionInfo
 	d.must(t, http.MethodPost, "/api/agents/default/chats", nil, &session, http.StatusCreated)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", session.ID), map[string]string{"environmentId": m.envID}, nil)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", session.ID), map[string]string{"runnerId": m.envID}, nil)
 	chat := botChat{bots: &bots{t: t, d: d}, agent: "default", id: session.ID}
 	server := httpServer(t, t.TempDir())
 	url := server["url"].(string)
@@ -73,7 +73,7 @@ func TestUserManagesMCPServersFromRunner(t *testing.T) {
 	var second apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other bot", "provider": "faux", "modelId": "tool"}, &second, http.StatusCreated)
 	var other extensions
-	d.must(t, http.MethodGet, "/api/agents/"+second.ID+"/extensions", nil, &other)
+	d.must(t, http.MethodGet, "/api/agents/"+second.ID+"/integrations", nil, &other)
 	if got := other.server("files"); got.Scope != "dex" || got.Overrides || got.State != "idle" {
 		t.Fatalf("override affected the other bot: %+v", got)
 	}

@@ -26,7 +26,7 @@ func (h *handler) IssueRunnerCode(ctx context.Context, req api.IssueRunnerCodeRe
 	if h.Runners == nil {
 		return api.IssueRunnerCodedefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: api.Error{Error: "Remote machines are unavailable in this build."}}, nil
 	}
-	code, err := h.Runners.IssueCode(ctx, req.EnvironmentId)
+	code, err := h.Runners.IssueCode(ctx, req.RunnerId)
 	if errors.Is(err, runner.ErrRunnerConflict) {
 		return api.IssueRunnerCodedefaultJSONResponse{StatusCode: http.StatusConflict, Body: api.Error{Error: err.Error()}}, nil
 	}
@@ -40,10 +40,10 @@ func (h *handler) RevokeRunner(ctx context.Context, req api.RevokeRunnerRequestO
 	if h.Runners == nil {
 		return api.RevokeRunnerdefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: api.Error{Error: "Remote machines are unavailable in this build."}}, nil
 	}
-	if err := h.Runners.Revoke(ctx, req.EnvironmentId); err != nil {
+	if err := h.Runners.Revoke(ctx, req.RunnerId); err != nil {
 		return nil, err
 	}
-	h.environmentChanged(ctx, req.EnvironmentId)
+	h.runnerChanged(ctx, req.RunnerId)
 	return api.RevokeRunner200JSONResponse(ok), nil
 }
 
@@ -68,7 +68,7 @@ func (h *handler) machinePair(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "enrollment is temporarily unavailable")
 		return
 	}
-	h.environmentChanged(r.Context(), r.PathValue("id"))
+	h.runnerChanged(r.Context(), r.PathValue("id"))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"token": token, "protocol": outbound.Version})

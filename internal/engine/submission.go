@@ -103,7 +103,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		// but attachments must wait until they can be staged there.
 		// A lease stays valid while its machine is offline, so check the machine here
 		// without waiting: the input stays in business storage until the machine is back.
-		if waits := target.ID == "" || len(input.Attachments) > 0 || input.RequireEnvironment; waits {
+		if waits := target.ID == "" || len(input.Attachments) > 0 || input.RequireRunner; waits {
 			if envErr == nil && envs.status(ctx, target.ID) == "offline" {
 				envErr = fmt.Errorf("%w: %w", runner.ErrUnavailable, outbound.ErrOffline)
 			}

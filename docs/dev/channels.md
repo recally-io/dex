@@ -347,7 +347,7 @@ sent or permanently skipped; the source key and routing facts remain. There is
 no feedback store, model input, or GitHub write. The reply remains on the
 messaging platform like any other message.
 
-Each platform has one durable sender. All platform message bodies, including command acknowledgements and pure Routine alerts, go through the Outbox. Direct channel inputs can queue final replies or a short error. Ordinary Web and background output stay in the transcript. Background runs can call `notify_user` to queue a message before the run ends. The tool uses the configured default or an explicit paired channel. If a platform has multiple targets, specify `channel:target`.
+Each platform has one durable sender. All platform message bodies, including command acknowledgements and Automation alerts, go through the Outbox. Direct channel inputs can queue final replies or a short error. Ordinary Web and background output stay in the transcript. Background runs can call `notify_user` to queue a message before the run ends. The tool uses the configured default or an explicit paired channel. If a platform has multiple targets, specify `channel:target`.
 
 The key `(event_id, channel, target)` identifies one message. An event can have independent deliveries to different destinations. The sender freezes the platform message before it sends. Confirmation marks it `sent`. Temporary errors keep it `pending`, with backoff from 5 to 320 seconds or the platform wait if longer. A permanent rejection marks it `failed`. No failure changes the destination. Feishu and WeChat use a stable key for retries. Telegram can duplicate a message if the platform accepts it before a crash and the receipt does not commit.
 

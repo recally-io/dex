@@ -58,14 +58,14 @@ nothing.
    not in the build.
 4. dex applies the migrations of each enabled plugin. If they fail, dex logs
    the error and skips that plugin. The core and the other plugins run, and
-   `GET /api/settings/plugins` shows the error. The owner can turn the plugin
+   `GET /api/settings/sources` shows the error. The owner can turn the plugin
    off.
 5. dex mounts the hooks and API of the enabled plugins, registers their jobs,
    and gives their tools to the engine.
 
-The owner turns a plugin on or off with `PUT /api/settings/plugins/{name}` or
-in General settings. `GET /api/settings/plugins` gives each plugin of the build
-with its stored choice and whether it runs now. The choice applies after a
+The owner turns a Source on or off with `PUT /api/settings/sources/{name}` or
+in Global Integrations. `GET /api/settings/sources` lists each Source in the
+build, with its stored choice and whether its plugin runs now. The choice applies after a
 restart. Deliberate limit: reload the plugin routes, jobs, and tools in place
 if restarts become a problem.
 

@@ -123,7 +123,7 @@ func TestUserStartupServesHTTPAndRetainsPendingAdmissionDuringDiscovery(t *testi
 	}
 	// Cold runtime operations return retryable 503 without changing saved settings.
 	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991&limit=100", savedChat), nil, nil, http.StatusServiceUnavailable)
-	d.must(t, http.MethodPost, "/api/agents/default/extensions/reload", nil, nil, http.StatusServiceUnavailable)
+	d.must(t, http.MethodPost, "/api/agents/default/integrations/reload", nil, nil, http.StatusServiceUnavailable)
 	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Must not save", "provider": "lan", "modelId": "remote", "thinkingLevel": "off"}, nil, http.StatusServiceUnavailable)
 	var saved struct {
 		Name     string `json:"name"`

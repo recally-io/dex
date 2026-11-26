@@ -4,7 +4,7 @@ SELECT r.id AS run_id, a.agent_id, b.name AS agent_name,
     CAST(coalesce(s.conversation_id, 0) AS INTEGER) AS chat_id,
     CAST(CASE WHEN r.status = 'failed' OR s.status = 'unanswered' THEN 'failed' ELSE r.outcome END AS TEXT) AS outcome,
     CAST(CASE WHEN r.summary = '' THEN coalesce(r.reason, s.reason, '') ELSE r.summary END AS TEXT) AS summary, r.created_at,
-    r.read_at, r.dismissed_at, r.environment_id, r.cwd
+    r.read_at, r.dismissed_at, r.runner_id, r.cwd
 FROM automation_runs r
 JOIN automations a ON a.id = r.automation_id
 JOIN agents b ON b.id = a.agent_id AND b.archived_at IS NULL

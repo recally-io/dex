@@ -121,7 +121,7 @@ func TestUserOtherAgentWorksDuringSlowMCP(t *testing.T) {
 			alphaID := uuid.NewV7().String()
 			go func() {
 				if operation == "reload" {
-					alphaDone <- d.isolationRequest(alphaCtx, http.MethodPost, "/api/agents/default/extensions/reload", nil)
+					alphaDone <- d.isolationRequest(alphaCtx, http.MethodPost, "/api/agents/default/integrations/reload", nil)
 					return
 				}
 				alphaDone <- d.isolationRequest(alphaCtx, http.MethodPost, alphaPath+"/messages", map[string]string{"id": alphaID, "text": "cold alpha"})

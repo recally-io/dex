@@ -202,9 +202,9 @@ func (q *Queries) CreateAccessTokenIfMissing(ctx context.Context, token string) 
 }
 
 const createAgent = `-- name: CreateAgent :one
-INSERT INTO agents (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, environment_id, created_at)
+INSERT INTO agents (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, runner_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id, fallback_provider, fallback_model_id
+RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id
 `
 
 type CreateAgentParams struct {
@@ -216,7 +216,7 @@ type CreateAgentParams struct {
 	FallbackProvider string `json:"fallback_provider"`
 	FallbackModelID  string `json:"fallback_model_id"`
 	Instructions     string `json:"instructions"`
-	EnvironmentID    string `json:"environment_id"`
+	RunnerID         string `json:"runner_id"`
 	CreatedAt        int64  `json:"created_at"`
 }
 
@@ -230,7 +230,7 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		arg.FallbackProvider,
 		arg.FallbackModelID,
 		arg.Instructions,
-		arg.EnvironmentID,
+		arg.RunnerID,
 		arg.CreatedAt,
 	)
 	var i Agent
@@ -244,8 +244,8 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		&i.ThinkingLevel,
 		&i.PrimaryNotificationTargetID,
 		&i.ArchivedAt,
-		&i.EnvironmentID,
-		&i.EnvironmentSandboxID,
+		&i.RunnerID,
+		&i.RunnerSandboxID,
 		&i.FallbackProvider,
 		&i.FallbackModelID,
 	)
@@ -271,7 +271,7 @@ func (q *Queries) CreateAgentIfMissing(ctx context.Context, arg CreateAgentIfMis
 
 const createAutomation = `-- name: CreateAutomation :exec
 INSERT INTO automations (
-    id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, environment_id, session, target_conversation_id
+    id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_conversation_id
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
@@ -289,7 +289,7 @@ type CreateAutomationParams struct {
 	Cwd                  string         `json:"cwd"`
 	NotificationRoute    string         `json:"notification_route"`
 	NotificationTargetID sql.NullString `json:"notification_target_id"`
-	EnvironmentID        string         `json:"environment_id"`
+	RunnerID             string         `json:"runner_id"`
 	Session              string         `json:"session"`
 	TargetConversationID sql.NullInt64  `json:"target_conversation_id"`
 }
@@ -309,7 +309,7 @@ func (q *Queries) CreateAutomation(ctx context.Context, arg CreateAutomationPara
 		arg.Cwd,
 		arg.NotificationRoute,
 		arg.NotificationTargetID,
-		arg.EnvironmentID,
+		arg.RunnerID,
 		arg.Session,
 		arg.TargetConversationID,
 	)
@@ -317,20 +317,20 @@ func (q *Queries) CreateAutomation(ctx context.Context, arg CreateAutomationPara
 }
 
 const createAutomationRun = `-- name: CreateAutomationRun :execrows
-INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at, environment_id, cwd)
+INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at, runner_id, cwd)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT DO NOTHING
 `
 
 type CreateAutomationRunParams struct {
-	ID            string         `json:"id"`
-	AutomationID  string         `json:"automation_id"`
-	DueAt         sql.NullInt64  `json:"due_at"`
-	Status        string         `json:"status"`
-	Reason        sql.NullString `json:"reason"`
-	CreatedAt     int64          `json:"created_at"`
-	EnvironmentID string         `json:"environment_id"`
-	Cwd           string         `json:"cwd"`
+	ID           string         `json:"id"`
+	AutomationID string         `json:"automation_id"`
+	DueAt        sql.NullInt64  `json:"due_at"`
+	Status       string         `json:"status"`
+	Reason       sql.NullString `json:"reason"`
+	CreatedAt    int64          `json:"created_at"`
+	RunnerID     string         `json:"runner_id"`
+	Cwd          string         `json:"cwd"`
 }
 
 // A run for a scheduled time that has a run already is not stored again.
@@ -342,7 +342,7 @@ func (q *Queries) CreateAutomationRun(ctx context.Context, arg CreateAutomationR
 		arg.Status,
 		arg.Reason,
 		arg.CreatedAt,
-		arg.EnvironmentID,
+		arg.RunnerID,
 		arg.Cwd,
 	)
 	if err != nil {
@@ -376,9 +376,9 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 }
 
 const createFork = `-- name: CreateFork :one
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, execution_id, forked_from, parent_id, created_at)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, execution_id, forked_from, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id
 `
 
 type CreateForkParams struct {
@@ -389,7 +389,7 @@ type CreateForkParams struct {
 	ModelID       string        `json:"model_id"`
 	ThinkingLevel string        `json:"thinking_level"`
 	Cwd           string        `json:"cwd"`
-	EnvironmentID string        `json:"environment_id"`
+	RunnerID      string        `json:"runner_id"`
 	ExecutionID   sql.NullInt64 `json:"execution_id"`
 	ForkedFrom    sql.NullInt64 `json:"forked_from"`
 	ParentID      sql.NullInt64 `json:"parent_id"`
@@ -407,7 +407,7 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 		arg.ModelID,
 		arg.ThinkingLevel,
 		arg.Cwd,
-		arg.EnvironmentID,
+		arg.RunnerID,
 		arg.ExecutionID,
 		arg.ForkedFrom,
 		arg.ParentID,
@@ -431,7 +431,7 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
-		&i.EnvironmentID,
+		&i.RunnerID,
 	)
 	return i, err
 }
@@ -567,7 +567,7 @@ INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_i
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
     WHERE conversations.execution_scope = ''
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id
 `
 
 type EnsureConversationParams struct {
@@ -609,7 +609,7 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
-		&i.EnvironmentID,
+		&i.RunnerID,
 	)
 	return i, err
 }
@@ -628,7 +628,7 @@ VALUES (
     '', ?3
 )
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id
 `
 
 type EnsureEmptyChatParams struct {
@@ -658,7 +658,7 @@ func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
-		&i.EnvironmentID,
+		&i.RunnerID,
 	)
 	return i, err
 }
@@ -717,7 +717,7 @@ func (q *Queries) GetAccessToken(ctx context.Context) (string, error) {
 }
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE id = ?
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE id = ?
 `
 
 func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
@@ -733,8 +733,8 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 		&i.ThinkingLevel,
 		&i.PrimaryNotificationTargetID,
 		&i.ArchivedAt,
-		&i.EnvironmentID,
-		&i.EnvironmentSandboxID,
+		&i.RunnerID,
+		&i.RunnerSandboxID,
 		&i.FallbackProvider,
 		&i.FallbackModelID,
 	)
@@ -742,7 +742,7 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 }
 
 const getAutomation = `-- name: GetAutomation :one
-SELECT id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, environment_id, session, target_conversation_id FROM automations WHERE id = ? AND agent_id = ?
+SELECT id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_conversation_id FROM automations WHERE id = ? AND agent_id = ?
 `
 
 type GetAutomationParams struct {
@@ -767,7 +767,7 @@ func (q *Queries) GetAutomation(ctx context.Context, arg GetAutomationParams) (A
 		&i.Cwd,
 		&i.NotificationRoute,
 		&i.NotificationTargetID,
-		&i.EnvironmentID,
+		&i.RunnerID,
 		&i.Session,
 		&i.TargetConversationID,
 	)
@@ -775,7 +775,7 @@ func (q *Queries) GetAutomation(ctx context.Context, arg GetAutomationParams) (A
 }
 
 const getAutomationRun = `-- name: GetAutomationRun :one
-SELECT id, automation_id, due_at, status, reason, created_at, outcome, summary, change_key, duplicate, read_at, dismissed_at, environment_id, cwd, notification_note FROM automation_runs WHERE id = ?
+SELECT id, automation_id, due_at, status, reason, created_at, outcome, summary, change_key, duplicate, read_at, dismissed_at, runner_id, cwd, notification_note FROM automation_runs WHERE id = ?
 `
 
 func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRun, error) {
@@ -794,7 +794,7 @@ func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRu
 		&i.Duplicate,
 		&i.ReadAt,
 		&i.DismissedAt,
-		&i.EnvironmentID,
+		&i.RunnerID,
 		&i.Cwd,
 		&i.NotificationNote,
 	)
@@ -812,7 +812,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.cwd,
-    c.environment_id,
+    c.runner_id,
     c.created_at,
     c.archived_at,
     c.parent_id,
@@ -850,7 +850,7 @@ type GetChatRow struct {
 	ModelID         string         `json:"model_id"`
 	ThinkingLevel   string         `json:"thinking_level"`
 	Cwd             string         `json:"cwd"`
-	EnvironmentID   string         `json:"environment_id"`
+	RunnerID        string         `json:"runner_id"`
 	CreatedAt       int64          `json:"created_at"`
 	ArchivedAt      sql.NullInt64  `json:"archived_at"`
 	ParentID        sql.NullInt64  `json:"parent_id"`
@@ -875,7 +875,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.ModelID,
 		&i.ThinkingLevel,
 		&i.Cwd,
-		&i.EnvironmentID,
+		&i.RunnerID,
 		&i.CreatedAt,
 		&i.ArchivedAt,
 		&i.ParentID,
@@ -890,7 +890,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE id = ? AND execution_scope = ''
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations WHERE id = ? AND execution_scope = ''
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -913,13 +913,13 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
-		&i.EnvironmentID,
+		&i.RunnerID,
 	)
 	return i, err
 }
 
 const getConversationByKey = `-- name: GetConversationByKey :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND channel_key = ? AND execution_scope = ''
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations WHERE agent_id = ? AND channel_key = ? AND execution_scope = ''
 `
 
 type GetConversationByKeyParams struct {
@@ -947,7 +947,7 @@ func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationB
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
-		&i.EnvironmentID,
+		&i.RunnerID,
 	)
 	return i, err
 }
@@ -976,7 +976,7 @@ func (q *Queries) GetOnePassword(ctx context.Context) (GetOnePasswordRow, error)
 }
 
 const getPreviousFinishedAutomationRun = `-- name: GetPreviousFinishedAutomationRun :one
-SELECT prior.id, prior.automation_id, prior.due_at, prior.status, prior.reason, prior.created_at, prior.outcome, prior.summary, prior.change_key, prior.duplicate, prior.read_at, prior.dismissed_at, prior.environment_id, prior.cwd, prior.notification_note, s.status AS execution_status, s.reason AS execution_reason
+SELECT prior.id, prior.automation_id, prior.due_at, prior.status, prior.reason, prior.created_at, prior.outcome, prior.summary, prior.change_key, prior.duplicate, prior.read_at, prior.dismissed_at, prior.runner_id, prior.cwd, prior.notification_note, s.status AS execution_status, s.reason AS execution_reason
 FROM automation_runs current
 JOIN automation_runs prior ON prior.automation_id = current.automation_id
 LEFT JOIN submissions s ON s.id = prior.id
@@ -1010,7 +1010,7 @@ func (q *Queries) GetPreviousFinishedAutomationRun(ctx context.Context, runID st
 		&i.AutomationRun.Duplicate,
 		&i.AutomationRun.ReadAt,
 		&i.AutomationRun.DismissedAt,
-		&i.AutomationRun.EnvironmentID,
+		&i.AutomationRun.RunnerID,
 		&i.AutomationRun.Cwd,
 		&i.AutomationRun.NotificationNote,
 		&i.ExecutionStatus,
@@ -1179,7 +1179,7 @@ func (q *Queries) ListAgentIDs(ctx context.Context) ([]string, error) {
 }
 
 const listAgents = `-- name: ListAgents :many
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE archived_at IS NULL ORDER BY created_at, id
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE archived_at IS NULL ORDER BY created_at, id
 `
 
 // Active bots only. Startup starts channels for these bots.
@@ -1202,8 +1202,8 @@ func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 			&i.ThinkingLevel,
 			&i.PrimaryNotificationTargetID,
 			&i.ArchivedAt,
-			&i.EnvironmentID,
-			&i.EnvironmentSandboxID,
+			&i.RunnerID,
+			&i.RunnerSandboxID,
 			&i.FallbackProvider,
 			&i.FallbackModelID,
 		); err != nil {
@@ -1221,7 +1221,7 @@ func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 }
 
 const listArchivedAgents = `-- name: ListArchivedAgents :many
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id
 `
 
 func (q *Queries) ListArchivedAgents(ctx context.Context) ([]Agent, error) {
@@ -1243,8 +1243,8 @@ func (q *Queries) ListArchivedAgents(ctx context.Context) ([]Agent, error) {
 			&i.ThinkingLevel,
 			&i.PrimaryNotificationTargetID,
 			&i.ArchivedAt,
-			&i.EnvironmentID,
-			&i.EnvironmentSandboxID,
+			&i.RunnerID,
+			&i.RunnerSandboxID,
 			&i.FallbackProvider,
 			&i.FallbackModelID,
 		); err != nil {
@@ -1267,7 +1267,7 @@ SELECT
     r.due_at,
     r.status,
     r.reason,
-    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.environment_id, r.cwd, r.notification_note,
+    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.runner_id, r.cwd, r.notification_note,
     s.status AS message_status,
     s.reason AS message_reason,
     s.conversation_id AS chat_id,
@@ -1294,7 +1294,7 @@ type ListAutomationRunsRow struct {
 	Summary          string         `json:"summary"`
 	ChangeKey        string         `json:"change_key"`
 	Duplicate        int64          `json:"duplicate"`
-	EnvironmentID    string         `json:"environment_id"`
+	RunnerID         string         `json:"runner_id"`
 	Cwd              string         `json:"cwd"`
 	NotificationNote string         `json:"notification_note"`
 	MessageStatus    sql.NullString `json:"message_status"`
@@ -1324,7 +1324,7 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 			&i.Summary,
 			&i.ChangeKey,
 			&i.Duplicate,
-			&i.EnvironmentID,
+			&i.RunnerID,
 			&i.Cwd,
 			&i.NotificationNote,
 			&i.MessageStatus,
@@ -1346,8 +1346,53 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 	return items, nil
 }
 
+const listAutomationTargetCandidates = `-- name: ListAutomationTargetCandidates :many
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations WHERE agent_id = ? AND execution_scope = '' ORDER BY created_at DESC, id DESC
+`
+
+func (q *Queries) ListAutomationTargetCandidates(ctx context.Context, agentID string) ([]Conversation, error) {
+	rows, err := q.db.QueryContext(ctx, listAutomationTargetCandidates, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Conversation{}
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.ChannelKey,
+			&i.ExecutionID,
+			&i.CreatedAt,
+			&i.Title,
+			&i.ModelProvider,
+			&i.ModelID,
+			&i.ThinkingLevel,
+			&i.AbortPending,
+			&i.ArchivedAt,
+			&i.Cwd,
+			&i.ForkedFrom,
+			&i.ParentID,
+			&i.ExecutionScope,
+			&i.ScopeContext,
+			&i.RunnerID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAutomations = `-- name: ListAutomations :many
-SELECT id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, environment_id, session, target_conversation_id FROM automations WHERE agent_id = ? ORDER BY created_at, id
+SELECT id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_conversation_id FROM automations WHERE agent_id = ? ORDER BY created_at, id
 `
 
 func (q *Queries) ListAutomations(ctx context.Context, agentID string) ([]Automation, error) {
@@ -1373,7 +1418,7 @@ func (q *Queries) ListAutomations(ctx context.Context, agentID string) ([]Automa
 			&i.Cwd,
 			&i.NotificationRoute,
 			&i.NotificationTargetID,
-			&i.EnvironmentID,
+			&i.RunnerID,
 			&i.Session,
 			&i.TargetConversationID,
 		); err != nil {
@@ -1403,7 +1448,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.cwd,
-    c.environment_id,
+    c.runner_id,
     c.created_at,
     c.archived_at,
     c.parent_id,
@@ -1439,7 +1484,7 @@ type ListChatsRow struct {
 	ModelID         string         `json:"model_id"`
 	ThinkingLevel   string         `json:"thinking_level"`
 	Cwd             string         `json:"cwd"`
-	EnvironmentID   string         `json:"environment_id"`
+	RunnerID        string         `json:"runner_id"`
 	CreatedAt       int64          `json:"created_at"`
 	ArchivedAt      sql.NullInt64  `json:"archived_at"`
 	ParentID        sql.NullInt64  `json:"parent_id"`
@@ -1469,7 +1514,7 @@ func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow
 			&i.ModelID,
 			&i.ThinkingLevel,
 			&i.Cwd,
-			&i.EnvironmentID,
+			&i.RunnerID,
 			&i.CreatedAt,
 			&i.ArchivedAt,
 			&i.ParentID,
@@ -1572,7 +1617,7 @@ func (q *Queries) ListDreamInput(ctx context.Context, arg ListDreamInputParams) 
 }
 
 const listDueAutomations = `-- name: ListDueAutomations :many
-SELECT a.id, a.agent_id, a.name, a.prompt, a.schedule, a.time_zone, a.enabled, a.next_due_at, a.created_at, a.updated_at, a.cwd, a.notification_route, a.notification_target_id, a.environment_id, a.session, a.target_conversation_id FROM automations a JOIN agents b ON b.id = a.agent_id
+SELECT a.id, a.agent_id, a.name, a.prompt, a.schedule, a.time_zone, a.enabled, a.next_due_at, a.created_at, a.updated_at, a.cwd, a.notification_route, a.notification_target_id, a.runner_id, a.session, a.target_conversation_id FROM automations a JOIN agents b ON b.id = a.agent_id
 WHERE a.enabled = 1 AND a.next_due_at <= ? AND b.archived_at IS NULL ORDER BY a.next_due_at
 `
 
@@ -1599,7 +1644,7 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 			&i.Cwd,
 			&i.NotificationRoute,
 			&i.NotificationTargetID,
-			&i.EnvironmentID,
+			&i.RunnerID,
 			&i.Session,
 			&i.TargetConversationID,
 		); err != nil {
@@ -1800,51 +1845,6 @@ func (q *Queries) ListRecentProjects(ctx context.Context, agentID string) ([]str
 			return nil, err
 		}
 		items = append(items, cwd)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listRoutineTargetCandidates = `-- name: ListRoutineTargetCandidates :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND execution_scope = '' ORDER BY created_at DESC, id DESC
-`
-
-func (q *Queries) ListRoutineTargetCandidates(ctx context.Context, agentID string) ([]Conversation, error) {
-	rows, err := q.db.QueryContext(ctx, listRoutineTargetCandidates, agentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Conversation{}
-	for rows.Next() {
-		var i Conversation
-		if err := rows.Scan(
-			&i.ID,
-			&i.AgentID,
-			&i.ChannelKey,
-			&i.ExecutionID,
-			&i.CreatedAt,
-			&i.Title,
-			&i.ModelProvider,
-			&i.ModelID,
-			&i.ThinkingLevel,
-			&i.AbortPending,
-			&i.ArchivedAt,
-			&i.Cwd,
-			&i.ForkedFrom,
-			&i.ParentID,
-			&i.ExecutionScope,
-			&i.ScopeContext,
-			&i.EnvironmentID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -2165,8 +2165,8 @@ UPDATE agents SET
     fallback_provider = ?5,
     fallback_model_id = ?6,
     instructions = ?7,
-    environment_sandbox_id = CASE WHEN environment_id = ?8 THEN environment_sandbox_id ELSE '' END,
-    environment_id = ?8
+    runner_sandbox_id = CASE WHEN runner_id = ?8 THEN runner_sandbox_id ELSE '' END,
+    runner_id = ?8
 WHERE id = ?9
 `
 
@@ -2178,7 +2178,7 @@ type UpdateAgentSettingsParams struct {
 	FallbackProvider string `json:"fallback_provider"`
 	FallbackModelID  string `json:"fallback_model_id"`
 	Instructions     string `json:"instructions"`
-	EnvironmentID    string `json:"environment_id"`
+	RunnerID         string `json:"runner_id"`
 	ID               string `json:"id"`
 }
 
@@ -2191,7 +2191,7 @@ func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettin
 		arg.FallbackProvider,
 		arg.FallbackModelID,
 		arg.Instructions,
-		arg.EnvironmentID,
+		arg.RunnerID,
 		arg.ID,
 	)
 	return err
@@ -2200,7 +2200,7 @@ func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettin
 const updateAutomation = `-- name: UpdateAutomation :execrows
 UPDATE automations SET
     cwd = ?, name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
-    notification_route = ?, notification_target_id = ?, environment_id = ?, updated_at = ?, target_conversation_id = ?
+    notification_route = ?, notification_target_id = ?, runner_id = ?, updated_at = ?, target_conversation_id = ?
 WHERE id = ? AND agent_id = ?
 `
 
@@ -2215,7 +2215,7 @@ type UpdateAutomationParams struct {
 	NextDueAt            sql.NullInt64  `json:"next_due_at"`
 	NotificationRoute    string         `json:"notification_route"`
 	NotificationTargetID sql.NullString `json:"notification_target_id"`
-	EnvironmentID        string         `json:"environment_id"`
+	RunnerID             string         `json:"runner_id"`
 	UpdatedAt            int64          `json:"updated_at"`
 	TargetConversationID sql.NullInt64  `json:"target_conversation_id"`
 	ID                   string         `json:"id"`
@@ -2234,7 +2234,7 @@ func (q *Queries) UpdateAutomation(ctx context.Context, arg UpdateAutomationPara
 		arg.NextDueAt,
 		arg.NotificationRoute,
 		arg.NotificationTargetID,
-		arg.EnvironmentID,
+		arg.RunnerID,
 		arg.UpdatedAt,
 		arg.TargetConversationID,
 		arg.ID,

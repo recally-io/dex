@@ -54,8 +54,8 @@ type Config struct {
 	// Engine owns native execution and extensions.
 	Engine *engine.Agents
 	Envs   *runner.Manager
-	// EnvironmentChanged requests a reload after a saved environment change.
-	EnvironmentChanged func(context.Context, string)
+	// RunnerChanged requests a reload after a saved environment change.
+	RunnerChanged func(context.Context, string)
 	// Runners enrolls remote machines and serves their sessions.
 	Runners *runner.Runners
 	// System owns server upgrades, restarts, backups, and recent logs.
@@ -115,7 +115,7 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
-				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrEnvironmentInvalid):
+				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrRunnerInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, tasksvc.ErrTaskToken):
 				status = http.StatusUnauthorized
@@ -131,7 +131,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrTaskConflict), errors.Is(err, chat.ErrEnvironmentLocked), errors.Is(err, agent.ErrEnvironmentBusy), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrEnvironmentResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrTaskConflict), errors.Is(err, chat.ErrRunnerLocked), errors.Is(err, agent.ErrRunnerBusy), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -316,21 +316,21 @@ func (h *handler) ReleaseMaintenance(ctx context.Context, _ api.ReleaseMaintenan
 	return api.ReleaseMaintenance200JSONResponse(ok), nil
 }
 
-func (h *handler) extensionView(ctx context.Context) (api.Extensions, error) {
+func (h *handler) integrationView(ctx context.Context) (api.BotIntegrations, error) {
 	info, err := h.Engine.Extensions(ctx, agentID(ctx))
 	if err != nil {
-		return api.Extensions{}, err
+		return api.BotIntegrations{}, err
 	}
-	var out api.Extensions
+	var out api.BotIntegrations
 	raw, err := json.Marshal(info)
 	if err == nil {
 		err = json.Unmarshal(raw, &out)
 	}
 	return out, err
 }
-func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestObject) (api.GetExtensionsResponseObject, error) {
-	out, err := h.extensionView(ctx)
-	return api.GetExtensions200JSONResponse(out), err
+func (h *handler) GetBotIntegrations(ctx context.Context, _ api.GetBotIntegrationsRequestObject) (api.GetBotIntegrationsResponseObject, error) {
+	out, err := h.integrationView(ctx)
+	return api.GetBotIntegrations200JSONResponse(out), err
 }
 func (h *handler) ListVault(ctx context.Context, _ api.ListVaultRequestObject) (api.ListVaultResponseObject, error) {
 	list, err := h.Engine.VaultList(agentID(ctx))
@@ -339,7 +339,7 @@ func (h *handler) ListVault(ctx context.Context, _ api.ListVaultRequestObject) (
 	}
 	out := make(api.ListVault200JSONResponse, 0, len(list))
 	for _, entry := range list {
-		out = append(out, api.VaultEntry{Name: entry.Name, Scope: api.ExtensionScope(entry.Scope), UpdatedAt: entry.UpdatedAt})
+		out = append(out, api.VaultEntry{Name: entry.Name, Scope: api.IntegrationScope(entry.Scope), UpdatedAt: entry.UpdatedAt})
 	}
 	return out, nil
 }
@@ -354,18 +354,18 @@ func (h *handler) DeleteVault(ctx context.Context, req api.DeleteVaultRequestObj
 	err := h.Engine.VaultEdit(agentID(ctx), string(req.Params.Scope), req.Params.Name, nil)
 	return api.DeleteVault200JSONResponse(ok), err
 }
-func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
+func (h *handler) ReloadBotIntegrations(ctx context.Context, _ api.ReloadBotIntegrationsRequestObject) (api.ReloadBotIntegrationsResponseObject, error) {
 	if err := h.Chats.ReloadExtensions(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
-	out, err := h.extensionView(ctx)
-	return api.ReloadExtensions200JSONResponse(out), err
+	out, err := h.integrationView(ctx)
+	return api.ReloadBotIntegrations200JSONResponse(out), err
 }
 
 func chatView(c chat.Chat) api.Chat {
 	out := api.Chat{
 		Id: c.ID, Channel: api.ChatChannelWeb, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
-		Cwd: c.Cwd, EnvironmentId: optional(c.EnvironmentID), Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: !c.Writable,
+		Cwd: c.Cwd, RunnerId: optional(c.RunnerID), Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: !c.Writable,
 	}
 	if strings.HasPrefix(c.ChannelKey, "telegram:") {
 		out.Channel = api.ChatChannelTelegram
@@ -587,23 +587,23 @@ func (h *handler) SetChatProject(ctx context.Context, req api.SetChatProjectRequ
 	return api.SetChatProject200JSONResponse(chatView(c)), nil
 }
 
-func (h *handler) SetChatEnvironment(ctx context.Context, req api.SetChatEnvironmentRequestObject) (api.SetChatEnvironmentResponseObject, error) {
+func (h *handler) SetChatRunner(ctx context.Context, req api.SetChatRunnerRequestObject) (api.SetChatRunnerResponseObject, error) {
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	c, err := h.Chats.SetEnvironment(ctx, agentID(ctx), req.ChatId, strings.TrimSpace(req.Body.EnvironmentId))
+	c, err := h.Chats.SetRunner(ctx, agentID(ctx), req.ChatId, strings.TrimSpace(req.Body.RunnerId))
 	if err != nil {
 		return nil, err
 	}
-	return api.SetChatEnvironment200JSONResponse(chatView(c)), nil
+	return api.SetChatRunner200JSONResponse(chatView(c)), nil
 }
 
-func (h *handler) ListAgentEnvironments(ctx context.Context, _ api.ListAgentEnvironmentsRequestObject) (api.ListAgentEnvironmentsResponseObject, error) {
-	list, err := h.Settings.SessionEnvironments(ctx, agentID(ctx))
+func (h *handler) ListAgentRunners(ctx context.Context, _ api.ListAgentRunnersRequestObject) (api.ListAgentRunnersResponseObject, error) {
+	list, err := h.Settings.SessionRunners(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
-	return api.ListAgentEnvironments200JSONResponse{Environments: list}, nil
+	return api.ListAgentRunners200JSONResponse{Runners: list}, nil
 }
 
 func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRequestObject) (api.SetChatSettingsResponseObject, error) {
@@ -1057,11 +1057,11 @@ func (h *handler) ForkChat(ctx context.Context, req api.ForkChatRequestObject) (
 		}
 		requestID = id.String()
 	}
-	environmentID := ""
-	if req.Body.EnvironmentId != nil {
-		environmentID = *req.Body.EnvironmentId
+	runnerID := ""
+	if req.Body.RunnerId != nil {
+		runnerID = *req.Body.RunnerId
 	}
-	fork, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before, requestID, environmentID)
+	fork, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before, requestID, runnerID)
 	if err != nil {
 		return nil, err
 	}
@@ -1154,7 +1154,7 @@ func (h *handler) ListDirectories(ctx context.Context, req api.ListDirectoriesRe
 			return nil, err
 		}
 	}
-	listing, err := h.Chats.ListDirectories(ctx, id, deref(req.Params.EnvironmentId), req.Params.Path)
+	listing, err := h.Chats.ListDirectories(ctx, id, deref(req.Params.RunnerId), req.Params.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -1162,7 +1162,7 @@ func (h *handler) ListDirectories(ctx context.Context, req api.ListDirectoriesRe
 }
 
 func (h *handler) ListRecentProjects(ctx context.Context, req api.ListRecentProjectsRequestObject) (api.ListRecentProjectsResponseObject, error) {
-	projects, err := h.Chats.RecentProjects(ctx, agentID(ctx), deref(req.Params.EnvironmentId))
+	projects, err := h.Chats.RecentProjects(ctx, agentID(ctx), deref(req.Params.RunnerId))
 	if err != nil {
 		return nil, err
 	}

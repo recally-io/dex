@@ -36,7 +36,7 @@ Saved session overrides apply from the next input, including channel input on Ma
 Ended task conversations can also use model and project overrides.
 New session sends `POST /api/agents/{agentId}/chats` with no request body.
 When a registered Runner exists, a session with no messages shows Local and
-the registered Runners (`listAgentEnvironments`). Offline Runners are visible
+the registered Runners (`GET /api/agents/{agentId}/runners`). Offline Runners are visible
 but disabled. The project picker lists folders on the chosen Runner. After
 the first message, the header shows its name. With other available Runners,
 Fork from here offers a fork on the current Runner or another one.
@@ -72,7 +72,7 @@ It invalidates Task list and detail queries on Task events. Board does not
 poll. Task edits keep the revision from the start of the edit. A conflict
 prompts the Owner to load the latest values. Approval uses the current review
 sequence. The composer adds a note or sends to the Assignee Bot's Main.
-Global Integrations lists Sources with a switch for each. A note asks for a
+Global Integrations lists Sources from `GET /api/settings/sources` with a switch for each. A note asks for a
 restart while a stored choice differs from what runs. When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
 a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its
 components in `src/plugins/<name>/`, and a page renders them only when the
@@ -88,7 +88,7 @@ It reads the eligible sessions from `listAutomationTargets`. In this mode it
 shows the target picker instead of the Runner and project fields.
 The automation dialog offers "Follow bot", Local, and SSH Machines. It keeps a
 saved Runner that the list no longer shows. A change of Runner clears the
-project directory. An automation update sends `environmentId`, because a PUT
+project directory. An automation update sends `runnerId`, because a PUT
 replaces the automation. Automations and Inbox use `continueResult`
 (`lib/inbox.ts`). The new session pins the run's Local or Machine Runner and
 uses its cwd. A run in a Sandbox, on an unavailable Runner, or with no recorded
@@ -125,11 +125,13 @@ The About page (`/settings/about`) manages server operations through `/api/syste
 Runners (`/settings/runners`) shows the built-in Local Runner, Machines, and
 Sandboxes. Machines use SSH or Outbound. The page shows each Outbound Machine's
 online state, platform, and version alignment against `GET /api/health`.
-The Runner editor lets the owner set or clear an optional plain-text description.
+Runner settings use `/api/settings/runners`. The Runner editor lets the owner
+set or clear an optional plain-text description.
 Global Secrets (`/settings/secrets`) edits shared Vault entries and 1Password.
 A bot's Secrets page edits its own Vault entries. The vault API returns metadata
 only. The editor clears the value after submit and does not store it in the browser.
-Skills and Integrations both offer Reload. In Integrations, an OAuth MCP row starts authorization with an
+Skills and Integrations read `/api/agents/{agentId}/integrations` and both offer
+Reload. In Integrations, an OAuth MCP row starts authorization with an
 authenticated POST. The browser follows the returned URL in the same tab. The
 callback returns to `/a/{agentId}/integrations`. The browser does not receive provider tokens.
 

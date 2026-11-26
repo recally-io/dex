@@ -18,7 +18,7 @@ import {
   listModelsOptions,
   listChatsOptions,
   listAgentsOptions,
-  listAgentEnvironmentsOptions,
+  listAgentRunnersOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
@@ -29,7 +29,7 @@ import { useAttachments } from "../lib/attachments";
 import { sessionKind, sessionTime } from "../lib/sessions";
 import { ChatActivity } from "../components/chat-activity";
 import { SessionSettings } from "../components/session-settings";
-import { useEnvironmentSendBlock } from "../components/chat-environment";
+import { useRunnerSendBlock } from "../components/chat-runner";
 import { chatDraftEvent, putChatDraft, takeChatDraft } from "../lib/chat-draft";
 import { Composer, type SendMode } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
@@ -409,13 +409,13 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 3);
 
-  const environmentBlock = useEnvironmentSendBlock(chatId);
+  const runnerBlock = useRunnerSendBlock(chatId);
 
   const reason = !modelReady
     ? "Choose an available model before you send."
     : connection !== "ready"
       ? "dex is reconnecting to the bot…"
-      : environmentBlock;
+      : runnerBlock;
 
   const continueRun = useMutation({ ...continueChatMutation(), onSuccess: () => void refreshChats(agentId) });
   const compact = useMutation(compactChatMutation());
@@ -428,30 +428,30 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     chatId: number;
     entryId: number;
     before: boolean;
-    environmentId?: string;
+    runnerId?: string;
     id: string;
   } | null>(null);
 
-  const environments = useQuery(listAgentEnvironmentsOptions({ path: { agentId } }));
-  const environmentList = environments.data?.environments ?? [];
-  const runsIn = chat.data?.environmentId || environmentList.find((env) => env.default)?.id;
+  const runners = useQuery(listAgentRunnersOptions({ path: { agentId } }));
+  const runnerList = runners.data?.runners ?? [];
+  const runsIn = chat.data?.runnerId || runnerList.find((env) => env.default)?.id;
 
   // A fork opens as its own Chat. Edit in new chat carries the message text, not its attachments.
   const messageActions: MessageActions = {
     pending: fork.isPending,
-    forkTargets: environmentList.filter((env) => env.id !== runsIn),
-    fork: (entryId, before, text, environmentId) => {
+    forkTargets: runnerList.filter((env) => env.id !== runsIn),
+    fork: (entryId, before, text, runnerId) => {
       const prior = failedFork.current;
 
       const id =
         prior?.chatId === chatId &&
         prior.entryId === entryId &&
         prior.before === before &&
-        prior.environmentId === environmentId
+        prior.runnerId === runnerId
           ? prior.id
           : newId();
 
-      const body = { id, entryId, before, environmentId };
+      const body = { id, entryId, before, runnerId };
       failedFork.current = { ...body, chatId };
 
       fork.mutate(

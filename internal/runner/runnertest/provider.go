@@ -16,11 +16,11 @@ import (
 
 // NewProvider returns a Provider of kind rooted at rootDir/agents/<id>/workspace with homeDir and isolated baseEnv.
 func NewProvider(kind runner.Kind, rootDir, homeDir string, baseEnv map[string]string) runner.Provider {
-	return providerFunc(func(ctx context.Context, agentID, environmentID string) (runner.Handle, error) {
+	return providerFunc(func(ctx context.Context, agentID, runnerID string) (runner.Handle, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if environmentID != "" {
+		if runnerID != "" {
 			return nil, fmt.Errorf("%w: the test provider has only the bot environment", runner.ErrUnavailable)
 		}
 		ws := filepath.Join(rootDir, "agents", agentID, "workspace")
@@ -33,10 +33,10 @@ func NewProvider(kind runner.Kind, rootDir, homeDir string, baseEnv map[string]s
 	})
 }
 
-type providerFunc func(ctx context.Context, agentID, environmentID string) (runner.Handle, error)
+type providerFunc func(ctx context.Context, agentID, runnerID string) (runner.Handle, error)
 
-func (f providerFunc) Open(ctx context.Context, agentID, environmentID string) (runner.Handle, error) {
-	return f(ctx, agentID, environmentID)
+func (f providerFunc) Open(ctx context.Context, agentID, runnerID string) (runner.Handle, error) {
+	return f(ctx, agentID, runnerID)
 }
 
 func (f providerFunc) Stamp(context.Context, string, string) (string, error) { return "", nil }

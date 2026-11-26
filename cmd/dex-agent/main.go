@@ -31,7 +31,8 @@ import (
 // device is the enrolled state. Dex identifies this machine by the token that enrollment
 // returned, and stores only its digest. Mode describes the local install.
 type device struct {
-	Origin      string `json:"origin"`
+	Origin string `json:"origin"`
+	// Keep environmentId so enrolled machines can still read device.json.
 	Environment string `json:"environmentId"`
 	Token       string `json:"token"`
 	Mode        string `json:"mode,omitempty"`
@@ -48,7 +49,7 @@ func main() {
 
 func command(ctx context.Context, args []string, input io.Reader) error {
 	if len(args) == 0 {
-		return errors.New("usage: dex-agent enroll -url https://dex.example.com -id ENVIRONMENT_ID -code CODE [-mode user] | dex-agent run [-no-auto-update] | dex-agent status | dex-agent version")
+		return errors.New("usage: dex-agent enroll -url https://dex.example.com -id RUNNER_ID -code CODE [-mode user] | dex-agent run [-no-auto-update] | dex-agent status | dex-agent version")
 	}
 	if args[0] == "version" || args[0] == "--version" {
 		fmt.Printf("dex-agent %s\n", agentVersion())
@@ -65,7 +66,7 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 	switch args[0] {
 	case "enroll":
 		origin = flags.String("url", "", "Dex address, for example https://dex.example.com")
-		id = flags.String("id", "", "environment ID")
+		id = flags.String("id", "", "Runner ID")
 		code = flags.String("code", "", "one-time enrollment code from the install command")
 		flags.StringVar(mode, "mode", modeDedicated, "run account mode: user or dedicated")
 	case "run":
@@ -122,7 +123,7 @@ func endpoint(origin, id, action string, tail ...string) (string, error) {
 		return "", errors.New("the machine address must be an HTTPS origin without a path or query")
 	}
 	if id == "" || strings.ContainsAny(id, "/\\?#.%") {
-		return "", errors.New("invalid environment ID")
+		return "", errors.New("invalid Runner ID")
 	}
 	if action == "connect" {
 		u.Scheme = map[string]string{"https": "wss", "http": "ws"}[u.Scheme]
@@ -173,7 +174,7 @@ func enroll(ctx context.Context, state, origin, id, code, mode string) error {
 	case http.StatusUnauthorized:
 		return errors.New("the enrollment code is invalid or expired; get a fresh install command")
 	case http.StatusConflict:
-		return errors.New("this environment is already enrolled; revoke the machine in Dex first")
+		return errors.New("this Runner is already enrolled; revoke the machine in Dex first")
 	default:
 		return fmt.Errorf("the enrollment was refused (%s)", res.Status)
 	}

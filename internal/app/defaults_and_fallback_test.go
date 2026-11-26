@@ -23,8 +23,8 @@ func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 		E2BAPIURL:  fake.APIURL(),
 		E2BEnvdURL: fake.EnvdURL(),
 	})
-	var env apiEnvironment
-	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+	var env apiRunner
+	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
 		"name":   "Default Sandbox",
 		"kind":   "e2b",
 		"config": map[string]any{"template": "base", "timeoutSeconds": 300},
@@ -39,14 +39,14 @@ func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 		"thinkingLevel":    "off",
 		"fallbackProvider": "faux",
 		"fallbackModelId":  "shout",
-		"environmentId":    env.ID,
+		"runnerId":         env.ID,
 	}, nil)
 
 	// Then a bot with only a name copies its model, fallback, and environment and answers at once.
 	var quick api.Agent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Quick Bot"}, &quick, http.StatusCreated)
 	if quick.Provider != "faux" || quick.ModelID != "echo" || quick.ThinkingLevel != "off" ||
-		quick.FallbackProvider != "faux" || quick.FallbackModelID != "shout" || quick.EnvironmentID != env.ID {
+		quick.FallbackProvider != "faux" || quick.FallbackModelID != "shout" || quick.RunnerID != env.ID {
 		t.Fatalf("quick bot did not copy the default bot: %+v", quick)
 	}
 	var quickMain chatInfo
@@ -59,9 +59,9 @@ func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 	// Explicit fields win over the copy.
 	var local api.Agent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{
-		"name": "Local Bot", "modelId": "tool", "provider": "faux", "environmentId": "",
+		"name": "Local Bot", "modelId": "tool", "provider": "faux", "runnerId": "",
 	}, &local, http.StatusCreated)
-	if local.ModelID != "tool" || local.EnvironmentID != "" || local.FallbackModelID != "shout" {
+	if local.ModelID != "tool" || local.RunnerID != "" || local.FallbackModelID != "shout" {
 		t.Fatalf("explicit fields = %+v, want faux/tool on this computer with the copied fallback", local)
 	}
 
@@ -83,14 +83,14 @@ func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 	var template api.Agent
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &template)
 	if foundToolBot == nil || foundToolBot.ModelID == "" || foundToolBot.ModelID != template.ModelID ||
-		foundToolBot.FallbackModelID != template.FallbackModelID || foundToolBot.EnvironmentID != env.ID {
+		foundToolBot.FallbackModelID != template.FallbackModelID || foundToolBot.RunnerID != env.ID {
 		t.Fatalf("bot_create did not copy the default bot: %+v", listed.Agents)
 	}
 
 	// Keep the environment unchanged so the PUT tests only a model change.
 	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{
 		"name": "Dex", "provider": "faux", "modelId": "shout", "thinkingLevel": "off",
-		"environmentId": template.EnvironmentID,
+		"runnerId": template.RunnerID,
 	}, nil)
 	d.must(t, http.MethodGet, "/api/agents/"+quick.ID, nil, &quick)
 	if quick.ModelID != "echo" {

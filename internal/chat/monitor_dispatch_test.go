@@ -180,10 +180,10 @@ func TestUserMonitorOfflineEnvironmentDoesNotRunLocally(t *testing.T) {
 	id, source := taskParent(t, r)
 	now := r.service.now()
 	r.service.now = func() time.Time { return now }
-	if _, err := r.q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{ID: "offline", Name: "Disconnected fixture", Kind: "runner", Config: `{}`, CreatedAt: 1, UpdatedAt: 1}); err != nil {
+	if _, err := r.q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{ID: "offline", Name: "Disconnected fixture", Kind: "runner", Config: `{}`, CreatedAt: 1, UpdatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.conn.ExecContext(t.Context(), `UPDATE conversations SET environment_id = 'offline' WHERE id = ?`, id); err != nil {
+	if _, err := r.conn.ExecContext(t.Context(), `UPDATE conversations SET runner_id = 'offline' WHERE id = ?`, id); err != nil {
 		t.Fatal(err)
 	}
 	info, err := r.service.ToolMonitorSet(t.Context(), source, MonitorSetArgs{DelaySeconds: 60, Prompt: "check fixture", CheckCommand: `exit 10`})

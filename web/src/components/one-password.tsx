@@ -53,7 +53,7 @@ function OnePasswordForm({ saved }: { saved: OnePassword }) {
     ...setOnePasswordMutation(),
     onSuccess: (data) => {
       queryClient.setQueryData(getOnePasswordQueryKey(), data);
-      void queryClient.invalidateQueries({ queryKey: [{ _id: "getExtensions" }] });
+      void queryClient.invalidateQueries({ queryKey: [{ _id: "getBotIntegrations" }] });
       setToken("");
       setReplace(false);
       notify("Saved. Bots apply it when all bots are idle.");

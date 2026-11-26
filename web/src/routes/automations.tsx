@@ -90,7 +90,7 @@ function useAutomationUpdate(automation: Automation) {
           enabled: automation.enabled,
           cwd: automation.cwd,
           // A PUT replaces the automation, so an omitted environment would make it follow the bot.
-          environmentId: automation.environmentId,
+          runnerId: automation.runnerId,
           ...patch,
         },
       }),

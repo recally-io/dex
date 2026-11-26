@@ -144,7 +144,7 @@ func (a *Agents) begin(key string) error {
 		return ErrMaintenance
 	}
 	if slot := a.opening[key]; slot != nil && slot.resetting {
-		return ErrEnvironmentResetting
+		return ErrRunnerResetting
 	}
 	a.trackLocked(key)
 	return nil
@@ -260,7 +260,7 @@ func (a *Agents) harness(ctx context.Context, agentID string) (harness.Harness, 
 		}
 		if slot := a.opening[agentID]; slot != nil && slot.resetting {
 			a.mu.Unlock()
-			return nil, ErrEnvironmentResetting
+			return nil, ErrRunnerResetting
 		}
 		if opening := a.opening[agentID]; opening != nil {
 			a.mu.Unlock()
@@ -393,7 +393,7 @@ func (a *Agents) open(ctx context.Context, agentID string, reload bool) (_ *agen
 	files := a.files(agentID, execHandle)
 	files.defaultUnavailable = execHandle == nil
 	envs := &environments{
-		agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, files: files,
+		agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionRunnerID, files: files,
 		own: execHandle, ownFiles: files, ownErr: ownErr, retryStamp: execStamp, retryAfter: time.Now().Add(time.Second),
 	}
 	// Status does not dial the environment. Keep the reconnect signal without opening a lease.
@@ -657,13 +657,13 @@ func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool, 
 		return Ref{}, false, err
 	}
 	if m.Text != "" {
-		data, err := durable.ToJsonValue(environmentMove{From: m.From})
+		data, err := durable.ToJsonValue(runnerMove{From: m.From})
 		if err != nil {
 			return Ref{}, false, err
 		}
 		// The copy has no owner yet, so no input can come before the notice.
 		_, err = copied.Commit(ctx, func(tx durable.Tx) (any, error) {
-			return tx.AppendEntry(copied.Id(), durable.EntryDraft{Kind: environmentNoticeKind, Data: data, Model: []ai.Message{ai.UserMessage{Content: ai.UserText(m.Text), Timestamp: time.Now().UnixMilli()}}})
+			return tx.AppendEntry(copied.Id(), durable.EntryDraft{Kind: runnerNoticeKind, Data: data, Model: []ai.Message{ai.UserMessage{Content: ai.UserText(m.Text), Timestamp: time.Now().UnixMilli()}}})
 		})
 		if err != nil {
 			return Ref{}, false, err
@@ -678,12 +678,12 @@ type Move struct {
 	From, Text string
 }
 
-// environmentNoticeKind is the context entry that tells the user and the model that a fork runs
+// runnerNoticeKind is the context entry that tells the user and the model that a fork runs
 // in another execution environment than its source.
-const environmentNoticeKind = "dex.environment"
+const runnerNoticeKind = "dex.environment"
 
-// environmentMove is the data of an environment notice.
-type environmentMove struct {
+// runnerMove is the data of an environment notice.
+type runnerMove struct {
 	From string `json:"from"`
 }
 
@@ -699,10 +699,10 @@ func excludedMove(ctx context.Context, conversation harness.Conversation, at dur
 			return "", err
 		}
 		for _, e := range page.Items {
-			if e.Kind != environmentNoticeKind {
+			if e.Kind != runnerNoticeKind {
 				continue
 			}
-			notice, err := durable.FromJsonValue[environmentMove](e.Data)
+			notice, err := durable.FromJsonValue[runnerMove](e.Data)
 			if err != nil {
 				return "", fmt.Errorf("environment notice %d: %w", e.Id, err)
 			}
@@ -1218,12 +1218,12 @@ func (a *Agents) files(agentID string, handle runner.Handle) *agentExtensions {
 // ReadWorkspaceFile reads up to maxBytes of a workspace-relative regular non-symlink file in the
 // environment of the calling session.
 func (a *Agents) ReadWorkspaceFile(ctx context.Context, caller TaskContext, relPath string, maxBytes int64) ([]byte, error) {
-	environmentID, err := a.sessionEnvironmentID(ctx, Ref{AgentID: caller.AgentID, ID: caller.ConversationID})
+	runnerID, err := a.sessionRunnerID(ctx, Ref{AgentID: caller.AgentID, ID: caller.ConversationID})
 	if err != nil {
 		return nil, err
 	}
 	var data []byte
-	err = a.withEnvironment(ctx, caller.AgentID, environmentID, func(h runner.Handle) error {
+	err = a.withRunner(ctx, caller.AgentID, runnerID, func(h runner.Handle) error {
 		var readErr error
 		data, readErr = runner.ReadWorkspaceFile(ctx, h, relPath, maxBytes)
 		return readErr
@@ -1232,13 +1232,13 @@ func (a *Agents) ReadWorkspaceFile(ctx context.Context, caller TaskContext, relP
 }
 
 // ResolveProjectPath validates and normalizes a project path inside an execution environment of
-// the agent. An empty environmentID selects the agent's own environment.
-func (a *Agents) ResolveProjectPath(ctx context.Context, agentID, environmentID, raw string) (string, error) {
+// the agent. An empty runnerID selects the agent's own environment.
+func (a *Agents) ResolveProjectPath(ctx context.Context, agentID, runnerID, raw string) (string, error) {
 	if strings.TrimSpace(raw) == "" {
 		return "", nil
 	}
 	var resolved string
-	err := a.withEnvironment(ctx, agentID, environmentID, func(h runner.Handle) error {
+	err := a.withRunner(ctx, agentID, runnerID, func(h runner.Handle) error {
 		var err error
 		resolved, err = runner.ResolveProjectPath(ctx, h, raw)
 		return err
@@ -1247,12 +1247,12 @@ func (a *Agents) ResolveProjectPath(ctx context.Context, agentID, environmentID,
 }
 
 // FilterProjectPaths keeps up to limit existing directory paths from paths inside an environment of the agent.
-func (a *Agents) FilterProjectPaths(ctx context.Context, agentID, environmentID string, paths []string, limit int) ([]string, error) {
+func (a *Agents) FilterProjectPaths(ctx context.Context, agentID, runnerID string, paths []string, limit int) ([]string, error) {
 	if len(paths) == 0 || limit <= 0 {
 		return []string{}, nil
 	}
 	var existing []string
-	err := a.withEnvironment(ctx, agentID, environmentID, func(h runner.Handle) error {
+	err := a.withRunner(ctx, agentID, runnerID, func(h runner.Handle) error {
 		for _, p := range paths {
 			if _, resErr := runner.ResolveProjectPath(ctx, h, p); resErr == nil {
 				existing = append(existing, p)
@@ -1270,9 +1270,9 @@ func (a *Agents) FilterProjectPaths(ctx context.Context, agentID, environmentID 
 }
 
 // ListDirectories lists browsable directories in an execution environment of the agent.
-func (a *Agents) ListDirectories(ctx context.Context, agentID, environmentID string, path *string) (runner.DirectoryListing, error) {
+func (a *Agents) ListDirectories(ctx context.Context, agentID, runnerID string, path *string) (runner.DirectoryListing, error) {
 	var listing runner.DirectoryListing
-	err := a.withEnvironment(ctx, agentID, environmentID, func(h runner.Handle) error {
+	err := a.withRunner(ctx, agentID, runnerID, func(h runner.Handle) error {
 		var listErr error
 		listing, listErr = runner.ListDirectories(ctx, h, path)
 		return listErr
@@ -1281,8 +1281,8 @@ func (a *Agents) ListDirectories(ctx context.Context, agentID, environmentID str
 }
 
 // ExecEnv opens an ExecutionEnv for background or ad-hoc execution in an environment of the agent.
-// An empty environmentID selects the agent's own environment. Callers must invoke release once finished.
-func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, runner.Kind, func(), error) {
+// An empty runnerID selects the agent's own environment. Callers must invoke release once finished.
+func (a *Agents) ExecEnv(ctx context.Context, agentID, runnerID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, runner.Kind, func(), error) {
 	if !agentIDPattern.MatchString(agentID) {
 		return nil, "", "", nil, ErrInvalidInput
 	}
@@ -1291,7 +1291,7 @@ func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string
 	}
 	defer a.end(agentID)
 	if envs := a.environments(agentID); envs != nil {
-		s, err := envs.byID(ctx, environmentID)
+		s, err := envs.byID(ctx, runnerID)
 		if err != nil {
 			return nil, "", "", nil, err
 		}
@@ -1304,7 +1304,7 @@ func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string
 		}
 		return env, s.Handle.Workspace(), s.Handle.Kind(), func() {}, nil
 	}
-	h, err := a.config.ExecEnv.Open(ctx, agentID, environmentID)
+	h, err := a.config.ExecEnv.Open(ctx, agentID, runnerID)
 	if err != nil {
 		return nil, "", "", nil, err
 	}
@@ -1369,7 +1369,7 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 		}
 		info, err = files.Info(ctx)
 	} else {
-		err = a.withEnvironment(ctx, agentID, "", func(h runner.Handle) error {
+		err = a.withRunner(ctx, agentID, "", func(h runner.Handle) error {
 			var infoErr error
 			info, infoErr = a.files(agentID, h).Info(ctx)
 			return infoErr

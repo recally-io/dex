@@ -44,9 +44,9 @@ func (a *Agents) markExtensionChange(agentID, scope, reason string) {
 	}
 }
 
-// MarkEnvironmentChanged marks agents that hold an explicit lease for id.
+// MarkRunnerChanged marks agents that hold an explicit lease for id.
 // The caller marks agents that have id as their saved default separately.
-func (a *Agents) MarkEnvironmentChanged(id string) {
+func (a *Agents) MarkRunnerChanged(id string) {
 	a.mu.Lock()
 	resources := maps.Clone(a.resources)
 	a.mu.Unlock()

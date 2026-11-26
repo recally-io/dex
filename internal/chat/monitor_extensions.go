@@ -67,8 +67,8 @@ type ProcessStartArgs struct {
 	Label   string `json:"label,omitempty"`
 
 	// The engine sets these fields. The model cannot.
-	// EnvironmentID is the explicit environment of the session, or empty for the agent's own.
-	EnvironmentID string `json:"-"`
+	// RunnerID is the explicit environment of the session, or empty for the agent's own.
+	RunnerID string `json:"-"`
 	// BaseEnv is the environment that the bash tool uses.
 	BaseEnv map[string]string `json:"-"`
 	// InheritEnv reports whether non-local OS environment variables remain visible to the command.
@@ -133,7 +133,7 @@ func MonitorExtension(runtime engine.ExtensionRuntime, tools MonitorTools) *engi
 					if err != nil {
 						return ProcessInfo{}, err
 					}
-					args.EnvironmentID = settings.ID
+					args.RunnerID = settings.ID
 					args.BaseEnv = settings.Vars
 					args.InheritEnv = settings.Inherit
 					args.EnvKind = settings.Handle.Kind()
