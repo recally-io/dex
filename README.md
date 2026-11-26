@@ -103,6 +103,13 @@ Telegram uses long polling by default. Feishu and Lark use a WebSocket by
 default. Neither needs a public endpoint. To opt in to webhooks, see the
 [HTTPS, provider setup, and rollback guide](docs/dev/channels.md#inbound-webhooks).
 
+## Board
+
+Open **Board** to see Tasks across Bots. **Needs you** shows questions,
+reviews, setup issues, and held events. **Updates** groups Automation results.
+Open a Task to send a message to its Assignee's Main or add a note.
+See [Tasks](docs/dev/tasks.md).
+
 ## Skills and MCP servers
 
 dex reads skills from these directories:
@@ -114,14 +121,14 @@ dex reads skills from these directories:
 | Project | `<cwd>/.agents/skills/<name>/SKILL.md`              |
 
 dex does not read `~/.agents`. A narrower entry replaces the wider entry with the same name; Project is the
-narrowest. Main and Chat sessions can select a project directory in the chat header.
-A task conversation can also select one after the task ends.
-The picker browses folders on the dex host and lists recent projects for the
+narrowest. Main and Chats, including child Sessions, can select a project
+directory. The picker browses folders on the Session's Runner and lists recent projects for the
 current agent. Use Up or Home to navigate, or enter a path and press Enter.
 Select **Use this folder** to save the current folder. The `set_project` tool
 can also set the directory. The project cwd defaults to the agent workspace,
 `~/.dex/agents/<id>/workspace`. Clear the project to restore that default.
-Tasks inherit the parent session's project directory.
+A child Session can inherit its parent's project when it uses the same Runner.
+See [Sessions](docs/dev/sessions.md#session-runners).
 Dex paths follow `DEX_DATA_DIR` when you change the data directory.
 
 A skill is a directory with a `SKILL.md` that starts with YAML front matter
@@ -137,13 +144,13 @@ Ask the agent in an owner session to manage MCP declarations with the
 `mcp_server_*` tools. Use vault references for secrets. dex stores declarations
 in `control.sqlite` and shows their status in the bot's Integrations page.
 Changes apply after the agent finishes its current work. dex ignores old
-`mcp.json` files. See [MCP declarations](docs/dev/extensions.md#mcp-declarations).
+`mcp.json` files. See [MCP declarations](docs/dev/skills-and-integrations.md#mcp-declarations).
 
 For an OAuth-enabled remote MCP server, ask the agent to add an HTTP declaration
 with `oauth: {}` and no static headers. If the provider requires a registered
 client, use its client ID and a vault reference for its secret. In the bot's
 Integrations page, select **Authorize** and sign in with the provider. See
-[MCP browser authorization](docs/dev/extensions.md#mcp-browser-authorization)
+[MCP browser authorization](docs/dev/skills-and-integrations.md#mcp-browser-authorization)
 for the callback URL and client settings.
 
 ## Secrets
@@ -155,7 +162,7 @@ Settings. Tell the bot to use a reference such as `vault:GITHUB_TOKEN` in the
 1Password CLI.
 
 dex ignores old `.env` files. It does not import them. Move secrets to the
-[vault](docs/dev/extensions.md#secret-vault) and put other environment values
+[vault](docs/dev/skills-and-integrations.md#secret-vault) and put other environment values
 in shell rc files or in the `env` of a call or MCP server.
 
 ## Updates

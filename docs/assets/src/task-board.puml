@@ -49,28 +49,28 @@ skinparam stereotypeEBorderColor #5b6b8c
 skinparam stereotypeIBackgroundColor #d9e3f4
 skinparam stereotypeIBorderColor #5b6b8c
 skinparam BackgroundColor #ffffff
-title dex Task Board: Bot-centric append-only coordination
+title dex: Board and Task storage
 top to bottom direction
-rectangle "Web UI\nBoard (/board) / Inbox (/inbox)" as ui
+rectangle "Web UI\nBoard (/board)" as ui
 rectangle "Bot Tools\nMain, Chat, scoped Child" as tools
 rectangle "Sources (Plugins)\nGitHub / Email / Webhook" as plugins
 rectangle "External Agents\ndex task / Process" as ext
 package "dex control plane" as ctrl {
   rectangle "SSE Event Stream\n/api/tasks/events (Last-Event-ID)" as sse
-  rectangle "internal/task\nCentral ACL + Auth Matrix\n6 states + derived Blocked + Review" as core
-  rectangle "Coalesced Wakeup Router\n<=1 unadmitted task_wake / Main\n+ External Lease Watchdog" as wake
+  rectangle "internal/task\nCentral ACL + Auth Matrix\n6 statuses, derived Blocked, review" as core
+  rectangle "Task wake delivery\nAt most one unadmitted wake per Main" as wake
   rectangle "internal/chat + internal/engine\nPer-session delivery gate + PiG Harness" as runtime
 }
-database "control.sqlite\ntasks (T-N)\ntask_entries (AUTOINCREMENT)\ntask_executions, task_dependencies" as cdb
+database "control.sqlite\ntasks and task_numbers (T-N)\ntask_entries (AUTOINCREMENT)\ntask_executions, task_dependencies" as cdb
 database "agents/<id>/state.sqlite\nNative PiG runs & transcripts" as adb
 ui --> core : /api/tasks + If-Match
 ui <-- sse : Live board updates
 tools --> core : Replay-safe tools
 plugins --> core : Accept / AcceptCreating
 ext --> core : Scoped Task token\n(epoch + TTL check)
-core --> cdb : Single-tx ledger +\nstate projection
-core --> sse : Global entry id
-core --> wake : Post-commit wake\n(pointer only, no body)
+core --> cdb : Ledger, projection, and wake pointer\nin one transaction
+cdb --> sse : Replay by global entry ID
+core --> wake : Signal after commit
 wake --> runtime : Wake target Main\n(no nested gates)
 runtime --> adb : Native execution
 note bottom of cdb

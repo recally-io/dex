@@ -6,16 +6,16 @@ This document describes how dex loads skills, MCP servers, vault secrets, and
 Skills come from two file levels: dex (`<data dir>/.agents/`) and agent
 (`<data dir>/agents/<id>/.agents/`). dex does not read the user home for skills.
 Narrower levels win. Equal real paths are read once as the narrower level.
-The engine reads `AGENTS.md` only from the conversation's cwd in its execution
-environment and adds it after the bot's saved instructions at each admission.
+The engine reads `AGENTS.md` only from the conversation's cwd on its
+Runner and adds it after the bot's saved instructions at each admission.
 
 Skills have a third, narrowest level: `.agents/skills` under the
 conversation's cwd. The skills prompt section reads that cwd from the request's
-execution environment, so it follows the conversation. Chat sessions store
-their `cwd` in `control.sqlite`. Empty uses the workspace of the session's
-execution environment. Every submit sets or clears the native cwd from that row.
+Runner, so it follows the conversation. Chat sessions store
+their `cwd` in `control.sqlite`. Empty uses the workspace of the Session's
+Runner. Every submit sets or clears the native cwd from that row.
 Child sessions copy the parent's cwd when they are created, but only when the
-child runs in the same execution environment as its parent. The `project` prompt section
+child runs on the same Runner as its parent. The `project` prompt section
 states the current execution directory.
 
 `GET /api/directories` lists visible host directories with the same path validation
@@ -45,17 +45,17 @@ hidden directories and `node_modules`. The front matter `name` wins over the
 directory name. A second skill with the same name in one level is a warning
 and does not block MCP Reload.
 
-The dex and agent stores are on the control host. All owner sessions, including
-tasks, dreams, and child sessions, use `skill_list` and `skill_read` to inspect
-these stores. Use `skill_write`, `skill_edit`, and `skill_delete` to change them.
+The dex and agent stores are on the control host. Owner sessions use
+`skill_list` and `skill_read` to inspect these stores. Use `skill_write`,
+`skill_edit`, and `skill_delete` to change them.
 Use a path such as `agent/deploy/run.sh`. Set `mode` to the octal string `0755`
 for an executable script. To delete a whole skill, pass only its level and
 directory name to `skill_delete`. Normal `write` and `edit` reject paths in the
 stores or their remote copies. Bash has no such path check. Project skills
 still use the normal file tools.
 
-Run installers such as `npx skills add` in a temporary directory in the session
-environment. Call `skill_import` with the installed skill directory, the `level`,
+Run installers such as `npx skills add` in a temporary directory on the Session's
+Runner. Call `skill_import` with the installed skill directory, the `level`,
 and an optional new directory `name`. The import goes to the control host only.
 Import and sync copy all files in a skill, including dotfiles and `node_modules`.
 They skip nested `.git` entries. They copy a symlink as its target only if the
@@ -70,12 +70,12 @@ a host file's hash until the size or modification time changes.
 
 Sync runs when a lease opens or a runner reconnects, after a skill mutation in
 the current session, and on prompt render when the host stamp changed. A mutation
-returns the path in the current session environment after sync. A later tool
+returns the path on the current Session's Runner after sync. A later tool
 call in the same Code Mode script can use this path without another prompt
 render. If sync fails, dex logs the failure and keeps unrelated tools available.
 A skill mutation reports a sync failure to its caller.
 
-Run scripts from the skill directory in the session environment. Every `bash`
+Run scripts from the skill directory on the Session's Runner. Every `bash`
 call sets `DEX_SKILL_CACHE` to `<workspace>/.dex/cache/skills`. Create
 `$DEX_SKILL_CACHE/<name>` with `mkdir -p` and put runtime files there. Keep
 secrets in the vault. Pass references in the `env` argument of `bash` or
@@ -89,12 +89,12 @@ recovers changes left by a crash. Git honors a skill's `.gitignore`; sync does n
 
 Each agent has its own environment snapshot. Local tools and stdio MCP
 start from the control host's login shell environment and configured
-1Password credentials. Tools on a remote target use that target's environment
-and the configured 1Password credentials. A command or MCP declaration can
+1Password credentials. Tools on a remote Runner inherit its process
+environment and receive the configured 1Password credentials. A command or MCP declaration can
 add explicit environment variables. dex does not modify its process environment.
 Skill and MCP tool writes, vault writes, and 1Password settings changes
 request a reload. Runner settings changes request a reload for agents
-that use the environment. A machine reconnect requests a reload if the default
+that use the Runner. A machine reconnect requests a reload if the default
 machine was offline at cold open or the last reload could not open it. Each open agent reloads
 when it is idle. If validation fails, dex keeps the current resources and
 does not try the same configuration again automatically.
@@ -105,8 +105,8 @@ restarts. dex does not poll for changes or watch these files.
 
 The [engine extension loader](../../internal/engine/extensions.go) connects
 servers before it resumes the agent Harness. This is a shared wait for all
-Sessions of a Bot, including Sessions that use another environment. MCP servers
-use control-host configuration and do not need a lease on the default environment.
+Sessions of a Bot, including Sessions that use another Runner. MCP servers
+use control-host configuration and do not need a lease on the default Runner.
 The loader installs prompt sections for the extension guide and current skills.
 MCP tools use the names
 `mcp__<server>__<tool>`. In owner sessions, `tool_search` searches the built-in
@@ -151,14 +151,14 @@ Store secrets in the vault. Put other values in shell rc files or in the
 
 ### MCP declarations
 
-`control.sqlite` stores declarations at the dex and agent levels. The agent
-level replaces the dex declaration with the same name. Use `disabled: true`
+The `mcp_servers` table in `control.sqlite` stores declarations at the Dex
+and Bot levels. A Bot declaration replaces a Dex declaration with the same
+name. Use `disabled: true`
 at the agent level to turn off a dex server for that agent. The database backup
 includes these declarations.
 
 All owner sessions can use `mcp_server_list`, `mcp_server_get`,
-`mcp_server_set`, and `mcp_server_remove` from any execution environment.
-This includes tasks, dreams, and child sessions.
+`mcp_server_set`, and `mcp_server_remove` from any Runner.
 `mcp_server_set` replaces one declaration. A stdio server runs on the control
 host. Relative `cwd` values use the agent's control-host workspace.
 `mcp_server_remove` deletes one level's declaration and can uncover a wider

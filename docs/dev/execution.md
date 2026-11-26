@@ -24,8 +24,10 @@ conversation, while a chat ID names a business record in `control.sqlite`.
 
 The engine serializes input, reset, and abort operations per execution. Native
 input metadata contains request ID, original content, origin, attachments,
-source, and optional turn ID and title of a result. `dex.user` and `dex.task_result` entries
-keep display facts with the durable input. `dex.withdrawn` entries preserve
+source, and optional turn ID and title of a result. The engine stores display
+facts in `dex.user`, `dex.session_result`, `dex.wake`, and `dex.task_wake`
+entries. The three internal input kinds project as `session_result`, `wake`,
+and `task_wake` transcript items. `dex.withdrawn` entries preserve
 queued inputs that Stop removed. Withdrawn entries contribute no model text.
 
 The engine does not import the HTTP API package. Frontend `Item`, `Event`,
@@ -81,8 +83,6 @@ that it can signal.
   minutes by default, 30 minutes at most), and the session gets a last input.
   An omitted or null timeout uses the default for either wake mode. An explicit
   timeout replaces the default; the 30-minute maximum applies only to `lines`.
-  Previously, an `exit` command without a timeout could run indefinitely.
-  New commands that need more than 30 minutes must set a longer timeout.
 - Wake `none` sends no wake-up. Its default timeout is 1800 seconds.
 - `process_list` shows active and recent Processes in the calling session.
   `process_stop` accepts the `command-` ID from `process_start` or `process_list`,
@@ -119,8 +119,8 @@ process started and its row cannot become `running`, dex ends the process and
 keeps the row as `stopped` with reason `start_failed`, so the call key stays
 used.
 
-A wake-up is a durable input of kind `task_result` in the owning session, as
-the result of a child session is. Its ID is `background:<id>:<n>` or
+A Process wake is a durable input of kind `wake` in the owning Session.
+Monitors use the same kind. Its ID is `background:<id>:<n>` or
 `background:<id>:end`, so a replay stores it once. It keeps the origin of the
 input that started the command. A child command wakes only that child. Tools
 that need a person's input reject command wake-ups. An input that arrives
@@ -166,7 +166,7 @@ Dex does not infer Task status from the exit status.
 A current Outbound Runner can run another Bot's tool while a Process uses
 the same socket. Both use the normal Runner operation limit. There are no
 harness-specific Runner methods. See
-[external agents and Runners](task-board.md#external-agents-and-runners-phase-3)
+[external agents and Runners](tasks.md#external-agents-and-runners)
 for lease and resume rules.
 
 ## Transcript subscriptions and history
@@ -176,7 +176,7 @@ The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
 
 - The [Go projection](../../internal/engine/view.go) renders immutable native
   conversation revisions. Each revision includes entries, the live partial,
-  tool state, retry state, and the full Inbox. The renderer also serves history.
+  tool state, retry state, and the full native Inbox. The renderer also serves history.
 - A first snapshot holds the last 20 turns of the active context. A turn
   starts at an input or a context boundary, and its tool steps count once
   because they fold into one row. When those turns hold more than 300 entries,
@@ -217,7 +217,7 @@ withdrawal writes no `dex.withdrawn` entry, so Edit leaves no stale bubble.
 
 `POST /api/agents/{agentId}/chats/{id}/clear` uses the Session delivery gate and a SQLite writer
 transaction to check pending input and insert `context_reset` together. The
-engine also checks its active run and Inbox. A refused request stores no reset.
+engine also checks its active run and native Inbox. A refused request stores no reset.
 `Agents.Reset` submits a passive `pi.reset` entry with a stable request ID and
 `head: self`. A retry adds no second reset. A handoff is stored in the receipt
 content and becomes the reset entry's user message. It does not start a run;
@@ -232,11 +232,11 @@ same request ID for a retry with the same handoff. The menu greys out `/clear`
 and `/compact` when the last non-compaction item is a plain reset or is absent.
 
 `Agents.Compact` starts a native manual compaction. It also runs during a run;
-the summary then waits in the Inbox for the run's next boundary. A conversation
+the summary then waits in the native Inbox for the run's next boundary. A conversation
 abort withdraws queued summaries. Main Stop aborts only the targeted run. It
-keeps the Inbox and takes the next boundary if input waits.
+keeps the native Inbox and takes the next boundary if input waits.
 The view shows a `pending` compaction boundary for each live compaction and a
-`queued` one for each summary in the inbox. A goroutine waits for the task, and
+`queued` one for each summary in the native Inbox. A goroutine waits for the task, and
 then for the queued summary. When no summary is placed, it writes a
 `dex.compaction` note entry with the outcome `nothing` or `failed`. A summary
 that Stop drops, or that a reset makes stale, counts as failed. A restart

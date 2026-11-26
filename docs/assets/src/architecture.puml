@@ -57,7 +57,7 @@ rectangle "Channels
 Telegram / Feishu / WeChat" as channels
 package "dex: one Go process" as runtime {
   rectangle "Business services
-HTTP + chat + tasks + schedules
+HTTP, Sessions, Tasks, Automations
 Input receipts + channel outbox" as business
   rectangle "Native engine
 One PiG Harness per agent
@@ -69,7 +69,7 @@ database "control.sqlite
 Settings, chats, input receipts
 Tasks and platform delivery receipts" as cdb
 database "agents/<id>/state.sqlite
-Native admission + Inbox
+Native admission and native Inbox
 Runs, transcripts, tool calls" as adb
 folder "Local agent files
 agents/<id>/workspace
@@ -87,6 +87,6 @@ live --> engine : Watch + History (typed)
 live --> browser : Snapshot / item / append / run
 note bottom of engine
   Durable metadata includes origin, attachments,
-  and task labels. One transcript projection.
+  and input kind. One transcript projection.
 end note
 @enduml

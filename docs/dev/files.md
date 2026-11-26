@@ -81,7 +81,7 @@ raw member source keys resolve to the same stored input without downloading agai
 Captions keep their text for Question matching. Album captions are input data, not
 shared commands, even when a caption is `/clear` or `/stop`.
 
-These member rows track collection and upload ownership, not native execution.
+These rows track collection and upload ownership.
 After a business receipt owns the files, their temporary input JSON is removed;
 source aliases remain for replay detection. Native admission and reconciliation
 still use the existing submission path. The receipt transaction checks that the
@@ -90,9 +90,7 @@ discard unsubmitted batches without deleting files owned by an existing input.
 An interrupted cleanup retries from the retained references. Rejected files use
 the existing attachment error reply and do not enter the native album.
 
-Presentation preferences and configured speech services remain open layer-2 work.
-Group routing and isolated resources belong to layer 3; the adapter still rejects
-non-private chats.
+The adapter accepts only private chats.
 
 ## Attachments
 

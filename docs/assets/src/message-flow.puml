@@ -42,7 +42,7 @@ user -> chat : Open SSE
 chat -> engine : Watch(ctx, ref)
 engine --> chat : Typed snapshot + independent Events channel
 chat --> user : snapshot (includes native queued input)
-engine -> model : Generate (tools use explicit agent environment)
+engine -> model : Generate (tools use the Session Runner)
 model --> engine : Text and tool changes
 engine --> chat : Typed item / append / run events
 chat --> user : Encode events as SSE

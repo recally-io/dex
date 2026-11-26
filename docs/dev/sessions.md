@@ -15,7 +15,8 @@ or automatic retry chain.
 Each agent has one main conversation with channel key `main`. The unique
 agent/key constraint makes `GET /api/agents/{agentId}/chats/main` safe to repeat.
 It creates the control record on demand. Messages use
-`POST /api/agents/{agentId}/chats/{id}/messages` and the agent's settings.
+`POST /api/agents/{agentId}/chats/{id}/messages`. Main defaults to the Bot's model and
+thinking settings.
 `POST /api/agents/{agentId}/chats` takes no body and returns a writable
 Chat session (`201`).
 Its channel key starts with `chat:`. One SQLite write reuses the newest Chat
@@ -30,9 +31,8 @@ main's model context or send its answers to main.
 `GET /api/agents/{agentId}/chats` lists session summaries
 by `updatedAt` descending, then ID descending. `updatedAt` is the latest
 conversation creation, or input creation or settlement. List and detail use the
-same rule. The list excludes main, old channel conversations, dreams and
-Chat sessions with no message. A child session is a row with `parentId`; a task
-from before child sessions has the same shape. While a session is busy, the list
+same rule. The list excludes Main, dreams, and Chats with no message. A child
+session is a row with `parentId`. While a session is busy, the list
 adds `lastActivityAt` and `toolStartedAt` from the engine. The web uses them to
 show a stalled hint. Detail does not carry them.
 
@@ -57,7 +57,7 @@ skip `[inert]` subtrees. Instructions drafts live above the routes in a map by
 agent ID. Saving one agent cannot change another agent's draft or query data.
 A browser reload discards these drafts.
 
-Every enqueue writes `submissions.origin` together with explicit inbox metadata:
+Every enqueue writes `submissions.origin` together with Input Queue metadata:
 `submissions.producer` (`user`, `sub_session`, `scheduler`, or `plugin`) and
 optional `reply_channel` / `reply_peer` (populated only for direct channel `user`
 inputs; Web and background inputs leave them empty). Web input in main and Chat uses `web`.
@@ -79,7 +79,7 @@ input: if that input came from a channel (`reply_channel`/`reply_peer`), that
 input writes the single final Outbox reply; if it came from Web, the answer
 stays in Web with no channel Outbox row. Pure background runs (no `user` input)
 never auto-send to channels—Main must explicitly call `notify_user` to emit a
-channel notification. A [Task wake](task-board.md#coalesced-main-wakeups) is
+channel notification. A [Task wake](tasks.md#coalesced-main-wakes) is
 a background input. It stays in control storage while Main is busy and gives
 other pending inputs priority. If run membership or order cannot be verified, no
 automatic channel Outbox row is written. Web input and a parent's
@@ -180,7 +180,6 @@ Each session, list row and match names its bot (`bot` and `botId`).
 Only a parent can send to, stop or fork a child. A child has no parent session
 tools, automation tools, or `ask_user`. The app selects the child extensions for
 each input, and the handlers also check the caller.
-A conversation that was a task before the upgrade is a child in the same way.
 
 ### Child reports
 
@@ -191,27 +190,15 @@ native validator rejects `id`, `message`, `mode` and `follow_up`. The handler
 refuses a call from a conversation without a parent.
 
 A progress report (`final: false`) is a milestone and the turn continues.
-Progress reports and ordinary final reports write an internal `task_result`
+Progress reports and ordinary final reports write an internal `session_result`
 with the ID `report:<bot>/<tool task ID>` for the direct parent. This does not
 notify the user or grant channel authority. A final report (the default) must
 be the sole tool call of its round and ends the child turn.
 
-For a [promised channel follow-up](channels.md#promised-follow-ups), the
-final report does not write a `report:` wake. The child starts its own native
-activation. Its first native entry binds that activation to the delegation.
-Only the tool operation that belongs to this activation can stage a final
-report. The control writer checks the child, direct parent, original receipt
-and native activation. A replay returns the same disposition. A second final
-cannot replace the first report. A native `done` settlement can consume that
-report as the canonical result's answer. Settlement, consumption, and result
-creation share one transaction. Revocation or unsuccessful settlement does
-not use staged content. A stage is not a send.
-
 The child edit of each input removes the `sessions` extension when it adds
 `child-outbox`, so the child can report but cannot dispatch to other sessions.
-Use `session_report` for new calls. PiG cannot resume an unfinished call
-under the retired tool name. A report committed before restart stays in the
-parent's Inbox and does not create a second wake.
+A committed report stays in the parent's input queue after restart. Replay
+of the report does not queue a second input.
 
 ## Cross-bot sessions
 
@@ -255,7 +242,7 @@ the child. A replay finds the stored turn and changes nothing. Stop and the
 tool calls take the SQLite writer before they read.
 
 A turn that a parent sends has origin `task`, so it never goes to a user
-channel. A completed run with a parent input sends one `task_result`, including
+channel. A completed run with a parent input sends one `session_result`, including
 when a user started an ordinary shared run. A pure user run sends none.
 Control uses the child conversation and native Answer entry as a unique key.
 In an ordinary shared run, the first parent input to settle owns
@@ -273,16 +260,15 @@ final answer cut at 4,000 characters, or the failure reason. A restart adds
 the number of queued inputs it withdrew. Child results enter the parent as
 `producer = 'sub_session'` with no channel reply destination; pure background
 runs never auto-send to channels, and Main decides whether to call `notify_user`.
-An ordinary result enters the parent's follow-up Inbox while the parent is busy.
+An ordinary result enters the parent's native Inbox while the parent is busy.
 Control never changes a settled submission back to pending. The parent reads the child's
 final answer from the result and can call `session_read` for a cut text.
 
 Control passes a trusted input kind, the turn ID and the child title to the
-engine. The engine stores results as `dex.task_result` entries. The public
-projection replaces each result input with a `task` mark. The mark holds the
-title, the outcome and the failure reason, and never the answer text. A failed
-result reply cannot retry the user message before the mark.
-Neither layer uses message text or an ID pattern to hide results.
+engine. A `dex.session_result` entry projects as a `session_result` mark. The
+mark holds the title, outcome, and failure reason. It does not show answer
+text. A failed result reply cannot retry the user input before the mark.
+Monitor and Process wakes use `dex.wake`. Task wakes use `dex.task_wake`.
 
 The web shows a child as a thread. The main
 transcript keeps one card at each `session_new` or `session_fork` call and one
@@ -317,8 +303,8 @@ engine checks the task's Session and cancels only that task ID. If it has
 ended, Stop reports that it had no effect. A handoff can replace the task ID
 within one run. Stop does not follow the handoff or cancel a successor.
 
-Task Stop keeps queued and awaiting inputs, children, background commands and
-Monitors. PiG 0.7 task abort keeps the Inbox but does not start its next input.
+Main foreground Stop keeps queued and awaiting inputs, children, background commands and
+Monitors. A native abort keeps the native Inbox but does not start its next input.
 Dex records the intent before abort. If the Session is idle, the failure still
 belongs to the aborted task, and input is queued, Dex submits a native Continue
 with a stable ID. Recovery can finish this step after a restart.
@@ -365,9 +351,9 @@ or remote actions.
    the task ran. A bounded in-memory cache suppresses repeat observations of
    the same input set across tool rounds and task handoffs. Recovery can log
    it again. A fast native start can log before the admitted receipt commits.
-3. On a build with Runner RPC diagnostics, compare the `environment` ID and
+3. On a build with Runner RPC diagnostics, compare the Runner ID and
    timestamps with `runner RPC` logs. The Session log shows the effective
-   environment at admission. The Runner client generates `call_id` for each
+   Runner at admission. The Runner client generates `call_id` for each
    RPC. It does not share a key with the PiG task. On a shared Runner this is
    only a time association, not attribution to the Session. Within one
    `call_id`, `connection_wait` is distinct from `slot_waiting` or `slot_wait`.
@@ -378,7 +364,7 @@ or remote actions.
    `session execution` / `shell_timeout` event reports a typed shell deadline
    at the execution boundary. Match its agent and native conversation ID.
    It does not label an untyped model or tool error as a timeout.
-4. For task Stop, match `stop_recorded` to `stop_attempt` by native
+4. For Main foreground Stop, match `stop_recorded` to `stop_attempt` by native
    conversation and task. The last component of the validated `target` is the
    task ID. `stop_attempt_ended` with `deadline` describes the
    local wait. `abort_observed` reports whether this Stop attempt confirmed cancellation.
@@ -442,7 +428,7 @@ the SHA-256 digest of that token in `control.sqlite` and keeps live connections
 in memory. A bot borrows the connection, so reloading the bot does not disconnect
 its machine. Each backend owns its connections, and a `Handle` is one lease on
 them: all bots on
-one `pi-env` environment share one SSH connection until that environment changes. The socket carries JSON-RPC 2.0 calls from
+one SSH Machine share a connection until its configuration changes. The socket carries JSON-RPC 2.0 calls from
 [`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
 operation. Both sides use the `dex-agent.v2` subprotocol and limit each
 connection to 16 active calls. A call waits for a slot before Dex sends it. Responses, stdout, stderr, and `cancel` are scoped to the call.
@@ -450,14 +436,14 @@ Dex holds a canceled call's slot until the Runner responds, or closes the sessio
 if it does not respond in time. A slow output consumer can fill its bounded
 buffer. Dex stops that command and reports the error without blocking other
 calls. On disconnect, the Runner cancels its calls and waits for them before
-cleaning up the execution environment. Self-update remains outside the serving
+releasing the call resources. Self-update remains outside the serving
 loop. A session does not replay calls after connection loss. Dex reports a
 missing final result as unknown.
 
 The `runner RPC` control log correlates connection wait, slot wait, send,
-remote start, and completion by `call_id`, environment, and method. Slow slot
+remote start, and completion by `call_id`, Runner ID, and method. Slow slot
 waits, cancellations, offline calls, and unknown results are visible at Info.
-Fast successful calls and routine file errors use Debug. Completion of slow
+Fast successful calls and expected file errors use Debug. Completion of slow
 calls includes the send and remote-start timings when available. The Runner
 sends `started` before it dispatches a call. This event does not confirm a
 successful shell spawn. The local receipt time can include network delay.
@@ -476,7 +462,7 @@ the earlier one at once, so a half-open socket does not block the reconnect.
 Each new session wakes the chats that wait, so their input runs without a new
 message. A revoke or a new enrollment changes the identity, so a lease fails at
 once and the bot reloads.
-`runner.Manager` dispatches each kind to one backend and owns the environment
+`runner.Manager` dispatches each kind to one backend and owns the Runner
 lifecycle (`Normalize`, `Probe`, `Changed`, `ForgetHostKey`) and the agent
 lifecycle (`CanResetAgent`, `ResetAgent`, `ReleaseAgent`). This keeps
 `internal/settings` independent of backend config schemas and SSH `known_hosts`
@@ -499,10 +485,10 @@ receive the login or service `PATH`.
 `Include` directives) and lists private key filenames without reading key bytes.
 `POST /api/settings/runners/probe` validates and probes unsaved settings,
 using a temporary `known_hosts` file for new SSH endpoints and reusing saved
-trust entries when the host and port match an existing environment. When a remote
+trust entries when the host and port match an existing Runner. When a remote
 SSH host key rotates, probes report `hostKeyChanged`, and
 `POST /api/settings/runners/{runnerId}/forget-host-key` clears the
-saved entry. For `e2b`, each environment can select E2B Cloud or override
+saved entry. For `e2b`, each Sandbox can select E2B Cloud or override
 `apiUrl`, `domain`, `envdUrl` (header-routed or `{sandboxId}`/`{port}`
 templates), and `autoPause`, with optional secrets on custom endpoints,
 HTTP `*.localhost` loopback dialing, `/timeout` + `GET /sandboxes/{id}` fallback
@@ -531,14 +517,14 @@ Sequence dependent operations explicitly. SSH and runner
 use the same `<base>/<bot-id>/workspace` layout under their respective base
 directories. These workspaces are not permission boundaries.
 
-The engine resolves the environment of a session at each call, through the
+The engine resolves the Runner of a Session at each call, through the
 `SessionRunner` callback that chat provides. One resolver
 ([`internal/engine/session_env.go`](../../internal/engine/session_env.go))
 serves the Harness `Env` hook, the `bash` tool, background commands, upload
 staging, project paths, the project `AGENTS.md`, and artifact delivery. The open
-agent keeps one lease for each environment that its sessions use, and closes the
+agent keeps one lease for each Runner that its Sessions use, and closes the
 leases on reload and close. A bot with an unavailable default can still run
-a session that selects another environment. New input that follows an
+a session that selects another Runner. New input that follows an
 unavailable or offline default waits before native admission. This check does
 not wait for the machine; a running turn keeps its tool calls, which wait as
 above. Later attempts retry opening the default, and a new machine session ends
@@ -548,10 +534,10 @@ that needs the default opens it and uses its project files. Reload still tries
 to refresh the default workspace. If the default machine is offline at cold
 open or during Reload, reconnect requests an idle reload even without new input.
 After a failed Reload, a later successful lease open can also request an idle reload.
-The resolver checks the environment in control storage. A removed, unselectable, or offline environment
-fails the call with a reason. The resolver never falls back to another
-environment, and dex does not replay an interrupted command. The stamp holds
-the configuration and identity of the environment, not its connection state.
+The resolver checks the Runner in control storage. If it is removed, unselectable, or
+unavailable, the call fails with a reason. The resolver never falls back to
+another Runner. Dex does not replay an interrupted command. The stamp holds
+the Runner configuration and identity, not its connection state.
 A changed stamp makes the agent stale, so the next reload of that agent opens a
 new lease when that agent is idle. Work of other agents does not delay it.
 
@@ -560,18 +546,18 @@ bot's explicit tool values and inherits the remote process environment. Dex and
 agent skills live on the control host. The `skill_*` tools manage them from any
 owner session. Remote leases get a read-only copy that dex updates by manifest
 diff; local sessions use the stores directly. Project skills stay in the
-selected environment and use the normal file tools. See [Skills](extensions.md#skills).
+selected Runner and use the normal file tools. See [Skills](skills-and-integrations.md#skills).
 MCP servers keep their bot-level configuration and transport;
-selecting an environment does not move them or grant access to new MCP tools.
+selecting a Runner does not move them or grant access to new MCP tools.
 
 An E2B default keeps its existing persisted per-bot sandbox and auto-pause
 setting. An explicit selection of that same default uses the same lease.
-A non-default E2B selection uses a separate sandbox per open bot and environment.
+A non-default E2B selection uses a separate sandbox per open Bot and Runner.
 Dex deletes it on lease close. It expires rather than auto-pauses if Dex cannot
 close it. It does not survive a reload or restart; do not rely on it for
 persistent files. Operations renew its timeout while it is in use, including
 short commands. A confirmed expiry fails the operation without replay. Later
-work opens a fresh sandbox in the same selected environment; old files do not
+work opens a fresh sandbox in the same selected Runner; old files do not
 carry over.
 Automations support explicit overrides for Local and SSH Machines only.
 
@@ -583,35 +569,24 @@ parent's Runner. A child of another bot uses that bot's Runner. `runner_list`
 returns Local and the registered Runners in `runners`, with ID, name, kind, and status, with
 the bot's default first. The stored kind `runner` identifies an Outbound
 Machine that connects through `dex-agent`. An offline Machine remains listed. The tool includes
-`desc` when the owner sets a description on the saved environment in Settings.
+`desc` when the owner sets a description on the saved Runner in Settings.
 This plain text is data. It does not change selection or access and does not go
 into the system prompt. The tool does not show configuration or secrets.
 
 A fork keeps its source Runner unless it selects Local or a registered Runner.
 Use `runnerId` in `POST /api/agents/{agentId}/chats/{chatId}/fork` or `session_fork`.
-When the Runner changes, the fork has no cwd. When the copied
-history last ran in another environment than the fork, the engine ends the copied history with one
-`dex.runner` entry. The entry holds the notice as a user message, so the model reads it
-before the next input, and the transcript shows it as an `environment` boundary. The entry data
-keeps the environment that the history left. A fork that ends before such an entry of its source
-uses that environment, so a fork of a moved chat from before the move gets its own notice. Files,
-background commands, and queued input stay in the source environment. A fork with no copied
-history gets no notice. A fork cannot change its environment after that, so a retry with the same
-ID compares the fork row with the requested environment. The retry gets its fork before the target
-is checked, so a removed target does not refuse it.
+When the Runner changes, the fork has no cwd. If copied history ends on a different Runner, the engine appends one
+`dex.runner` entry. The model reads its notice before the next input. The
+transcript projects a `boundary` item with `boundary: "runner"`. The entry
+records the Runner the history left. A fork before that entry uses the
+recorded Runner as the source of its own boundary check. Files, commands,
+and queued input stay on the source Runner. A fork with no copied history
+gets no notice. A retry with the same ID must request the same Runner. It
+returns the saved fork even if the target Runner is no longer available.
 
-A change of the bot's environment fails with 409 while sessions that follow it
+A change of the Bot's Runner fails with 409 while sessions that follow it
 have queued input or running background commands. After the change, those
 sessions start in the new workspace with no cwd. The backend releases the bot's
-state in the earlier environment. Explicit sessions keep their selection. An
+state in the earlier Runner. Explicit sessions keep their selection. An
 explicit E2B session that pinned the earlier default will use a new override
 sandbox, not the released default sandbox.
-
-The migration `20261112120000_drop_tasks` drops the `tasks` and
-`task_steer_receipts` tables. An earlier migration copied the parent link and
-the parent request of each old task into `conversations.parent_id` and
-`submissions.parent_request_id`. Each old task conversation is a child session,
-and the ID of an old task is the ID of its first input. Old results stay as
-`task_result` inputs. The saved task report and the acknowledgement of a task
-are gone, and so are the old task endpoints. A rollback of the migration
-restores empty tables.

@@ -27,25 +27,25 @@ to read in an afternoon.
   Archived, and About. General sets the primary model, thinking level, fallback
   model, and Runner of the `default` bot, which new bots copy. Global
   Integrations manages external sources. Global Secrets holds shared Vault
-  entries and 1Password. Old settings URLs still work.
+  entries and 1Password.
   The CLI manages the service address, data directory, and update policy.
 - Several agents for one owner, each with a name, primary model, thinking
   level, optional fallback model, instructions, conversations, automations, and
   workspace directory. The API
   can create, list, read, and update agents. Each agent's API paths include its
-  ID, including default. Old API aliases return 404. Global settings contain no
+  ID, including default. Global settings contain no
   implicit agent. A resource from another agent returns 404. The session tools
   are the exception (see "Cross-bot sessions"). The web sidebar lists agents
   with default first. Its New bot dialog pre-fills the primary model, fallback
-  model, and execution environment from the `default` bot, then opens the new
+  model, and Runner from the `default` bot, then opens the new
   bot's empty timeline. Providers stay global. Each agent has its own channels.
   When a bot's primary model is missing or fails before answering, dex switches
   to the bot's fallback model automatically.
 - Durable conversations: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
   not attach an old CLI process or prove that its actions occurred once.
-- One main timeline per agent. The web opens it at `/a/{agentId}` and uses the agent's
-  model settings by default. A saved Main override also applies to channel input.
+- One main timeline per agent. The web opens it at `/a/{agentId}` and defaults to the Bot's
+  model and thinking settings for Web and channel input.
   `/clear` starts a new model context when the timeline is idle. Text after
   the command is carried into the new context. Earlier messages stay readable
   with Show earlier messages. A clear keeps long-term memory. `/compact`
@@ -56,17 +56,15 @@ to read in an afternoon.
   divider. The window has a sidebar and a page.
   The user talks to a bot, and the bot manages its sessions. The sidebar lists
   the bots without row menus. Each bot row shows at most one status dot: orange
-  for Inbox items and blue for active sessions. Orange takes priority. New bot comes after the bots.
-  The sidebar footer opens global Settings and About. A red dot marks provider
+  for Board attention and blue for active Sessions. Orange takes priority. New bot comes after the bots.
+  The sidebar footer opens global Settings. A red dot marks provider
   errors. The page header names the bot and the open page. On desktop, its right
   side shows New session, Sessions, Automations, and Bot settings as direct controls.
   Automations keeps its enabled count and failure mark. Bot settings keeps its
   instructions draft mark. On a phone, a Menu button holds these same actions.
   Main has no session settings button; Bot settings edits its default model and
-  thinking level. If Main has saved overrides from an older version, Bot settings
-  shows a warning and a button to clear them. It does not clear them automatically.
-  A writable task shows its project and one combined model and thinking control
-  inside the input toolbar. Both labels have width limits and truncate; they do
+  thinking level. A writable Chat shows its project and one combined model
+  and thinking control in the input toolbar. Both labels have width limits and truncate; they do
   not push the send or stop buttons out of the input. Unset values follow the bot.
   An unset project shows Bot working directory. The model picker has a provider
   sidebar, a searchable model list, and thinking choices below the list. On narrow
@@ -77,12 +75,12 @@ to read in an afternoon.
   messages, records and files; a child session's result still returns to the chat.
   New session does not reuse an archived empty chat. The button at the top left of
   the sidebar hides it. The first button of the page header then shows it
-  again, with an orange dot when Inbox has items. The header shows the bot's
+  again, with an orange dot when Board has attention items. The header shows the bot's
   avatar. On a phone, the menu button opens the sidebar as a drawer. It shows
   the same orange dot.
   The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
-  attachments, and instructions draft when the user switches agents. The sidebar
-  links to `/inbox` and `/board`.
+  attachments, and instructions draft when the user switches agents. Board
+  opens at `/board`.
   An unknown agent shows a not-found page.
   Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
@@ -129,15 +127,14 @@ to read in an afternoon.
   same account does not send old replies. They remain available on the web.
   Channels send final replies without drafts. Long replies send an extract and refer to Web for the full text. Pending deliveries resume after restart. A crash before the sender saves a Telegram receipt can duplicate one message. Bot settings
   show each channel's runtime status and setup.
-- Agents can deliver files from main, Chat, Automation runs, and child sessions.
-  Dex stores each delivery as an immutable snapshot of at most 20 MiB. The user
-  can preview Markdown and safe raster images in Dex and download other files.
-  A delivery of a child session appears in that session and in its parent conversation.
-  Continue editing adds the snapshot ID, name, and source to a writable Chat.
-  A new delivery is required to publish later changes.
+- Bots can publish files from Main, Chats, Automation runs, and child Sessions.
+  `deliver_file` copies a file of at most 20 MiB to the Bot's artifact directory.
+  The user can preview Markdown and safe raster images or download other files.
+  A cross-Bot child can return its artifact URL to the parent. Telegram file
+  delivery keeps an immutable byte snapshot in the Outbox. See [Files](dev/files.md).
 - In main and Chat sessions, the user can attach files and images (at most 10 per
   message, 20 MB each). The agent reads them with its tools. Telegram
-  input uses Main's saved settings. Automations default to the agent's settings.
+  input uses Main's model settings and saved project. Automations default to the agent's settings.
   Telegram accepts photos and
   documents up to 20 MB, with caption text. Telegram replies show progress,
   code blocks, and basic text formatting. Final-send failures, including flood
@@ -173,12 +170,18 @@ to read in an afternoon.
   owner can ask the agent to list, create, inspect, update, pause, resume, or
   run an automation. The agent can read the 10 most recent run results and their
   transcript references. These tools use the current bot; they cannot manage another bot's
-  automations. The tools require a user-input turn. Automation runs, background
-  tasks, dreams, and task-result continuations cannot use them.
+  Automations. The tools require a user turn in Main or a top-level Chat.
   A partial update keeps fields that the owner did not change. Creation uses
   the current project directory unless the owner selects another directory.
   Replaying one tool call does not create another automation, start another run,
   or move the schedule again. There is no automation deletion tool.
+- Bot tools and archive. In Main or a top-level Chat, the Owner can ask a Bot
+  to list, inspect, create, update, or archive Bots. Changes require a user
+  turn. `bot_delete` requests confirmation. Only the archive option in a Web
+  or paired channel answer can approve it. The default Bot, the asking Bot,
+  and a Bot with a running Session cannot be archived. Archive stops the
+  Bot's Channels and Automations and keeps its Sessions, memory, and files.
+  **Settings → Archived** restores the Bot. See [Bot tools](dev/agents.md#bot-tools).
 - Cross-bot sessions. One
   owner has all the bots, so a bot can give work to another bot. `session_new`
   with `bot` (an ID or a name) creates a child session in that bot. The child
@@ -203,8 +206,7 @@ peer, such as `telegram:7`. A background result keeps the origin of its source
 input, also when that source is another result. Automation, internal execution,
 and memory consolidation use `automation`, `task`, and `dream`. Channel delivery
 uses the pairing saved with the source input, even if the result finishes after
-another input or a new pairing. Channel input cannot reach a separate Chat session. Old per-peer
-conversations receive no new channel input. Their saved transcript URLs remain readable.
+another input or a new pairing. Channel input cannot reach a separate Chat session.
 
 The main chat shows the user's messages and the main agent's answers.
 The thoughts and tool calls between two answers show as one collapsed row. While
@@ -232,7 +234,6 @@ All sessions list. The row names its bot and opens in that bot. The child bot
 names the parent bot.
 Automation run history links to read-only automation transcripts.
 Named dispatch and results with a saved child Session ID open the child Session.
-The Sessions filter has no separate Task kind.
 A result shows that the child returned a report. It does not prove goal
 completion. The UI does not show progress percentages.
 
@@ -260,25 +261,28 @@ Main stays the default view. The header of a Chat session or a child session
 names Main before its title. The header of an automation transcript names
 Automations before its title.
 
-Board (`/board`) is the single workspace view across bots. The sidebar shows
+[Board](dev/tasks.md#board) (`/board`) is the single workspace view across Bots. The sidebar shows
 the number of items needing owner attention on the Board link. Board groups
 items by what needs action now:
 
 - **Needs you** lists active unanswered questions (answerable inline or in the
-  session), Tasks awaiting Owner review (approvable inline), blocked Tasks,
-  enabled Automations without an available model, and held external events
-  (attach to an open Task or dismiss).
+  session), Tasks awaiting Owner review (approvable inline), enabled
+  Automations without an available model, and held external events. The Owner
+  can attach a held event to an open Task or dismiss it.
+- **Blocked** lists open Tasks with blockers. These Tasks do not add to the
+  attention count on their own.
 - **Active** lists open Tasks across bots, each with a stable key such as
   `T-42`, Assignee Bot, and status hint. **Later** holds backlog Tasks, and
   closed Tasks collapse into **Completed**.
 - **Updates** groups unhandled failed or changed Automation results by
-  Automation with the latest summary preview and timestamp. Expanding a row
-  marks it read and lets the Owner mark the group done or continue in a
-  session. One-way notifications stay in the transcript or channel.
+  Automation. Each group shows the latest summary and timestamp. Expanding a
+  group marks its latest result read. The Owner can mark the group done or
+  continue in a Session. Open a saved result at `/board/results/$runId`. One-way notifications
+  stay in the transcript or channel.
 
 Creating a Task or adding a note does not start a Session. Sending from the
 Task composer messages the Assignee Bot's Main, links the turn to the Task, and
-keeps the Owner on the Task page. Task detail shows a clear property strip
+keeps the Owner on `/board/$taskKey`. Task detail shows a clear property strip
 (Status, Assignee Bot, Reviewer), a contextual review or blocker card,
 conditional cards for linked Sessions, external runs, subtasks, dependencies,
 and external links, and a Markdown-rendered chronological timeline. The Owner
@@ -289,7 +293,7 @@ Bots can read or update Tasks when their role and Session permit it. The
 Owner controls cancellation and reopening. Timeline entries identify the
 author. Bots get metadata instead of the text of external entries. The
 GitHub plugin lets the Owner link a PR. The Owner can change plugin settings
-in General. A change applies after dex restarts.
+in global Settings → Integrations. A change applies after Dex restarts.
 
 A Source assignment, reassignment of an open Task, review request, request
 for changes, or resolution of a wait with alerts can wake the relevant Bot's
@@ -304,15 +308,15 @@ When the email plugin is on, a mail forwarding service can post the messages
 of a selected address, or Dex can read one mailbox folder over IMAP. A new
 thread opens a Task, and a reply in that thread updates the same Task. Dex
 does not mark the mail as read. The email plugin starts off.
-The Inbox holds an event when its links point to different Tasks. A source
-rule can also hold an event that matches no Task. Dex holds only events from
-trusted authors, or events with conflicting links. The owner attaches a held
-event to an open Task or dismisses it. An attach links the event's free objects
-to the Task, so later events go there. A decision does not alert Main.
-The Inbox also links to Automation results.
-Automation result records include settled `changed` or `failed` outcomes without a
-duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening
-a result marks it read. Marking it handled dismisses it. Both states survive restart.
+Board lists held events under **Needs you**. Dex holds an event when its links
+point to different Tasks. A Source can also hold an unmatched event from an
+author who is not record-only. The Owner can dismiss a hold or attach it to an
+open Task. Attachment links its unassigned objects for future routing. Neither
+action wakes Main.
+
+**Updates** shows settled failed runs and changed runs that are not duplicates.
+Other outcomes stay in run history. Opening a result marks it read. Marking it
+done dismisses it. Both states survive restart.
 
 Result details show the outcome, automation, bot, time, summary, and run transcript.
 Continue in a session opens a writable session for that bot. It pins the
@@ -343,12 +347,12 @@ composer. The user picks an option or writes another answer. A plain message
 does not answer the question, and the question stays open. Session cancellation, Clear and
 archive dismiss it. A Telegram or Feishu user sees the question as a message and
 answers it by quoting that message. A plain message does not answer it. WeChat
-cannot quote, so a WeChat user answers in the web. Tasks, automations and dreams
-cannot ask. The web shows an answer as the question in muted text above the answer.
+cannot quote, so a WeChat user answers in the web. Child Sessions, Automation
+inputs, and Dreams cannot ask. The web shows an answer as the question in muted text above the answer.
 
 On Main, Web Stop cancels only the foreground task shown in the composer.
-If the task ends or hands off to a new task, the old target cannot stop its
-successor. Queued input stays in order and can continue after a restart.
+If the native run ends or hands off to a new target, the old target cannot
+stop its successor. Queued input stays in order and can continue after a restart.
 Child sessions, background commands, and Monitors stay active. Remove a queued
 message, stop a child session, or cancel a Monitor as a separate action.
 
@@ -383,14 +387,15 @@ tool processes ended. Before another execution, the main agent must check prior
 artifacts and side effects. In the built-in **Local** Runner, tools run on the
 host without a sandbox. Settings → Runners manages **Machine** Runners with
 **SSH** or **Outbound** connections and **Sandbox** Runners. Outbound uses
-`dex-agent`. Stored kinds and API paths stay the same. Remote bots execute file, shell, and background tools remotely with
-the remote environment plus the variables that a call needs. Vault references
+`dex-agent`. Bots use the selected remote Runner for file, shell, and
+background tools. The tools inherit the remote process environment and receive
+only the explicit variables for the call. Vault references
 resolve on the control host. The `memory_*` tools stay on `<data dir>/memory`
 on that host. SSH machines use the
 remote user's login shell by default (`loginShell`, default `true`), keep a
 persistent workspace disk, discover hosts from `~/.ssh/config` (without reading
 private keys), test connections before saving, and clear changed SSH host keys
-on confirmation. Sandbox environments offer **E2B Cloud**, **Local Docker /
+on confirmation. Sandbox Runners offer **E2B Cloud**, **Local Docker /
 VM** (defaulting `autoPause: false` and `timeoutSeconds: 3600`), and **Custom
 endpoint** presets, show whether disk state is snapshot-persisted or ephemeral,
 support optional API keys, automatic resume or recreation, and stateless **Reset
@@ -404,97 +409,30 @@ down. A crash of dex can leave the process; the command then shows as unknown.
 A turn can supervise another process it started, such as a worker in a terminal
 tab, but must stop it before the final answer.
 
-Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
-Monitors, Processes, skills, and MCP servers are available.
-The API, web UI, and channels support several agents. One bot credential can
-belong to only one agent. A conflict names the agent that already uses it. Project bindings, task routing between agents, group chats,
-and task-specific automation result routing are later work. Other chat channels are not available.
-
 ## Non-goals
 
-- Bots: in main or a writable Chat, the owner can ask the agent to list bots
-  (`bot_list`), read one bot (`bot_get`), create a bot (`bot_create`), change a
-  bot's name, instructions, model, fallback model, or thinking level (`bot_update`), and archive a
-  bot (`bot_delete`). A change uses the same checks as the web. `bot_create`
-  copies the `default` bot for omitted model, fallback, thinking level, and
-  environment fields, and makes a bot with no bot-level channels, skills, MCP servers, or
-  vault secrets. Reading also works
-  in an automation run. Creating, changing and archiving need a user-input turn
-  in main or a Chat, so automation runs, child sessions, dreams and task results
-  cannot use them. The tools never show vault values.
-- Archive: `bot_delete` archives; it never deletes data. The tool only asks. The
-  web shows an approval card: the first option is `Archive <name>`, the second
-  is Cancel. Only an answer of the first option from the web or from a paired
-  channel peer archives the bot. Surrounding whitespace is ignored; the words,
-  case and inner spaces must match. Any other answer, or an answer from a task,
-  automation or dream, leaves the bot as it is. The agent sees the decision
-  as the last line of the answer. The default bot, the asking bot and a bot with a
-  running session are refused. An archived bot leaves the sidebar and the bot
-  list, its Telegram, Feishu and WeChat channels stop, and its automations stop
-  running. Its chats, memory, settings and files stay. Settings > Archived bots
-  lists archived bots with a Restore button. Restore brings back the sidebar row,
-  the channels and the automations as they were. An automation whose time passed while
-  the bot was archived runs again only if it is at most one hour late.
-- Native desktop applications. Use a browser to access the web UI.
-- More than one host. One machine runs one dex controller process; individual bots
-  can execute tools remotely via `pi-env` or `e2b`.
-- Built-in OS virtualization for `local` bots. Local bots run tools on the host;
-  configure `pi-env` or `e2b` for isolated execution.
-- Shared object storage across controllers. Control files live on the host;
-  remote bots stage uploads and read/write files in their bound environment.
-- Automatic failover or data replication.
+- Native desktop applications. Use a browser.
+- Multiple controllers, shared object storage, automatic failover, or data
+  replication. One Dex process owns the data directory. Use Runners for remote
+  execution.
+- Isolation in the Local Runner. Its tools run as the Dex user. Select an
+  appropriate separate Runner when tools must run elsewhere.
+- Group chats or channels other than Telegram, WeChat, Feishu, and Lark.
 
-## Extension files
+## Skills, Integrations, and Secrets
 
-Each agent reads skills from two `.agents/`
-directories: the resolved dex data directory, shared by all agents, and the
-agent home (`<data dir>/agents/<id>`). The narrower level wins. dex does not
-read the user home (`~/.agents`), so personal files and secrets there never
-reach a bot. MCP server declarations are shared or agent-specific and stored on
-the control host. Store bot instructions in the bot's settings. dex adds the
-session's `<cwd>/AGENTS.md` after the saved instructions. A project file can
-use `@path` to import files inside the project. Tools start
-in the agent workspace by default. Task sessions can select an existing project
-in the header. Main and Chat sessions can also use `set_project` or the project
-API. A directory change keeps the existing model context. The header picker
-browses directories on the dex host and offers up to eight recent projects
-for the current agent. The directory applies
-from the next message after an API change. A tool change also applies to
-later tools in the same run. Clear the project to return to the agent
-workspace. An automation can set its project directory in its dialog. The
-directory applies on every run, including a reused session. Channel input uses
-Main's project. Child sessions inherit their parent session's directory. A child
-session in another bot starts in the workspace of that bot. A dream cannot set a
-project. Project skills come from
-`<cwd>/.agents/skills/`. Memory stays in `<data dir>/memory`.
+Dex loads skills from global, Bot, and Project directories. The narrowest
+level wins. Dex adds the Session's `<cwd>/AGENTS.md` after the Bot instructions.
+The project picker browses the selected Runner. Main and Chats can change
+project without clearing context. A child Session can inherit the parent's
+project if it runs on the same Runner.
 
-The system prompt always includes a guide to these files, even with no
-skills. It explains paths, file formats, environment use, and Reload. It
-contains no vault secret names or values. `secret_list` returns secret names
-and metadata only.
+Bot Skills lists the files. Bot Integrations lists Channels and MCP servers.
+Skills and MCP servers share a Reload action. A configuration error keeps the
+current resources in use.
 
-Tools start from the user's login shell environment, so a value that the
-shell exports reaches every bot. Global Secrets can also store
-1Password credentials for the `op` CLI: a service account token, or a
-Connect host and token. When `op` is installed, bots read secrets with
-`op read` when a command needs them. dex does not read the secrets.
-
-A bot's Secrets page lets the owner set or delete its vault entries. Global
-Secrets holds shared entries. A bot secret with
-the same name wins. Values are write-only and encrypted. A bot can pass
-`vault:NAME` in the `env` of Bash, a Monitor, or an MCP declaration. Changes
-apply when the affected agent reloads. dex ignores old `.env` files. The old
-`/secrets` address opens global Secrets.
-
-Bot Settings → Skills shows file levels and skills. Bot Settings → Integrations
-shows MCP servers. Both show configuration warnings. Both pages offer Reload. The automatic reload
-requires all agents to be idle before it replaces the selected agent's execution
-resources and MCP connections. After that idle check succeeds, other agents
-can start work while Reload continues. Invalid configuration for the selected
-agent prevents replacement and keeps its current
-resources in place.
-Use vault references in tool arguments, because arguments enter the
-transcript. dex masks exact vault values in final tool results and Monitor
-wake-ups. A command's full output file stays as written. See [extension
-architecture](dev/extensions.md) for file loading, the vault, and resource
-lifetime.
+Global Secrets holds shared Vault entries and 1Password configuration. Bot
+Secrets holds overrides. Vault values are write-only in Settings. Pass a
+`vault:NAME` reference instead of a value in tool arguments, which can enter
+the transcript. See [Skills and Integrations](dev/skills-and-integrations.md)
+for paths, declarations, secrets, and reload behavior.
