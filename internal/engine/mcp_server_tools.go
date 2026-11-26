@@ -10,6 +10,13 @@ import (
 	"github.com/MichaelKinsy/PiG/durable"
 )
 
+// mcpServerView is the mcp_server_get result. Error explains why dex refuses
+// to connect the stored declaration.
+type mcpServerView struct {
+	Config serverConfig `json:",inline"`
+	Error  string       `json:"error,omitempty"`
+}
+
 func (a *Bots) mcpServerTools(botID string, loaded *loadedExtensions) []*durable.ToolRegistration {
 	store := a.config.MCPServers
 	if store == nil {
@@ -89,7 +96,11 @@ func (a *Bots) mcpServerTools(botID string, loaded *loadedExtensions) []*durable
 	})
 	add("get", "Read one MCP server declaration at the given level. Plain environment and header values and the URL query are hidden.", func(ctx context.Context, levelID string, args arguments) (any, error) {
 		cfg, err := store.get(ctx, levelID, args.Name)
-		return redactMCPConfig(cfg), err
+		view := mcpServerView{Config: redactMCPConfig(cfg)}
+		if cfg.incompleteOAuth() {
+			view.Error = errMCPIncompleteOAuth.Error()
+		}
+		return view, err
 	})
 	const saved = "Saved. The change applies when the bot finishes its current work and reloads."
 	add("set", "Replace one MCP server declaration. Use vault references for secrets. Send [hidden] for each environment or header value to keep. Use disabled: true to turn off a wider declaration.", func(ctx context.Context, levelID string, args arguments) (any, error) {
