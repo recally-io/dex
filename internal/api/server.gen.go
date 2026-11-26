@@ -1153,30 +1153,6 @@ func (e TelegramInputTransport) Valid() bool {
 	}
 }
 
-// Defines values for TelegramSpeechOptionsFormat.
-const (
-	TelegramSpeechOptionsFormatEmpty TelegramSpeechOptionsFormat = ""
-	TelegramSpeechOptionsFormatMp3   TelegramSpeechOptionsFormat = "mp3"
-	TelegramSpeechOptionsFormatOpus  TelegramSpeechOptionsFormat = "opus"
-	TelegramSpeechOptionsFormatWav   TelegramSpeechOptionsFormat = "wav"
-)
-
-// Valid indicates whether the value is a known member of the TelegramSpeechOptionsFormat enum.
-func (e TelegramSpeechOptionsFormat) Valid() bool {
-	switch e {
-	case TelegramSpeechOptionsFormatEmpty:
-		return true
-	case TelegramSpeechOptionsFormatMp3:
-		return true
-	case TelegramSpeechOptionsFormatOpus:
-		return true
-	case TelegramSpeechOptionsFormatWav:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ThinkingItemKind.
 const (
 	Thinking ThinkingItemKind = "thinking"
@@ -1799,7 +1775,7 @@ type Monitor struct {
 	CreatedAt  int64 `json:"createdAt"`
 	DueAt      int64 `json:"dueAt"`
 
-	// ExpiresAt Deadline in milliseconds since epoch (0 for legacy one-shot grace).
+	// ExpiresAt Deadline in milliseconds since epoch. Zero means no explicit deadline. A one-shot Monitor without a deadline expires one hour after it is due.
 	ExpiresAt int64       `json:"expiresAt"`
 	Id        string      `json:"id"`
 	MaxRuns   int         `json:"maxRuns"`
@@ -2600,30 +2576,22 @@ type TelegramOptions = telegram.Options
 
 // TelegramSpeechOptions defines model for TelegramSpeechOptions.
 type TelegramSpeechOptions struct {
-	// AllowSending Explicit consent to send this bot's audio (STT) or text (TTS) to the selected provider. The provider can be an external third party. No automatic fallback provider is used.
-	AllowSending *bool                        `json:"allowSending,omitempty"`
-	Enabled      *bool                        `json:"enabled,omitempty"`
-	Format       *TelegramSpeechOptionsFormat `json:"format,omitempty"`
-	Language     *string                      `json:"language,omitempty"`
+	// AllowSending Explicit consent to send this bot's audio to the selected provider. The provider can be an external third party. No automatic fallback provider is used.
+	AllowSending *bool   `json:"allowSending,omitempty"`
+	Enabled      *bool   `json:"enabled,omitempty"`
+	Language     *string `json:"language,omitempty"`
 
 	// MaxBytes Zero uses 20 MiB for input and response bytes.
 	MaxBytes *int64 `json:"maxBytes,omitempty"`
 
-	// MaxDurationSeconds STT only. Checks Telegram reported audio duration. Zero uses 300 seconds. dex does not decode audio to measure duration.
-	MaxDurationSeconds *int `json:"maxDurationSeconds,omitempty"`
-
-	// MaxTextCharacters TTS only. Zero uses 4000 characters.
-	MaxTextCharacters *int    `json:"maxTextCharacters,omitempty"`
-	Model             *string `json:"model,omitempty"`
-	Provider          *string `json:"provider,omitempty"`
+	// MaxDurationSeconds Checks the audio duration that Telegram reports. Zero uses 300 seconds. dex does not decode audio to measure duration.
+	MaxDurationSeconds *int    `json:"maxDurationSeconds,omitempty"`
+	Model              *string `json:"model,omitempty"`
+	Provider           *string `json:"provider,omitempty"`
 
 	// TimeoutSeconds Zero uses 30 seconds.
-	TimeoutSeconds *int    `json:"timeoutSeconds,omitempty"`
-	Voice          *string `json:"voice,omitempty"`
+	TimeoutSeconds *int `json:"timeoutSeconds,omitempty"`
 }
-
-// TelegramSpeechOptionsFormat defines model for TelegramSpeechOptions.Format.
-type TelegramSpeechOptionsFormat string
 
 // TelegramWebhookInput defines model for TelegramWebhookInput.
 type TelegramWebhookInput = telegram.WebhookConfig

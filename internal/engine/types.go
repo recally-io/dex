@@ -89,7 +89,7 @@ type inputMetadata struct {
 	RequestID string `json:"requestId"`
 	Content   string `json:"content"`
 	// The field name is part of saved PiG transcripts.
-	HasTask     bool         `json:"hasWorkTask,omitzero"`
+	HasTask     bool         `json:"hasTask,omitzero"`
 	Kind        string       `json:"kind,omitempty"`
 	Origin      string       `json:"origin"`
 	Source      string       `json:"source"`

@@ -128,15 +128,6 @@ func httpServer(t *testing.T, dir string) map[string]any {
 	return map[string]any{"type": "http", "url": srv.URL + "/mcp"}
 }
 
-func writeMCP(t *testing.T, path string, servers map[string]any) {
-	t.Helper()
-	b, err := json.Marshal(map[string]any{"mcpServers": servers})
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, path, string(b))
-}
-
 func seedMCP(t *testing.T, dataDir, agentID string, servers map[string]any) {
 	t.Helper()
 	conn, err := db.Open(t.Context(), filepath.Join(dataDir, "control.sqlite"))

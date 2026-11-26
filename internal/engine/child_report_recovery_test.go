@@ -4,10 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,16 +20,9 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-func TestUserUpgradeKeepsChildReportReceipts(t *testing.T) {
-	for _, tc := range []struct{ name, tool, cut string }{
-		{"current before intent", "session_report", "before intent"},
-		{"current before commit", "session_report", "before report commit"},
-		{"current after commit", "session_report", "after report commit"},
-		{"retired before commit", "report_parent", "before report commit"},
-		{"retired after commit", "report_parent", "after report commit"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			retired := tc.tool == "report_parent"
+func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
+	for _, cut := range []string{"before intent", "before report commit", "after report commit"} {
+		t.Run(cut, func(t *testing.T) {
 			// Given an admitted child report before restart.
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 			defer cancel()
@@ -72,7 +63,7 @@ func TestUserUpgradeKeepsChildReportReceipts(t *testing.T) {
 
 			oldModel := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "upgrade", Models: []ai.FauxModelDefinition{{ID: "script"}}, TokensPerSecond: 10000})
 			oldModel.SetResponses([]ai.FauxResponseStep{ai.FauxFactoryStep(func(ai.TranscriptContext, ai.StreamOptions, *ai.FauxProviderState, *ai.Model) (ai.AssistantMessage, error) {
-				return ai.FauxAssistantMessage(ai.FauxContentBlocks{ai.FauxToolCall(tc.tool, map[string]any{"content": content}, nil)}, ai.FauxAssistantMessageOptions{StopReason: "toolUse"}), nil
+				return ai.FauxAssistantMessage(ai.FauxContentBlocks{ai.FauxToolCall("session_report", map[string]any{"content": content}, nil)}, ai.FauxAssistantMessageOptions{StopReason: "toolUse"}), nil
 			})})
 			agents.Catalog.Models.SetProvider(oldModel.Provider())
 			reached := make(chan string, 1)
@@ -81,11 +72,11 @@ func TestUserUpgradeKeepsChildReportReceipts(t *testing.T) {
 				<-ctx.Done()
 				return ctx.Err()
 			}
-			legacy := &durable.Extension{Name: "child-outbox", Tools: []*durable.ToolRegistration{{
-				Name: tc.tool, Description: "Report to the direct parent.", Replay: durable.ReplaySafe,
+			interrupted := &durable.Extension{Name: "child-outbox", Tools: []*durable.ToolRegistration{{
+				Name: "session_report", Description: "Report to the direct parent.", Replay: durable.ReplaySafe,
 				Parameters: map[string]any{"type": "object", "required": []string{"content"}, "properties": map[string]any{"content": map[string]any{"type": "string"}, "final": map[string]any{"type": "boolean"}}},
 				Execute: func(ctx context.Context, _ any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
-					if tc.cut == "after report commit" {
+					if cut == "after report commit" {
 						if _, err := report(ctx, engine.TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: request, RunInputIDs: []string{request}, Key: fmt.Sprintf("%s/%d", agentID, api.TaskId())}, chat.ReportParentArgs{Content: content}); err != nil {
 							return durable.ToolExecutionResult{}, err
 						}
@@ -93,13 +84,13 @@ func TestUserUpgradeKeepsChildReportReceipts(t *testing.T) {
 					return durable.ToolExecutionResult{}, park(ctx, api.TaskId())
 				},
 			}}}
-			if tc.cut == "before intent" {
-				legacy.Hooks = []durable.HookRegistration{harness.Hook(harness.ToolTask, &harness.ToolHooks{BeforeTool: func(ctx context.Context, _ harness.ToolHookCall, api harness.HookApi) (*harness.BeforeToolResult, error) {
+			if cut == "before intent" {
+				interrupted.Hooks = []durable.HookRegistration{harness.Hook(harness.ToolTask, &harness.ToolHooks{BeforeTool: func(ctx context.Context, _ harness.ToolHookCall, api harness.HookApi) (*harness.BeforeToolResult, error) {
 					return nil, park(ctx, api.TaskId())
 				}})}
 			}
 			registry := harness.CreateRegistry()
-			if err := registry.Install(legacy); err != nil {
+			if err := registry.Install(interrupted); err != nil {
 				t.Fatal(err)
 			}
 			path := filepath.Join(dir, "agents", agentID, "state.sqlite")
@@ -116,7 +107,7 @@ func TestUserUpgradeKeepsChildReportReceipts(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer old.Close(context.WithoutCancel(ctx))
-			change := harness.AgentChange{Model: harness.SetTo(durable.ModelRef{Provider: "upgrade", ModelId: "script"}), Extensions: harness.SetTo(harness.ExtensionChange{List: []*durable.Extension{legacy}})}
+			change := harness.AgentChange{Model: harness.SetTo(durable.ModelRef{Provider: "upgrade", ModelId: "script"}), Extensions: harness.SetTo(harness.ExtensionChange{List: []*durable.Extension{interrupted}})}
 			conv, err := old.CreateConversation(ctx, harness.ConversationCreateOptions{Ownership: durable.ConversationOwnership{Kind: durable.ConversationOwnerless}, Agent: &change})
 			if err != nil {
 				t.Fatal(err)
@@ -147,9 +138,7 @@ func TestUserUpgradeKeepsChildReportReceipts(t *testing.T) {
 
 			// When Dex reopens the same execution and attaches to the saved input.
 			oldModel.SetResponses([]ai.FauxResponseStep{ai.FauxFactoryStep(func(ai.TranscriptContext, ai.StreamOptions, *ai.FauxProviderState, *ai.Model) (ai.AssistantMessage, error) {
-				if !retired {
-					t.Error("a replayed final report must end without another model call")
-				}
+				t.Error("a replayed final report must end without another model call")
 				return ai.FauxResponse{Content: ai.FauxContentBlocks{ai.FauxText("Child turn completed.")}}.AssistantMessage(), nil
 			})})
 			replay, err := agents.Submit(ctx, ref, engine.Input{RequestID: request})
@@ -160,28 +149,10 @@ func TestUserUpgradeKeepsChildReportReceipts(t *testing.T) {
 				t.Fatalf("recovered child turn = %+v, %v", outcome, err)
 			}
 
-			// Then retired calls stop, while committed reports stay visible exactly once.
-			if retired {
-				history, err := agents.History(ctx, ref, math.MaxInt64, 100)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !slices.ContainsFunc(history.Items, func(item engine.Item) bool {
-					return item.Kind == "tool" && item.Name == tc.tool && item.Status == "error"
-				}) {
-					t.Fatal("the retired report call did not stop")
-				}
-			}
-			want := 1
-			if retired && tc.cut != "after report commit" {
-				want = 0
-			}
+			// Then the committed report stays visible exactly once.
 			var n int
-			if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM submissions WHERE kind = 'task_result'`).Scan(&n); err != nil || n != want {
-				t.Fatalf("report count = %d, want %d; %v", n, want, err)
-			}
-			if want == 0 {
-				return
+			if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM submissions WHERE kind = 'task_result'`).Scan(&n); err != nil || n != 1 {
+				t.Fatalf("report count = %d, want 1; %v", n, err)
 			}
 			result, err := q.GetSubmission(ctx, reportID)
 			if err != nil || result.ConversationID != parent.ID || result.Status != "pending" || !strings.Contains(result.Content, content) {

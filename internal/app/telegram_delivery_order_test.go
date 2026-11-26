@@ -3,8 +3,6 @@ package app_test
 import (
 	"testing"
 	"time"
-
-	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 func TestUserTelegramLaterAnswerWaitsForEarlierPendingOutcomeOfSamePeer(t *testing.T) {
@@ -71,33 +69,6 @@ func TestUserTelegramSilentOrStoppedInputDoesNotBlockFollowingReply(t *testing.T
 				other = other || got.ChatID == 43 && got.Text == "echo: other"
 			}
 		})
-	}
-}
-
-func TestUserTelegramPendingResetDoesNotHoldFollowingReply(t *testing.T) {
-	t.Parallel()
-	// Given persisted receipts before recovery starts, including a reset that cannot produce a reply.
-	data := t.TempDir()
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, data, 42)
-	main := d.mainChat(t)
-	conn := controlWriteDB(t, data)
-	d.stop()
-	for _, row := range []struct{ id, kind, status string }{
-		{"pending-reset", "context_reset", "pending"},
-		{"following-reply", "message", "done"},
-	} {
-		if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions(id,conversation_id,content,attachments,kind,status,answer,origin,created_at) VALUES(?,?,'input','[]',?,?, 'answer','telegram:42',0)", row.id, main, row.kind, row.status); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// When the delivery caller selects ready replies, the pending reset does not hold the answer.
-	replies, err := sqlc.New(conn).ListChannelReplies(t.Context(), sqlc.ListChannelRepliesParams{AgentID: "default", OriginStart: "telegram:", OriginEnd: "telegram;"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(replies) != 1 || replies[0].ID != "following-reply" {
-		t.Fatalf("ready replies=%+v, want the following reply", replies)
 	}
 }
 

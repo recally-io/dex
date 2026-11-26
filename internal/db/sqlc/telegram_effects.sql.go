@@ -7,7 +7,6 @@ package sqlc
 
 import (
 	"context"
-	"database/sql"
 )
 
 const clearTelegramEffectInput = `-- name: ClearTelegramEffectInput :exec
@@ -148,99 +147,6 @@ func (q *Queries) ListDiscardedTelegramEffectInputs(ctx context.Context, agentID
 	for rows.Next() {
 		var i ListDiscardedTelegramEffectInputsRow
 		if err := rows.Scan(&i.OperationKey, &i.InputJson, &i.SourceKey); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTelegramPeerEffects = `-- name: ListTelegramPeerEffects :many
-SELECT operation_key,result_json FROM telegram_effects
-WHERE agent_id=? AND peer=? AND account_id=? AND sender_id=? AND kind IN ('copy','forward') AND state='done'
-ORDER BY rowid DESC LIMIT 20
-`
-
-type ListTelegramPeerEffectsParams struct {
-	AgentID   string `json:"agent_id"`
-	Peer      string `json:"peer"`
-	AccountID string `json:"account_id"`
-	SenderID  string `json:"sender_id"`
-}
-
-type ListTelegramPeerEffectsRow struct {
-	OperationKey string `json:"operation_key"`
-	ResultJson   string `json:"result_json"`
-}
-
-func (q *Queries) ListTelegramPeerEffects(ctx context.Context, arg ListTelegramPeerEffectsParams) ([]ListTelegramPeerEffectsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTelegramPeerEffects,
-		arg.AgentID,
-		arg.Peer,
-		arg.AccountID,
-		arg.SenderID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListTelegramPeerEffectsRow{}
-	for rows.Next() {
-		var i ListTelegramPeerEffectsRow
-		if err := rows.Scan(&i.OperationKey, &i.ResultJson); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTelegramPeerReplies = `-- name: ListTelegramPeerReplies :many
-SELECT s.id,s.answer,s.channel_remote_ids,s.channel_context
-FROM submissions s JOIN conversations c ON c.id=s.conversation_id
-WHERE c.agent_id=? AND s.origin=? AND s.delivered_at IS NOT NULL AND s.channel_revoked=0
-AND s.channel_remote_ids<>'[]' ORDER BY s.rowid DESC LIMIT 20
-`
-
-type ListTelegramPeerRepliesParams struct {
-	AgentID string `json:"agent_id"`
-	Origin  string `json:"origin"`
-}
-
-type ListTelegramPeerRepliesRow struct {
-	ID               string         `json:"id"`
-	Answer           sql.NullString `json:"answer"`
-	ChannelRemoteIds string         `json:"channel_remote_ids"`
-	ChannelContext   string         `json:"channel_context"`
-}
-
-func (q *Queries) ListTelegramPeerReplies(ctx context.Context, arg ListTelegramPeerRepliesParams) ([]ListTelegramPeerRepliesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTelegramPeerReplies, arg.AgentID, arg.Origin)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListTelegramPeerRepliesRow{}
-	for rows.Next() {
-		var i ListTelegramPeerRepliesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Answer,
-			&i.ChannelRemoteIds,
-			&i.ChannelContext,
-		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -83,7 +83,7 @@ func ValidateTelegramControl(ctx context.Context, q *sqlc.Queries, source, agent
 	return authorizeTelegramActor(ctx, q, agentID, actor.AccountID, actor.SenderID)
 }
 
-// NonPrivateTelegramInput rejects legacy group routes and actor metadata.
+// NonPrivateTelegramInput rejects non-private group routes and actor metadata.
 func NonPrivateTelegramInput(peer string, source ChannelContext) bool {
 	return strings.HasPrefix(peer, "telegram:-") || source.ChatID != 0 || source.TopicID != 0 || source.TopicShared
 }

@@ -3,9 +3,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"log/slog"
-	"os"
-	"path/filepath"
 	"slices"
 
 	"github.com/MichaelKinsy/PiG/ai"
@@ -34,22 +31,6 @@ func (a *Agents) VaultEdit(agentID, scope, name string, value *string) error {
 		a.markExtensionChange(agentID, scope, "vault write")
 	}
 	return err
-}
-
-func warnIgnoredEnv(dataDir string) {
-	warn := func(path string) {
-		if _, err := os.Lstat(path); err == nil {
-			slog.Warn("dex ignores this .env file", "path", path)
-		}
-	}
-	warn(filepath.Join(dataDir, ".agents", ".env"))
-	agents := filepath.Join(dataDir, "agents")
-	dirs, _ := os.ReadDir(agents)
-	for _, dir := range dirs {
-		if dir.IsDir() && agentIDPattern.MatchString(dir.Name()) {
-			warn(filepath.Join(agents, dir.Name(), ".agents", ".env"))
-		}
-	}
 }
 
 func vaultExtension(agentID string, secrets vault.Snapshot) *durable.Extension {

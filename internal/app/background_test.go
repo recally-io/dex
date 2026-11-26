@@ -665,20 +665,6 @@ func TestUserMonitorsAndProcessesShareSessionCapacity(t *testing.T) {
 	toolJSON(t, callSessionTool(t, d, chat, "monitor_set", args), &bgInfo{})
 }
 
-func TestUserCannotCallRetiredMonitorTools(t *testing.T) {
-	t.Parallel()
-	d := startDex(t, t.TempDir(), "")
-	chat := bgChat(t, d)
-	for tool, args := range map[string]map[string]any{
-		"monitor_set_command":  {"command": "true"},
-		"monitor_set_schedule": {"delaySeconds": 300, "prompt": "check later"},
-	} {
-		if got := callSessionTool(t, d, chat, tool, args); !strings.Contains(got, "Tool "+tool+" is not available") {
-			t.Fatalf("retired tool %s: %s", tool, got)
-		}
-	}
-}
-
 func TestUserCannotPassCommandArgumentsToASchedule(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")

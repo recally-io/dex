@@ -35,17 +35,6 @@ type AppliedPluginMigration struct {
 	AppliedAt int64  `json:"applied_at"`
 }
 
-type Artifact struct {
-	ID                    string `json:"id"`
-	AgentID               string `json:"agent_id"`
-	ConversationID        int64  `json:"conversation_id"`
-	DisplayConversationID int64  `json:"display_conversation_id"`
-	OperationKey          string `json:"operation_key"`
-	Name                  string `json:"name"`
-	Size                  int64  `json:"size"`
-	CreatedAt             int64  `json:"created_at"`
-}
-
 type Automation struct {
 	ID                   string         `json:"id"`
 	AgentID              string         `json:"agent_id"`
@@ -136,11 +125,6 @@ type ChannelCommand struct {
 	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
 	ChannelContext string        `json:"channel_context"`
 	RenderedReply  string        `json:"rendered_reply"`
-}
-
-type ChannelPeer struct {
-	Peer       string `json:"peer"`
-	ChannelKey string `json:"channel_key"`
 }
 
 type ChannelWebhookInbox struct {
@@ -379,7 +363,6 @@ type Submission struct {
 	SourceKey            sql.NullString `json:"source_key"`
 	Attachments          string         `json:"attachments"`
 	DeliveredAt          sql.NullInt64  `json:"delivered_at"`
-	DeliveredParts       int64          `json:"delivered_parts"`
 	Origin               string         `json:"origin"`
 	AdmittedAt           sql.NullInt64  `json:"admitted_at"`
 	WhenBusy             string         `json:"when_busy"`
@@ -387,13 +370,8 @@ type Submission struct {
 	ResultChildID        sql.NullInt64  `json:"result_child_id"`
 	NativeAnswerID       sql.NullInt64  `json:"native_answer_id"`
 	ChannelContext       string         `json:"channel_context"`
-	RenderedReply        string         `json:"rendered_reply"`
-	ChannelRetryAt       int64          `json:"channel_retry_at"`
 	ChannelDeliveryError string         `json:"channel_delivery_error"`
-	ChannelRemoteIds     string         `json:"channel_remote_ids"`
 	ChannelRevoked       int64          `json:"channel_revoked"`
-	ChannelGroupFallback int64          `json:"channel_group_fallback"`
-	ChannelGroupCursor   int64          `json:"channel_group_cursor"`
 	ExitAction           string         `json:"exit_action"`
 	RequiredReplyID      string         `json:"required_reply_id"`
 	StopRequested        int64          `json:"stop_requested"`

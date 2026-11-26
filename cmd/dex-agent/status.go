@@ -43,7 +43,7 @@ func status(ctx context.Context, state string, out io.Writer) error {
 	fmt.Fprintf(out, "mode: %s\n", describeMode(d.Mode, a))
 	fmt.Fprintf(out, "state: %s\n", state)
 	if d.Origin != "" {
-		fmt.Fprintf(out, "dex: %s (environment %s)\n", d.Origin, d.Environment)
+		fmt.Fprintf(out, "dex: %s (runner %s)\n", d.Origin, d.RunnerID)
 	}
 	fmt.Fprintf(out, "workspace: %s\n", filepath.Join(state, "workspace"))
 	path, pathErr := loginenv.Path(ctx)

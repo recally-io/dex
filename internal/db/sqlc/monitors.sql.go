@@ -329,20 +329,6 @@ func (q *Queries) GetMonitorByOperationKey(ctx context.Context, operationKey str
 	return i, err
 }
 
-const latestUserSubmissionInConversation = `-- name: LatestUserSubmissionInConversation :one
-SELECT id FROM submissions
-WHERE conversation_id = ? AND kind = 'message' AND origin != 'task'
-ORDER BY rowid DESC
-LIMIT 1
-`
-
-func (q *Queries) LatestUserSubmissionInConversation(ctx context.Context, conversationID int64) (string, error) {
-	row := q.db.QueryRowContext(ctx, latestUserSubmissionInConversation, conversationID)
-	var id string
-	err := row.Scan(&id)
-	return id, err
-}
-
 const listDueMonitors = `-- name: ListDueMonitors :many
 SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
 WHERE state = 'scheduled' AND (running = 1 OR due_at <= ?1 OR (expires_at > 0 AND expires_at <= ?1))

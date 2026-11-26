@@ -3,8 +3,6 @@ package app_test
 import (
 	"encoding/json/v2"
 	"fmt"
-	"log"
-	"log/slog"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -133,40 +131,5 @@ func TestUserEditsMCPWithoutReadingSecretsAndBacksUpDeclarations(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(rows[0].Config), &first); err != nil || !slices.Equal(first.Args, []string{"new"}) || first.Env["API_KEY"] != secret || !strings.HasSuffix(first.URL, "token="+secret) {
 		t.Fatal("backup lost the last valid edit or its retained secret")
-	}
-}
-
-func TestUserSeesOneWarningForAnIgnoredLegacyMCPFile(t *testing.T) {
-	// Given a legacy declaration at the agent level and a log attached to dex.
-	data := t.TempDir()
-	legacy := filepath.Join(data, "agents", "default", ".agents", "mcp.json")
-	writeFile(t, legacy, `{"mcpServers":{"legacy":{"command":"unused"}}}`)
-	logBuf := sysops.NewLogBuffer(100)
-	previous := slog.Default()
-	output, flags := log.Writer(), log.Flags()
-	slog.SetDefault(slog.New(sysops.TeeHandler(slog.DiscardHandler, logBuf)))
-	t.Cleanup(func() {
-		slog.SetDefault(previous)
-		log.SetOutput(output)
-		log.SetFlags(flags)
-	})
-	d := startDexHome(t, app.Config{DataDir: data, Logs: logBuf}, t.TempDir())
-
-	// Then the declaration has no effect, and repeated inspections do not produce more warnings.
-	for range 2 {
-		if got := d.extensions(t); len(got.Servers) != 0 {
-			t.Fatalf("legacy MCP file affected status: %v", got.Servers)
-		}
-	}
-	var logs api.SystemLogs
-	d.must(t, http.MethodGet, "/api/system/logs?limit=50", nil, &logs)
-	count := 0
-	for _, entry := range logs.Entries {
-		if strings.Contains(entry.Message, "ignores legacy mcp.json") && entry.Attrs != nil && strings.Contains(*entry.Attrs, legacy) {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Fatalf("expected one legacy warning, got %d", count)
 	}
 }

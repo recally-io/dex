@@ -1512,20 +1512,17 @@ export type TelegramOptions = {
      */
     reactions?: boolean;
     stt?: TelegramSpeechOptions;
-    tts?: TelegramSpeechOptions;
 };
 
 export type TelegramSpeechOptions = {
     enabled?: boolean;
     /**
-     * Explicit consent to send this bot's audio (STT) or text (TTS) to the selected provider. The provider can be an external third party. No automatic fallback provider is used.
+     * Explicit consent to send this bot's audio to the selected provider. The provider can be an external third party. No automatic fallback provider is used.
      */
     allowSending?: boolean;
     provider?: string;
     model?: string;
-    voice?: string;
     language?: string;
-    format?: '' | 'opus' | 'mp3' | 'wav';
     /**
      * Zero uses 30 seconds.
      */
@@ -1535,13 +1532,9 @@ export type TelegramSpeechOptions = {
      */
     maxBytes?: number;
     /**
-     * STT only. Checks Telegram reported audio duration. Zero uses 300 seconds. dex does not decode audio to measure duration.
+     * Checks the audio duration that Telegram reports. Zero uses 300 seconds. dex does not decode audio to measure duration.
      */
     maxDurationSeconds?: number;
-    /**
-     * TTS only. Zero uses 4000 characters.
-     */
-    maxTextCharacters?: number;
 };
 
 export type Feishu = {
@@ -1615,7 +1608,7 @@ export type Monitor = {
     maxRuns: number;
     runs: number;
     /**
-     * Deadline in milliseconds since epoch (0 for legacy one-shot grace).
+     * Deadline in milliseconds since epoch. Zero means no explicit deadline. A one-shot Monitor without a deadline expires one hour after it is due.
      */
     expiresAt: number;
     /**

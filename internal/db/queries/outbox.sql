@@ -116,11 +116,6 @@ LIMIT 5;
 -- name: SetSubmissionExitAction :exec
 UPDATE submissions SET exit_action = @exit_action WHERE id = @id AND status = 'pending';
 
--- name: HasOutboxForSource :one
-SELECT EXISTS (
-    SELECT 1 FROM outbox_messages WHERE source_submission_id = ? AND status IN ('pending', 'sent')
-);
-
 -- name: InsertStoppedOutboxForConversation :exec
 INSERT INTO outbox_messages (
     id, event_id, agent_id, conversation_id, source_submission_id,

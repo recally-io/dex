@@ -239,19 +239,6 @@ func (q *Queries) GetOutboxMessage(ctx context.Context, id string) (OutboxMessag
 	return i, err
 }
 
-const hasOutboxForSource = `-- name: HasOutboxForSource :one
-SELECT EXISTS (
-    SELECT 1 FROM outbox_messages WHERE source_submission_id = ? AND status IN ('pending', 'sent')
-)
-`
-
-func (q *Queries) HasOutboxForSource(ctx context.Context, sourceSubmissionID sql.NullString) (bool, error) {
-	row := q.db.QueryRowContext(ctx, hasOutboxForSource, sourceSubmissionID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const insertOutboxMessage = `-- name: InsertOutboxMessage :execrows
 INSERT INTO outbox_messages (
     id, event_id, agent_id, conversation_id, source_submission_id,

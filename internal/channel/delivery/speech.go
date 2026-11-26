@@ -98,7 +98,7 @@ func (m *Manager) Transcribe(ctx context.Context, peer, source string, msg chat.
 					err = openErr
 				} else {
 					fileName = attachment.Name
-					transcript, _, err = speech.Call(callCtx, endpoint, options, "stt", fileName, "", file)
+					transcript, err = speech.Transcribe(callCtx, endpoint, options, fileName, file)
 					_ = file.Close()
 				}
 			}

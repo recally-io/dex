@@ -11,30 +11,29 @@ func inputExtensions(input engine.Input) engine.ExtensionEdit {
 	interactive := !input.Automation && !input.Child && !dream
 	var edit engine.ExtensionEdit
 	if input.Automation {
-		edit = engine.ExtensionEdit{Remove: []string{"routines"}, Add: []string{"automation-check", "bots"}}
+		edit = engine.ExtensionEdit{Remove: []string{"automations"}, Add: []string{"automation-check", "bots"}}
 	}
 	if input.Main {
 		edit = engine.ExtensionEdit{Remove: []string{"work-loop"}, Add: []string{"front-desk"}}
 	}
 	if interactive {
-		edit.Add = append(edit.Add, "channel-read", "channel-manage", "ask-user", "outbox", "bots", "bot-manage", "work-tasks")
+		edit.Add = append(edit.Add, "channel-read", "channel-manage", "ask-user", "outbox", "bots", "bot-manage", "tasks")
 	}
 	switch {
 	case input.Child:
-		// Repeat this edit for a child that still has extensions from an older release.
 		edit = engine.ExtensionEdit{
-			Remove: []string{"sessions", "work-loop", "front-desk", "routines", "outbox", "work-tasks"},
+			Remove: []string{"sessions", "work-loop", "front-desk", "automations", "outbox", "tasks"},
 			Add:    []string{"child-rules", "child-outbox"},
 		}
 		if input.ChildHasTask {
-			edit.Add = append(edit.Add, "child-work-tasks")
+			edit.Add = append(edit.Add, "child-tasks")
 		} else {
-			edit.Remove = append(edit.Remove, "child-work-tasks")
+			edit.Remove = append(edit.Remove, "child-tasks")
 		}
 		return edit
 	case dream:
 		return engine.ExtensionEdit{
-			Remove: []string{"sessions", "session-reading", "monitors", "work-loop", "routines", "artifact-delivery"},
+			Remove: []string{"sessions", "session-reading", "monitors", "work-loop", "automations", "artifact-delivery"},
 			Add:    []string{"dream-message"},
 		}
 	}

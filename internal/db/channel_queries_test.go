@@ -37,84 +37,81 @@ func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
 	}
 	t.Logf("artifact: modernc.org/sqlite engine=%s; main history=10000", version)
 	q := sqlc.New(conn)
-	replyParams := sqlc.ListChannelRepliesParams{AgentID: "default", OriginStart: "telegram:", OriginEnd: "telegram;"}
-	if replies, err := q.ListChannelReplies(t.Context(), replyParams); err != nil || len(replies) != 0 {
-		t.Fatalf("empty reply queue: %+v, %v", replies, err)
-	}
 	if count, err := q.CountChannelPending(t.Context(), sqlc.CountChannelPendingParams{AgentID: "default", Peer: "wechat:owner"}); err != nil || count != 0 {
 		t.Fatalf("empty pending queue: %d, %v", count, err)
 	}
 
-	// When the project driver plans the actual queries, each uses its origin index.
-	for _, tc := range []struct {
-		name, index string
-		args        []any
-	}{
-		{"ListChannelReplies", "submissions_channel_replies", []any{sql.Named("agent_id", "default"), sql.Named("origin_start", "telegram:"), sql.Named("origin_end", "telegram;")}},
-		{"CountChannelPending", "submissions_channel_pending", []any{sql.Named("agent_id", "default"), sql.Named("peer", "wechat:owner")}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			rows, err := conn.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+channelQuery(t, tc.name), tc.args...)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer rows.Close()
-			var plan []string
-			usesOrigin := false
-			for rows.Next() {
-				var id, parent, unused int
-				var detail string
-				if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
-					t.Fatal(err)
-				}
-				plan = append(plan, detail)
-				if strings.Contains(detail, "SEARCH s ") && strings.Contains(detail, tc.index) && strings.Contains(detail, "origin") {
-					usesOrigin = true
-				}
-			}
-			if err := rows.Err(); err != nil {
-				t.Fatal(err)
-			}
-			t.Logf("artifact: %s empty queue plan=%q", tc.name, plan)
-			if !usesOrigin {
-				t.Fatalf("empty channel queue reads history without an origin index: %q", plan)
-			}
-		})
+	// When SQLite plans the query, it uses the pending index for the exact origin.
+	rows, err := conn.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+channelQuery(t, "CountChannelPending"), sql.Named("agent_id", "default"), sql.Named("peer", "wechat:owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(plan, func(detail string) bool {
+		return strings.HasPrefix(detail, "SEARCH s ") && strings.Contains(detail, "submissions_channel_pending (origin=")
+	}) {
+		t.Fatalf("pending query reads history without an origin index: %q", plan)
 	}
 
-	// Then filtering keeps exact peers, agent ownership, and rowid send order.
+	// Then the pending count includes only the exact peer and agent.
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO submissions
 		(id,conversation_id,content,status,created_at,origin,kind,delivered_at) VALUES
-		('z-first',1,'first','done',30,'telegram:9','message',NULL),
-		('a-second',1,'second','done',10,'telegram:7','task_result',NULL),
-		('unanswered',1,'third','unanswered',20,'telegram:7','message',NULL),
-		('failed-result',1,'skip','unanswered',1,'telegram:7','task_result',NULL),
-		('reset',1,'skip','done',1,'telegram:7','context_reset',NULL),
-		('delivered',1,'skip','done',1,'telegram:7','message',2),
-		('near-prefix',1,'skip','done',1,'telegramx:7','message',NULL),
-		('other-agent',2,'skip','done',1,'telegram:7','message',NULL),
 		('pending',1,'wait','pending',1,'telegram:7','message',NULL),
 		('near-peer',1,'wait','pending',1,'telegram:70','message',NULL),
 		('other-pending',2,'wait','pending',1,'telegram:7','message',NULL),
 		('wechat-pending',1,'wait','pending',1,'wechat:owner','message',NULL)`); err != nil {
 		t.Fatal(err)
 	}
-	replies, err := q.ListChannelReplies(t.Context(), replyParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var ids []string
-	for _, reply := range replies {
-		ids = append(ids, reply.ID)
-	}
-	if !slices.Equal(ids, []string{"z-first", "a-second", "unanswered"}) {
-		t.Fatalf("reply order or filter changed: %q", ids)
-	}
 	count, err := q.CountChannelPending(t.Context(), sqlc.CountChannelPendingParams{AgentID: "default", Peer: "telegram:7"})
 	if err != nil || count != 1 {
 		t.Fatalf("exact peer pending: %d, %v", count, err)
 	}
-	t.Logf("artifact: replies=%q; telegram:7 pending=%d", ids, count)
+}
+
+func TestUserTelegramPendingResetDoesNotHoldFollowingReply(t *testing.T) {
+	// Given an earlier pending input and a later reply to the same peer.
+	ctx := t.Context()
+	conn, err := Open(ctx, filepath.Join(t.TempDir(), "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if _, err := conn.ExecContext(ctx, `
+INSERT INTO agents (id, name, model_provider, model_id, created_at) VALUES ('bot', 'Bot', '', '', 1);
+INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('bot', '123:fixture', '42');
+INSERT INTO conversations (id, agent_id, channel_key, created_at) VALUES (1, 'bot', 'main', 1);
+INSERT INTO submissions (id, conversation_id, content, status, origin, created_at) VALUES
+  ('earlier', 1, 'input', 'pending', 'telegram:42', 1),
+  ('later', 1, 'input', 'done', 'telegram:42', 2);
+INSERT INTO outbox_messages (id, event_id, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, body, created_at)
+VALUES ('reply', 'reply:later', 'bot', 1, 'later', 'reply', 'telegram:42', '{"accountId":"123","senderId":"42"}', 'answer', 2);`); err != nil {
+		t.Fatal(err)
+	}
+	q := sqlc.New(conn)
+	params := sqlc.ListPendingOutboxMessagesParams{AgentID: "bot", Channel: sql.NullString{String: "telegram", Valid: true}}
+	if replies, err := q.ListPendingOutboxMessages(ctx, params); err != nil || len(replies) != 0 {
+		t.Fatalf("replies = %+v, want the pending input to hold the reply: %v", replies, err)
+	}
+
+	// When the earlier input is a reset, the reply is ready even if the reset is pending.
+	if _, err := conn.ExecContext(ctx, "UPDATE submissions SET kind = 'context_reset' WHERE id = 'earlier'"); err != nil {
+		t.Fatal(err)
+	}
+	if replies, err := q.ListPendingOutboxMessages(ctx, params); err != nil || len(replies) != 1 || replies[0].ID != "reply" {
+		t.Fatalf("replies = %+v, want the later reply: %v", replies, err)
+	}
 }
 
 func channelQuery(t *testing.T, name string) string {

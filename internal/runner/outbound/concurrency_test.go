@@ -65,9 +65,6 @@ func TestUserWaitsForAFreeRunnerSlotAndCanCancelTheWait(t *testing.T) {
 	client, _ := connect(t)
 	ctx, deadline := context.WithTimeout(t.Context(), 10*time.Second)
 	defer deadline()
-	if got := client.Info().MaxInFlight; got != 16 {
-		t.Fatalf("negotiated %d slots, want 16", got)
-	}
 	starts, finishes := make(chan struct{}, 16), make(chan error, 16)
 	stops := make([]context.CancelFunc, 0, 16)
 	for range 16 {
@@ -148,74 +145,7 @@ func (fn wireHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *json
 	fn(ctx, conn, req)
 }
 
-func TestUserUsesOneSlotWithLegacyRunner(t *testing.T) {
-	logs := captureRunnerLogs(t)
-	first := make(chan struct{}, 1)
-	client, _ := connectWith(t, func(ctx context.Context, socket *websocket.Conn, _ string) {
-		var active *jsonrpc2.Request
-		conn := jsonrpc2.NewConn(ctx, outbound.NewStream(ctx, socket), wireHandler(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
-			switch req.Method {
-			case outbound.MethodExec:
-				if req.Meta != nil || active != nil {
-					t.Error("legacy Runner received unexpected metadata or a second in-flight call")
-				}
-				active = req
-				first <- struct{}{}
-			case outbound.MethodCancel:
-				if active != nil {
-					_ = conn.Reply(ctx, active.ID, outbound.ExecResult{})
-					active = nil
-				}
-			case outbound.MethodRead:
-				if active != nil {
-					t.Error("legacy Runner received a read before the command stopped")
-				}
-				_ = conn.Reply(ctx, req.ID, outbound.DataResult{Data: []byte("legacy")})
-			}
-		}))
-		defer func() { _ = conn.Close() }()
-		// Pre-capability control and Runner exchange these same fields.
-		if err := conn.Notify(ctx, outbound.MethodReady, map[string]string{"os": "linux", "arch": "amd64"}); err != nil {
-			t.Error(err)
-			return
-		}
-		<-conn.DisconnectNotify()
-	})
-	ctx, deadline := context.WithTimeout(t.Context(), 10*time.Second)
-	defer deadline()
-	firstCtx, stop := context.WithCancel(ctx)
-	defer stop()
-	finished := make(chan error, 1)
-	go func() {
-		_, err := client.Exec(firstCtx, "legacy command", outbound.ExecParams{}, nil)
-		finished <- err
-	}()
-	receive(ctx, t, first)
-	queued, stopQueued := context.WithTimeout(ctx, 1500*time.Millisecond)
-	defer stopQueued()
-	if _, err := client.ReadFile(queued, "file"); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("legacy read while busy returned %v", err)
-	}
-	stop()
-	if err := receive(ctx, t, finished); !errors.Is(err, context.Canceled) {
-		t.Fatalf("legacy cancel returned %v", err)
-	}
-	if got, err := client.ReadFile(ctx, "file"); err != nil || string(got) != "legacy" {
-		t.Fatalf("legacy read after cancel returned %q, %v", got, err)
-	}
-	sawWait := false
-	for _, record := range runnerLogRecords(t, logs.String()) {
-		if record["phase"] == "remote_started" || record["remote_start_observed_after"] != nil {
-			t.Fatalf("legacy Runner start must not be inferred from send: %v", record)
-		}
-		sawWait = sawWait || (record["phase"] == "slot_waiting" && record["method"] == "read" && record["level"] == "INFO")
-	}
-	if !sawWait {
-		t.Fatal("no diagnostic for a long slot wait")
-	}
-}
-
-func TestUserRunnerCapsRawCallsAndOnlySendsStartWhenRequested(t *testing.T) {
+func TestUserRunnerCapsRawCallsAndSendsStartBeforeOutput(t *testing.T) {
 	ctx, stop := context.WithTimeout(t.Context(), 10*time.Second)
 	defer stop()
 	work := t.TempDir()
@@ -249,19 +179,13 @@ func TestUserRunnerCapsRawCallsAndOnlySendsStartWhenRequested(t *testing.T) {
 	}
 	var waiters []jsonrpc2.Waiter
 	for tag := uint64(1); tag <= 16; tag++ {
-		var opts []jsonrpc2.CallOption
-		if tag > 1 { // Tag 1 uses the legacy control's request shape.
-			opts = append(opts, jsonrpc2.Meta(true))
-		}
-		waiter, err := conn.DispatchCall(ctx, outbound.MethodExec, outbound.ExecParams{Tag: tag, Shell: "printf started; exec sleep 60"}, opts...)
+		waiter, err := conn.DispatchCall(ctx, outbound.MethodExec, outbound.ExecParams{Tag: tag, Shell: "printf started; exec sleep 60"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		waiters = append(waiters, waiter)
-		if tag > 1 {
-			if got := receive(ctx, t, events); got != outbound.MethodStarted {
-				t.Fatalf("call %d should get start before output; first event %q", tag, got)
-			}
+		if got := receive(ctx, t, events); got != outbound.MethodStarted {
+			t.Fatalf("call %d should get start before output; first event %q", tag, got)
 		}
 		if got := receive(ctx, t, events); got != outbound.MethodOutput {
 			t.Fatalf("call %d expected output, got %q", tag, got)

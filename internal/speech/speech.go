@@ -20,13 +20,10 @@ type Options struct {
 	AllowSending       bool   `json:"allowSending"`
 	Provider           string `json:"provider,omitempty"`
 	Model              string `json:"model,omitempty"`
-	Voice              string `json:"voice,omitempty"`
 	Language           string `json:"language,omitempty"`
-	Format             string `json:"format,omitempty"`
 	TimeoutSeconds     int    `json:"timeoutSeconds,omitzero"`
 	MaxBytes           int64  `json:"maxBytes,omitzero"`
 	MaxDurationSeconds int    `json:"maxDurationSeconds,omitzero"`
-	MaxTextCharacters  int    `json:"maxTextCharacters,omitzero"`
 }
 
 func (s Options) Budgets() Options {
@@ -38,12 +35,6 @@ func (s Options) Budgets() Options {
 	}
 	if s.MaxDurationSeconds == 0 {
 		s.MaxDurationSeconds = 300
-	}
-	if s.MaxTextCharacters == 0 {
-		s.MaxTextCharacters = 4000
-	}
-	if s.Format == "" {
-		s.Format = "opus"
 	}
 	return s
 }
@@ -65,110 +56,85 @@ type unknownError string
 func (e unknownError) Error() string        { return string(e) }
 func (e unknownError) Is(target error) bool { return target == ErrOutcomeUnknown }
 
-// Call returns a transcript or generated audio. It does not retry or choose another provider.
+// Transcribe returns a transcript. It does not retry or choose another provider.
 // Errors that match ErrOutcomeUnknown leave the remote result unknown; other errors are definite failures.
-func Call(ctx context.Context, endpoint Endpoint, options Options, kind, name, text string, audio io.Reader) (string, []byte, error) {
+func Transcribe(ctx context.Context, endpoint Endpoint, options Options, name string, audio io.Reader) (string, error) {
 	if !options.Enabled || !options.AllowSending {
-		return "", nil, errors.New("speech is off or sending consent is missing")
+		return "", errors.New("speech is off or sending consent is missing")
 	}
 	options = options.Budgets()
 	base, err := url.Parse(endpoint.URL)
 	if err != nil {
-		return "", nil, errors.New("speech provider URL is invalid")
+		return "", errors.New("speech provider URL is invalid")
 	}
 	loopback := base.Hostname() == "localhost" || base.Hostname() == "127.0.0.1" || base.Hostname() == "::1"
 	validScheme := base.Scheme == "https" || base.Scheme == "http" && loopback
 	if base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" || !validScheme {
-		return "", nil, errors.New("speech requires an explicit HTTPS provider endpoint or loopback HTTP")
+		return "", errors.New("speech requires an explicit HTTPS provider endpoint or loopback HTTP")
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(options.TimeoutSeconds)*time.Second)
 	defer cancel()
 	var body bytes.Buffer
-	contentType := "application/json"
-	route := "/audio/speech"
-	if kind == "stt" {
-		route = "/audio/transcriptions"
-		form := multipart.NewWriter(&body)
-		if err := form.WriteField("model", options.Model); err != nil {
-			return "", nil, err
-		}
-		if options.Language != "" {
-			if err := form.WriteField("language", options.Language); err != nil {
-				return "", nil, err
-			}
-		}
-		part, err := form.CreateFormFile("file", name)
-		if err != nil {
-			return "", nil, err
-		}
-		n, err := io.Copy(part, io.LimitReader(audio, options.MaxBytes+1))
-		if err != nil {
-			return "", nil, err
-		}
-		if n > options.MaxBytes {
-			return "", nil, errors.New("speech input exceeds configured byte budget")
-		}
-		if err := form.Close(); err != nil {
-			return "", nil, err
-		}
-		contentType = form.FormDataContentType()
-	} else {
-		encoded, err := json.Marshal(map[string]any{"model": options.Model, "input": text, "voice": options.Voice, "response_format": options.Format})
-		if err != nil {
-			return "", nil, err
-		}
-		body.Write(encoded)
+	form := multipart.NewWriter(&body)
+	if err := form.WriteField("model", options.Model); err != nil {
+		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint.URL, "/")+route, &body)
+	if options.Language != "" {
+		if err := form.WriteField("language", options.Language); err != nil {
+			return "", err
+		}
+	}
+	part, err := form.CreateFormFile("file", name)
 	if err != nil {
-		return "", nil, errors.New("speech request is invalid")
+		return "", err
 	}
-	req.Header.Set("Content-Type", contentType)
+	n, err := io.Copy(part, io.LimitReader(audio, options.MaxBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if n > options.MaxBytes {
+		return "", errors.New("speech input exceeds configured byte budget")
+	}
+	if err := form.Close(); err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint.URL, "/")+"/audio/transcriptions", &body)
+	if err != nil {
+		return "", errors.New("speech request is invalid")
+	}
+	req.Header.Set("Content-Type", form.FormDataContentType())
 	if endpoint.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+endpoint.APIKey)
 	}
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(req)
 	if err != nil {
-		return "", nil, unknownError("speech provider outcome unknown; automatic retry is disabled")
+		return "", unknownError("speech provider outcome unknown; automatic retry is disabled")
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		if response.StatusCode >= http.StatusInternalServerError {
-			return "", nil, unknownError(fmt.Sprintf("speech provider HTTP %d; remote outcome unknown; automatic retry is disabled", response.StatusCode))
+			return "", unknownError(fmt.Sprintf("speech provider HTTP %d; remote outcome unknown; automatic retry is disabled", response.StatusCode))
 		}
-		return "", nil, fmt.Errorf("speech provider rejected the request: HTTP %d; automatic retry is disabled", response.StatusCode)
+		return "", fmt.Errorf("speech provider rejected the request: HTTP %d; automatic retry is disabled", response.StatusCode)
 	}
-	limit := options.MaxBytes
-	if kind == "stt" {
-		limit = min(limit, int64(65536))
-	}
+	limit := min(options.MaxBytes, int64(65536))
 	payload, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
-		return "", nil, unknownError("speech provider response incomplete; outcome unknown; automatic retry is disabled")
+		return "", unknownError("speech provider response incomplete; outcome unknown; automatic retry is disabled")
 	}
 	if int64(len(payload)) > limit {
-		return "", nil, errors.New("speech response exceeds configured byte budget")
+		return "", errors.New("speech response exceeds configured byte budget")
 	}
-	if kind == "stt" {
-		var result struct {
-			Text string `json:"text"`
-		}
-		if err := json.Unmarshal(payload, &result); err != nil {
-			return "", nil, errors.New("speech provider returned an invalid transcript")
-		}
-		result.Text = strings.TrimSpace(result.Text)
-		if result.Text == "" {
-			return "", nil, errors.New("speech provider returned an empty transcript")
-		}
-		return result.Text, nil, nil
+	var result struct {
+		Text string `json:"text"`
 	}
-	if len(payload) == 0 {
-		return "", nil, errors.New("speech provider returned empty audio")
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return "", errors.New("speech provider returned an invalid transcript")
 	}
-	mime := http.DetectContentType(payload)
-	if !strings.HasPrefix(mime, "audio/") && mime != "application/ogg" && mime != "application/octet-stream" {
-		return "", nil, errors.New("speech provider did not return audio bytes")
+	result.Text = strings.TrimSpace(result.Text)
+	if result.Text == "" {
+		return "", errors.New("speech provider returned an empty transcript")
 	}
-	return "", payload, nil
+	return result.Text, nil
 }

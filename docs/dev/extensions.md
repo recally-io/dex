@@ -8,12 +8,6 @@ Skills come from two file levels: dex (`<data dir>/.agents/`) and agent
 Narrower levels win. Equal real paths are read once as the narrower level.
 The engine reads `AGENTS.md` only from the conversation's cwd in its execution
 environment and adds it after the bot's saved instructions at each admission.
-On upgrade, dex imports old dex-level and agent-level files, including their
-imports, into the affected bots' saved instructions. It renames the old files
-with the `.migrated` suffix. Startup skips a source if its backup exists. If a
-rename fails, the next start can import the same source again. Without a backup,
-startup treats any file at a legacy path as a source to import. The engine
-never loads files from those levels directly.
 
 Skills have a third, narrowest level: `.agents/skills` under the
 conversation's cwd. The skills prompt section reads that cwd from the request's
@@ -152,17 +146,15 @@ access to secrets.
 including the Telegram manager and managed bot tokens. Tool resolution and
 vault API routes do not read this file.
 
-At startup dex warns about old `.env` files at the dex and agent levels and
-ignores them. It does not import them. Move secrets into the vault. Put other
-values in shell rc files or in the `env` of a call or MCP server.
+Store secrets in the vault. Put other values in shell rc files or in the
+`env` of a call or MCP server.
 
 ### MCP declarations
 
 `control.sqlite` stores declarations at the dex and agent levels. The agent
 level replaces the dex declaration with the same name. Use `disabled: true`
 at the agent level to turn off a dex server for that agent. The database backup
-includes these declarations. dex ignores `mcp.json` at both levels and logs one
-warning for each file at startup. It does not import the files.
+includes these declarations.
 
 All owner sessions can use `mcp_server_list`, `mcp_server_get`,
 `mcp_server_set`, and `mcp_server_remove` from any execution environment.

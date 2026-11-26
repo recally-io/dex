@@ -444,9 +444,8 @@ its machine. Each backend owns its connections, and a `Handle` is one lease on
 them: all bots on
 one `pi-env` environment share one SSH connection until that environment changes. The socket carries JSON-RPC 2.0 calls from
 [`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
-operation. The Runner reports its connection limit in `ready`. Current peers
-allow 16 calls; older peers continue to use one slot. A call waits for a slot
-before it is sent. Responses, stdout, stderr, and `cancel` are scoped to the call.
+operation. Both sides use the `dex-agent.v2` subprotocol and limit each
+connection to 16 active calls. A call waits for a slot before Dex sends it. Responses, stdout, stderr, and `cancel` are scoped to the call.
 Dex holds a canceled call's slot until the Runner responds, or closes the session
 if it does not respond in time. A slow output consumer can fill its bounded
 buffer. Dex stops that command and reports the error without blocking other
@@ -459,11 +458,10 @@ The `runner RPC` control log correlates connection wait, slot wait, send,
 remote start, and completion by `call_id`, environment, and method. Slow slot
 waits, cancellations, offline calls, and unknown results are visible at Info.
 Fast successful calls and routine file errors use Debug. Completion of slow
-calls includes the send and remote-start timings when available. The
-`started` event is opt-in on both sides. It confirms the remote worker reached
-operation dispatch, not a successful shell spawn. The local receipt time can
-include network delay; Dex does not infer start for old Runners. Logs do not
-include command arguments, paths, error text, or stream data.
+calls includes the send and remote-start timings when available. The Runner
+sends `started` before it dispatches a call. This event does not confirm a
+successful shell spawn. The local receipt time can include network delay.
+Logs do not include command arguments, paths, error text, or stream data.
 
 A lease on a machine holds its enrollment, which is the digest of the machine
 token in control storage. It does not hold the socket, and the stamp does not
@@ -593,7 +591,7 @@ A fork keeps its source Runner unless it selects Local or a registered Runner.
 Use `runnerId` in `POST /api/agents/{agentId}/chats/{chatId}/fork` or `session_fork`.
 When the Runner changes, the fork has no cwd. When the copied
 history last ran in another environment than the fork, the engine ends the copied history with one
-`dex.environment` entry. The entry holds the notice as a user message, so the model reads it
+`dex.runner` entry. The entry holds the notice as a user message, so the model reads it
 before the next input, and the transcript shows it as an `environment` boundary. The entry data
 keeps the environment that the history left. A fork that ends before such an entry of its source
 uses that environment, so a fork of a moved chat from before the move gets its own notice. Files,

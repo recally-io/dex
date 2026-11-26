@@ -4902,7 +4902,6 @@ components:
           type: boolean
           description: Private chat status reactions. On when unset; false explicitly disables them.
         stt: { $ref: "#/components/schemas/TelegramSpeechOptions" }
-        tts: { $ref: "#/components/schemas/TelegramSpeechOptions" }
 
     TelegramSpeechOptions:
       type: object
@@ -4911,12 +4910,10 @@ components:
         allowSending:
           type: boolean
           default: false
-          description: Explicit consent to send this bot's audio (STT) or text (TTS) to the selected provider. The provider can be an external third party. No automatic fallback provider is used.
+          description: Explicit consent to send this bot's audio to the selected provider. The provider can be an external third party. No automatic fallback provider is used.
         provider: { type: string }
         model: { type: string }
-        voice: { type: string }
         language: { type: string }
-        format: { type: string, enum: ["", opus, mp3, wav] }
         timeoutSeconds: {
           type: integer,
           minimum: 0,
@@ -4934,13 +4931,7 @@ components:
           type: integer,
           minimum: 0,
           maximum: 3600,
-          description: STT only. Checks Telegram reported audio duration. Zero uses 300 seconds. dex does not decode audio to measure duration.,
-        }
-        maxTextCharacters: {
-          type: integer,
-          minimum: 0,
-          maximum: 10000,
-          description: TTS only. Zero uses 4000 characters.,
+          description: Checks the audio duration that Telegram reports. Zero uses 300 seconds. dex does not decode audio to measure duration.,
         }
 
     Feishu:
@@ -5053,7 +5044,7 @@ components:
         expiresAt: {
           type: integer,
           format: int64,
-          description: Deadline in milliseconds since epoch (0 for legacy one-shot grace).,
+          description: Deadline in milliseconds since epoch. Zero means no explicit deadline. A one-shot Monitor without a deadline expires one hour after it is due.,
         }
         outcome: {
           type: string,

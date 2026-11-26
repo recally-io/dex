@@ -46,8 +46,6 @@ func ServeWithInfo(ctx context.Context, socket *websocket.Conn, local env.Execut
 		Version:          meta.Version,
 		CanSelfUpdate:    meta.CanSelfUpdate,
 		SelfUpdateReason: meta.SelfUpdateReason,
-		MaxInFlight:      maxInFlight,
-		StartEvents:      true,
 	}
 	if err := conn.Notify(ready, MethodReady, info); err != nil {
 		return err
@@ -124,12 +122,9 @@ func (m *machine) execute(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	var wantStart bool
-	if decode(req.Meta, &wantStart) == nil && wantStart {
-		if err := conn.Notify(ctx, MethodStarted, IdentityOf(tag)); err != nil {
-			_ = conn.Close()
-			return nil, err
-		}
+	if err := conn.Notify(ctx, MethodStarted, IdentityOf(tag)); err != nil {
+		_ = conn.Close()
+		return nil, err
 	}
 	return m.run(ctx, conn, req, tag)
 }

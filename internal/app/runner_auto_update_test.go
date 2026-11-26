@@ -123,7 +123,7 @@ func TestUserRunnerHandshakeReportsVersionAndCachesReleaseProxy(t *testing.T) {
 	wsURL := "ws" + strings.TrimPrefix(d.srv.URL, "http") + "/machine/" + created.Id + "/connect"
 	_, badRes, _ := websocket.Dial(t.Context(), wsURL, &websocket.DialOptions{ //nolint:bodyclose // closed below when non-nil
 		HTTPHeader:   http.Header{"Authorization": []string{"Bearer " + paired.Token}},
-		Subprotocols: []string{"dex-agent.v0"},
+		Subprotocols: []string{"dex-agent.v1"},
 	})
 	if badRes != nil && badRes.Body != nil {
 		_ = badRes.Body.Close()

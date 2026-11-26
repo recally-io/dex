@@ -118,15 +118,11 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	q := sqlc.New(conn)
-	warnLegacyMCPFiles(cfg.DataDir)
 	err = q.CreateAgentIfMissing(ctx, sqlc.CreateAgentIfMissingParams{
 		ID: DefaultAgentID, Name: "Dex", CreatedAt: time.Now().UnixMilli(),
 	})
 	if err != nil {
 		return nil, errors.Join(err, conn.Close())
-	}
-	if err := migrateAgentInstructions(ctx, conn, cfg); err != nil {
-		slog.Warn("import legacy bot instructions", "err", err)
 	}
 	jobs := scheduler.New()
 

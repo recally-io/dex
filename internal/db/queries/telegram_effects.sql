@@ -24,12 +24,6 @@ WHERE operation_key=? AND state='processing';
 -- name: ClearTelegramEffectInput :exec
 UPDATE telegram_effects SET input_json='{}',body=NULL WHERE operation_key=?;
 
--- name: ListTelegramPeerReplies :many
-SELECT s.id,s.answer,s.channel_remote_ids,s.channel_context
-FROM submissions s JOIN conversations c ON c.id=s.conversation_id
-WHERE c.agent_id=? AND s.origin=? AND s.delivered_at IS NOT NULL AND s.channel_revoked=0
-AND s.channel_remote_ids<>'[]' ORDER BY s.rowid DESC LIMIT 20;
-
 -- name: ListDiscardedTelegramEffectInputs :many
 SELECT operation_key,input_json,source_key FROM telegram_effects
 WHERE agent_id=? AND state='discarded' AND input_json<>'{}';
@@ -37,8 +31,3 @@ WHERE agent_id=? AND state='discarded' AND input_json<>'{}';
 -- name: DiscardTelegramInputEffects :exec
 UPDATE telegram_effects SET state='discarded',body=NULL
 WHERE agent_id=? AND (input_json<>'{}' OR body IS NOT NULL OR state IN ('ready','processing'));
-
--- name: ListTelegramPeerEffects :many
-SELECT operation_key,result_json FROM telegram_effects
-WHERE agent_id=? AND peer=? AND account_id=? AND sender_id=? AND kind IN ('copy','forward') AND state='done'
-ORDER BY rowid DESC LIMIT 20;

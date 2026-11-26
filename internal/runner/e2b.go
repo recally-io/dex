@@ -322,8 +322,8 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Spec) (ca
 	}
 	if sb == nil {
 		sb, err = ctrl.createSandbox(ctx, cfg.Template, timeoutSec, cfg.autoPauseEnabled(), map[string]string{
-			"dex_agent_id":       agentID,
-			"dex_environment_id": spec.ID,
+			"dex_agent_id":  agentID,
+			"dex_runner_id": spec.ID,
 		})
 		if err != nil {
 			return cachedE2BSession{}, err
@@ -393,7 +393,7 @@ func (r *e2bRuntime) openOverride(ctx context.Context, agentID string, spec Spec
 	}
 	ctrl := r.control(cfg, spec.Secret)
 	sb, err := ctrl.createSandbox(ctx, cfg.Template, *cfg.TimeoutSeconds, false, map[string]string{
-		"dex_agent_id": agentID, "dex_environment_id": spec.ID,
+		"dex_agent_id": agentID, "dex_runner_id": spec.ID,
 	})
 	if err != nil {
 		return nil, err
