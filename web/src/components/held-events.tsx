@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink } from "lucide-react";
 import { listAgentsOptions, listTasksOptions } from "../api/generated/@tanstack/react-query.gen";
 import { heldEventsOptions } from "../lib/inbox";
 import { attachHeldEvent, dismissHeldEvent } from "../api/generated/sdk.gen";
 import type { Agent, HeldEvent, TaskSummary } from "../api/generated/types.gen";
-import { Failure, Loading } from "./feedback";
+import { Failure } from "./feedback";
 import { Select } from "./form";
-import { Section } from "./page";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 
 const reasons: Record<HeldEvent["reason"], string> = {
-  unmatched: "No Task",
-  conflict: "Links to several Tasks",
+  unmatched: "No matching task",
+  conflict: "Matches several tasks",
 };
 
 // A source link comes from outside Dex. Only a web address can open.
@@ -20,48 +20,30 @@ function sourceHref(url: string) {
   return /^https?:\/\//i.test(url) ? url : undefined;
 }
 
-export function HeldEvents() {
-  const held = useQuery(heldEventsOptions());
+export function HeldEventRows({ events }: { events: HeldEvent[] }) {
   const agents = useQuery(listAgentsOptions());
 
   const tasks = useQuery({
     ...listTasksOptions({ query: { includeClosed: false } }),
-    enabled: !!held.data?.events.length,
+    enabled: events.length > 0,
   });
 
+  if (!events.length) return null;
+
   const open = tasks.data?.tasks ?? [];
+  const botList = agents.data?.agents ?? [];
 
   return (
-    <Section title="Held events">
-      {held.isPending ? (
-        <Loading />
-      ) : held.isError ? (
-        <Failure title="Could not load held events" error={held.error} />
-      ) : held.data.events.length ? (
-        <>
-          {tasks.isError ? <Failure title="Could not load Tasks for attachment" error={tasks.error} /> : null}
-          <ul className="divide-y divide-border">
-            {held.data.events.map((event) => (
-              <HeldEventItem key={event.id} event={event} tasks={open} agents={agents.data?.agents ?? []} />
-            ))}
-          </ul>
-        </>
-      ) : (
-        <p className="px-2 py-3 text-sm text-muted-foreground">No held events.</p>
-      )}
-    </Section>
+    <>
+      {tasks.isError ? <Failure title="Could not load tasks for attachment" error={tasks.error} /> : null}
+      {events.map((event) => (
+        <HeldEventRow key={event.id} event={event} tasks={open} agents={botList} />
+      ))}
+    </>
   );
 }
 
-function HeldEventItem({
-  event,
-  tasks,
-  agents,
-}: {
-  event: HeldEvent;
-  tasks: TaskSummary[];
-  agents: Agent[];
-}) {
+function HeldEventRow({ event, tasks, agents }: { event: HeldEvent; tasks: TaskSummary[]; agents: Agent[] }) {
   const [selected, setSelected] = useState("");
   const client = useQueryClient();
   // An attach also links the event objects, and no API removes a link. The owner must pick the Task.
@@ -89,32 +71,44 @@ function HeldEventItem({
   });
 
   return (
-    <li className="space-y-2 px-2 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{event.eventType}</span>
+    <li className="space-y-2.5 py-3.5">
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        <span className="font-medium text-foreground">{event.eventType}</span>
         <Badge variant="outline">{reasons[event.reason]}</Badge>
-        <span className="text-sm text-muted-foreground">
-          {event.authorLogin || "Unknown author"} · {event.authorAssociation || "No author class"}
+        <span className="text-muted-foreground">
+          {event.authorLogin || "Unknown author"}
+          {event.authorAssociation ? ` · ${event.authorAssociation}` : ""}
         </span>
         {href ? (
-          <a className="text-sm underline" href={href} target="_blank" rel="noreferrer">
+          <a
+            className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+          >
             Source
+            <ExternalLink className="size-3" />
           </a>
         ) : null}
       </div>
-      <p className="line-clamp-4 whitespace-pre-wrap break-words text-sm">{event.content}</p>
+      {event.content ? (
+        <p className="line-clamp-3 whitespace-pre-wrap break-words text-[13px] text-muted-foreground">
+          {event.content}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <Select
+          className="h-8 w-auto max-w-full text-[13px]"
           aria-label="Task"
           value={task?.id ?? ""}
           disabled={!tasks.length}
           onChange={(change) => setSelected(change.target.value)}
         >
-          <option value="">Choose a Task</option>
+          <option value="">Attach to task…</option>
           {tasks.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.title} ·{" "}
-              {agents.find((agent) => agent.id === item.assigneeBotId)?.name ?? item.assigneeBotId}
+              {item.key} · {item.title} (
+              {agents.find((agent) => agent.id === item.assigneeBotId)?.name ?? item.assigneeBotId})
             </option>
           ))}
         </Select>

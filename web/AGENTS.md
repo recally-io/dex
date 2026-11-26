@@ -47,25 +47,18 @@ it; a message sends only upload IDs.
 Bot links open Main. The bot header offers New session, Sessions, Automations,
 and Settings. Settings has General, Skills, Integrations, and Secrets.
 The right Sessions sidebar starts closed. The global sidebar
-links to Board (`/board`) for Tasks and Inbox (`/inbox`) for owner actions.
-Inbox reads active questions, unhandled failed or changed automation results,
-missing models, and Tasks awaiting Owner review from `/api/inbox/summary`, and reads held events from the held events
-endpoint. The Inbox link counts those items. One-way notifications stay in
-transcripts and channels. Queued Task questions remain answerable from Task detail.
-A held event shows its type, reason, author, source link, and text. The owner
-chooses an open Task before Attach is enabled, because no API removes the object
-links of an attach. The owner can also dismiss the event.
-Board reads `/api/tasks/*`. It offers Kanban and List views, an inline
-creation form, and Bot, In Review, Blocked, Source, and closed Task filters.
-The Bot filter uses `/board?bot=<id>`. Task detail opens at
-`/board/$taskKey` with a stable key such as `T-42`. Detail links to the parent, subtasks, and sibling dependencies. The Owner can create a subtask or change its dependencies there. Inbox review items link to the same detail route.
+links to Board (`/board`) with the Owner attention count badge.
+Board unifies Tasks and Owner attention items in one grouped list:
 
-Task detail lists external runs next to Sessions. It shows the registered
-Runner separately from the reported host and workspace. It also shows the
-harness, branch, lease state, and heartbeat age. `/settings/runners` lists
-active external Task runs by Runner. Both views read
-`/api/tasks/executions`. Active runs refresh every five seconds because
-heartbeats do not add Timeline entries.
+- **Needs you**: active questions (answerable inline), Tasks awaiting Owner review (approvable inline), blocked Tasks, enabled Automations without an available model, and held external events (attach to an open Task or dismiss).
+- **Active**: open Tasks (`ready`, `in_progress`, and Bot-reviewed `in_review`).
+- **Updates**: unhandled failed or changed Automation results grouped by Automation (`×N`), showing the latest summary preview and timestamp, expandable inline to read full text, mark done, or continue in a session (deep link at `/board/results/$runId`).
+- **Later** (`backlog`) and collapsible **Completed** (`done`, `cancelled`).
+  Empty sections are omitted. One-way notifications stay in transcripts and channels.
+  Board reads `/api/tasks/*`, `/api/inbox/summary`, and the held-events endpoints. A top quick-add bar creates a `ready` Task assigned to a Bot; Bot-scoped views use `/board?bot=<id>` with a dismissible chip.
+
+Task detail opens at `/board/$taskKey` with a stable key such as `T-42`. It combines a structured property strip (clickable Status, Assignee Bot, and Reviewer controls that auto-save with `If-Match`, plus quick `+ Subtask` / `+ Dependency` / `+ Link PR` actions and an overflow `⋯` menu), a contextual action card when in review or blocked, dedicated context cards shown only when data exists (Sessions, external runs, parent/subtasks/dependencies, and external links/waits), a rail-structured Markdown Timeline, and a bottom composer defaulting to sending a message to the Assignee Bot's Main (staying on the Task page) with a secondary `Note only` action.
+Active external runs refresh every five seconds because heartbeats do not add Timeline entries. `/settings/runners` also lists active external Task runs by Runner from `/api/tasks/executions`.
 
 `src/lib/task-stream.ts` uses EventSource to resume with `Last-Event-ID`.
 It invalidates Task list and detail queries on Task events. Board does not

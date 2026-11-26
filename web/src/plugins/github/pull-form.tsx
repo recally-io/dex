@@ -13,7 +13,13 @@ function positiveId(value: string) {
 }
 
 // GitHubPullForm links a PR to an open Task. The GitHub plugin owns the API.
-export function GitHubPullForm({ path }: { path: BindTaskGitHubPullData["path"] }) {
+export function GitHubPullForm({
+  path,
+  onLinked,
+}: {
+  path: BindTaskGitHubPullData["path"];
+  onLinked?: () => void;
+}) {
   const [repository, setRepository] = useState("");
   const [number, setNumber] = useState("");
   const [commit, setCommit] = useState("");
@@ -27,6 +33,7 @@ export function GitHubPullForm({ path }: { path: BindTaskGitHubPullData["path"] 
       setNumber("");
       setCommit("");
       await invalidateTasks(client);
+      onLinked?.();
     },
   });
 

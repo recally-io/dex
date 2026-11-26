@@ -260,25 +260,30 @@ Main stays the default view. The header of a Chat session or a child session
 names Main before its title. The header of an automation transcript names
 Automations before its title.
 
-Inbox (`/inbox`) shows items the owner can act on across bots. It lists the
-active unanswered question of each session, unhandled failed or changed
-automation results, enabled automations without an available model, and held
-external events. Open a question to answer it. Open a result to mark it done
-or continue in a chat. Configure a model in bot settings. Attach a held event
-to an open Task or dismiss it. One-way notifications stay in the transcript
-or channel. The sidebar shows the number of Inbox items.
+Board (`/board`) is the single workspace view across bots. The sidebar shows
+the number of items needing owner attention on the Board link. Board groups
+items by what needs action now:
 
-Board (`/board`) shows Tasks across Bots in Kanban or List view. Each Task
-has a key such as `T-42`, a status, and an Assignee Bot. The default view
-hides closed Tasks. The Owner can edit the title, reassign a Task, choose a
-Reviewer, or change its status. In Review, the Owner can approve the current
-submission or request changes with feedback.
+- **Needs you** lists active unanswered questions (answerable inline or in the
+  session), Tasks awaiting Owner review (approvable inline), blocked Tasks,
+  enabled Automations without an available model, and held external events
+  (attach to an open Task or dismiss).
+- **Active** lists open Tasks across bots, each with a stable key such as
+  `T-42`, Assignee Bot, and status hint. **Later** holds backlog Tasks, and
+  closed Tasks collapse into **Completed**.
+- **Updates** groups unhandled failed or changed Automation results by
+  Automation with the latest summary preview and timestamp. Expanding a row
+  marks it read and lets the Owner mark the group done or continue in a
+  session. One-way notifications stay in the transcript or channel.
 
-Creating a Task or adding a note does not start a Session. Send to Main
-starts a turn in the Assignee Bot's Main and links it to the Task. Task detail
-shows linked Sessions, the primary Session, and blockers such as external
-waits and open questions. The Owner can answer queued questions from Task
-detail. Channels show one active Main question at a time.
+Creating a Task or adding a note does not start a Session. Sending from the
+Task composer messages the Assignee Bot's Main, links the turn to the Task, and
+keeps the Owner on the Task page. Task detail shows a clear property strip
+(Status, Assignee Bot, Reviewer), a contextual review or blocker card,
+conditional cards for linked Sessions, external runs, subtasks, dependencies,
+and external links, and a Markdown-rendered chronological timeline. The Owner
+can answer queued questions from Task detail. Channels show one active Main
+question at a time.
 
 Bots can read or update Tasks when their role and Session permit it. The
 Owner controls cancellation and reopening. Timeline entries identify the
