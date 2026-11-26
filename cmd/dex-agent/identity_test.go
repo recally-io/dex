@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	json "encoding/json/v2"
 )
@@ -136,6 +138,46 @@ func TestUserSeesWhyTheMachineCannotReadItsState(t *testing.T) {
 			t.Fatalf("the refusal does not say what to do: %v", err)
 		}
 	})
+}
+
+func TestUserEnrolledMachineKeepsWorkingAfterDeviceFieldRename(t *testing.T) {
+	// Given a machine enrolled before v0.20.0-rc.7 whose device.json records environmentId.
+	home := fixtureAccount(t)
+	connected := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case connected <- r.URL.Path:
+		default:
+		}
+		// Reject with 401 so run stops cleanly right after proving it dialed the expected runner route.
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	state := deviceState(t, home, fmt.Sprintf(`{"origin":%q,"environmentId":"01JRUN","token":%q,"mode":"user"}`, srv.URL, strings.Repeat("t", 32)))
+
+	// When the operator inspects status and starts the runner.
+	var out bytes.Buffer
+	if err := status(t.Context(), state, &out); err != nil {
+		t.Fatalf("status with legacy environmentId: %v", err)
+	}
+	if !strings.Contains(out.String(), fmt.Sprintf("dex: %s (runner 01JRUN)", srv.URL)) {
+		t.Fatalf("status did not resolve runner ID from environmentId:\n%s", out.String())
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	if err := run(ctx, state, true); err != nil {
+		t.Fatalf("run with legacy environmentId: %v", err)
+	}
+
+	// Then dex-agent dials the machine connect endpoint using the legacy environmentId.
+	select {
+	case got := <-connected:
+		if got != "/machine/01JRUN/connect" {
+			t.Fatalf("connected path = %q, want /machine/01JRUN/connect", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("dex-agent did not attempt to connect")
+	}
 }
 
 func TestUserSeesAnUnknownInstallMode(t *testing.T) {

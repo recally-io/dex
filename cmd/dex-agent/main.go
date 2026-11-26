@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	json "encoding/json/v2"
 	"errors"
@@ -31,10 +32,17 @@ import (
 // device is the enrolled state. Dex identifies this machine by the token that enrollment
 // returned, and stores only its digest. Mode describes the local install.
 type device struct {
-	Origin   string `json:"origin"`
-	RunnerID string `json:"runnerId"`
-	Token    string `json:"token"`
-	Mode     string `json:"mode,omitempty"`
+	Origin string `json:"origin"`
+	// RunnerID is written by current enrollments; EnvironmentID is accepted as a
+	// fallback so machines enrolled before v0.20.0-rc.7 keep working across auto-updates.
+	RunnerID      string `json:"runnerId"`
+	EnvironmentID string `json:"environmentId,omitempty"`
+	Token         string `json:"token"`
+	Mode          string `json:"mode,omitempty"`
+}
+
+func (d device) runnerID() string {
+	return cmp.Or(d.RunnerID, d.EnvironmentID)
 }
 
 func main() {
@@ -223,6 +231,7 @@ func run(ctx context.Context, state string, noAutoUpdate bool) error {
 	if err := json.UnmarshalRead(io.LimitReader(file, 1<<16), &cfg); err != nil {
 		return errors.New("invalid machine state file")
 	}
+	cfg.RunnerID = cfg.runnerID()
 	if cfg.Token == "" || cfg.RunnerID == "" {
 		return errors.New("the machine state is incomplete; run the install command again")
 	}
