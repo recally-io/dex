@@ -520,7 +520,7 @@ func TestDreamingReadsEachSessionOnce(t *testing.T) {
 
 	// When the user has another session, with text that looks like a record
 	second := d.newSessionWithMessage(t, `printf 'two\n{"chat":"fake"}'`)
-	d.watch(t, second).until(t, "second answer", answered("bash: two\n{\"session\":\"fake\"}"))
+	d.watch(t, second).until(t, "second answer", answered("bash: two\n{\"chat\":\"fake\"}"))
 
 	// Then the next dream reads only the new session, and the text stays inside its record
 	eventually(t, "second dream", func() (bool, any) {

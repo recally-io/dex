@@ -99,15 +99,15 @@ func TestUserKeepsLegacyTimerHistoryAndFiresDueWorkOnceAfterUpgrade(t *testing.T
 	if _, err := conn.ExecContext(t.Context(), `
 INSERT INTO agents (id, name, model_provider, model_id, created_at)
 SELECT id, name, model_provider, model_id, created_at FROM fixture.agents;
-INSERT INTO sessions (id, agent_id, channel_key, execution_id, created_at, title)
+INSERT INTO conversations (id, agent_id, channel_key, execution_id, created_at, title)
 SELECT id, agent_id, channel_key, execution_id, created_at, title FROM fixture.sessions;
-INSERT INTO submissions (id, session_id, content, origin, kind, status, created_at, admitted_at, settled_at, answer)
+INSERT INTO submissions (id, conversation_id, content, origin, kind, status, created_at, admitted_at, settled_at, answer)
 SELECT id, session_id, content, origin, kind, status, created_at, admitted_at, settled_at, answer FROM fixture.submissions;
 DETACH DATABASE fixture;`); err != nil {
 		t.Fatal(err)
 	}
 	var root string
-	if err := conn.QueryRowContext(t.Context(), `SELECT id FROM submissions WHERE session_id = ? AND kind = 'message'`, sessionID).Scan(&root); err != nil {
+	if err := conn.QueryRowContext(t.Context(), `SELECT id FROM submissions WHERE conversation_id = ? AND kind = 'message'`, sessionID).Scan(&root); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().Add(-time.Second).UnixMilli()
@@ -119,7 +119,7 @@ DETACH DATABASE fixture;`); err != nil {
 		{id: "legacy-armed", state: "scheduled", prompt: "migrated follow-up"},
 		{id: "legacy-cancelled", state: "cancelled", prompt: "old cancelled prompt"},
 	} {
-		_, err = conn.ExecContext(t.Context(), `INSERT INTO followup_timers (id, operation_key, agent_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at) VALUES (?, ?, 'default', ?, ?, ?, 2, ?, 'UTC', ?, ?, ?, ?, ?)`, f.id, "operation:"+f.id, sessionID, root, root, now, f.prompt, f.state, f.fire, now, now)
+		_, err = conn.ExecContext(t.Context(), `INSERT INTO followup_timers (id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at) VALUES (?, ?, 'default', ?, ?, ?, 2, ?, 'UTC', ?, ?, ?, ?, ?)`, f.id, "operation:"+f.id, sessionID, root, root, now, f.prompt, f.state, f.fire, now, now)
 		if err != nil {
 			t.Fatal(err)
 		}
