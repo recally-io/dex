@@ -124,11 +124,11 @@ async function localOAuthServer(dex: string): Promise<{ server: Server; url: str
   return { server, url: `http://127.0.0.1:${port}/mcp` };
 }
 
-async function createBot(dex: string, name: string) {
+async function createBot(dex: string, name: string, modelId = "echo") {
   const created = await fetch(`${dex}/api/bots`, {
     method: "POST",
     headers: contentType,
-    body: JSON.stringify({ name, provider: "faux", modelId: "echo", thinkingLevel: "off" }),
+    body: JSON.stringify({ name, provider: "faux", modelId, thinkingLevel: "off" }),
   });
 
   if (!created.ok) throw new Error(`Could not create a test bot (${created.status})`);
@@ -644,6 +644,109 @@ test("prefills an official MCP preset and adds a registry server with a vault he
     expect(JSON.stringify(inventory)).not.toContain(secret);
   } finally {
     await fetch(`${dex}/api/bots/${botId}`, { method: "DELETE" });
+  }
+});
+
+test("adds Google MCP presets with a registered client and reuses its vault secret", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await app.open("/integrations?section=mcp");
+  const dex = new URL(await browser.url()).origin;
+  const botId = await createBot(dex, `Google client ${Date.now()}`, "tool");
+  const root = `${dex}/api/bots/${botId}`;
+  const clientId = "fixture.apps.googleusercontent.com";
+  const secret = "google-fixture-client-secret";
+
+  const gmailScope = ["gmail.readonly", "gmail.compose", "gmail.modify"]
+    .map((part) => `https://www.googleapis.com/auth/${part}`)
+    .join(" ");
+
+  async function storedOAuth(name: string) {
+    const created = await fetch(`${root}/sessions`, { method: "POST" });
+    expect(created.status).toBe(201);
+    const { id }: { id: number } = await created.json();
+
+    const sent = await fetch(`${root}/sessions/${id}/messages`, {
+      method: "POST",
+      headers: contentType,
+      body: JSON.stringify({
+        id: crypto.randomUUID(),
+        text: `mcp_server_get ${JSON.stringify({ name, level: "agent" })}`,
+      }),
+    });
+
+    expect(sent.ok).toBe(true);
+
+    const read = async () => {
+      const response = await fetch(`${root}/sessions/${id}/history?before=${Number.MAX_SAFE_INTEGER}`);
+      const history: { items: { kind: string; text?: string }[] } = await response.json();
+
+      return (
+        history.items
+          .find((item) => item.kind === "assistant" && item.text?.startsWith("tool: {"))
+          ?.text?.slice(6) ?? ""
+      );
+    };
+
+    await expect.poll(read).toContain('"clientId"');
+    const declaration = await read();
+    expect(declaration).not.toContain(secret);
+
+    const saved: { Config?: { oauth?: { clientId: string; clientSecret: string; scope: string } } } =
+      JSON.parse(declaration);
+
+    if (!saved.Config?.oauth) throw new Error(`Saved declaration has no OAuth settings: ${declaration}`);
+
+    return saved.Config.oauth;
+  }
+
+  try {
+    // Given a Google preset, the Owner needs a Web application client and a scope.
+    await screen.getByRole("button", "Add Gmail", { exact: true }).tap();
+    const dialog = screen.getByRole("dialog", "Add MCP server");
+    const add = dialog.getByRole("button", "Add server", { exact: true });
+    await expect(dialog.getByLabel("Server URL", { exact: true })).toHaveValue(
+      "https://gmailmcp.googleapis.com/mcp/v1",
+    );
+    await expect(dialog.getByText(`${dex}/mcp/oauth/callback`, { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel("Scope", { exact: true })).toHaveValue(gmailScope);
+    await expect(add).toBeDisabled();
+
+    // When the Owner adds the client, then Dex saves the scopes and a Bot vault reference.
+    await dialog.getByLabel("Target", { exact: true }).selectOption({ value: botId });
+    await dialog.getByLabel("Client ID", { exact: true }).fill(clientId);
+    await dialog.getByLabel("Client secret", { exact: true }).fill(secret);
+    await add.tap();
+    const gmail = screen.getByRole("dialog", "Added gmail");
+    await expect(gmail.getByRole("button", "Authorize", { exact: true })).toBeVisible();
+    await gmail.getByRole("button", "Done", { exact: true }).tap();
+    const oauth = await storedOAuth("gmail");
+    expect(oauth.clientId).toBe(clientId);
+    expect(oauth.clientSecret).toMatch(/^vault:MCP_OAUTH_CLIENT_[a-f0-9]+$/);
+    expect(oauth.scope).toBe(gmailScope);
+    const secretName = oauth.clientSecret.slice("vault:".length);
+
+    // A second preset can use this name without saving another copy of the secret.
+    await screen.getByRole("button", "Add Google Drive", { exact: true }).tap();
+    await dialog.getByLabel("Target", { exact: true }).selectOption({ value: botId });
+    await dialog.getByLabel("Client ID", { exact: true }).fill(clientId);
+    await dialog.getByRole("button", "Use existing vault secret", { exact: true }).tap();
+    await dialog.getByLabel("Client secret vault name", { exact: true }).selectOption({ value: secretName });
+    await add.tap();
+    await expect(screen.getByRole("dialog", "Added google-drive")).toBeVisible();
+    const drive = await storedOAuth("google-drive");
+    expect(drive.clientSecret).toBe(oauth.clientSecret);
+    expect(drive.scope).toBe(
+      "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file",
+    );
+    const vault = await (await fetch(`${root}/vault`)).text();
+    const entries: { name: string; scope: string }[] = JSON.parse(vault);
+    expect(entries.flatMap((entry) => (entry.scope === "agent" ? [entry.name] : []))).toEqual([secretName]);
+    expect(vault).not.toContain(secret);
+  } finally {
+    await fetch(root, { method: "DELETE" });
   }
 });
 

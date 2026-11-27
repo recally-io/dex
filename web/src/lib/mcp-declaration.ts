@@ -15,9 +15,10 @@ export type McpHeaderDraft = {
 export type McpDraft = {
   name: string;
   url: string;
-  auth: "none" | "oauth" | "header";
   headers?: McpHeaderDraft[];
-};
+} & ({ auth: "none" | "oauth" | "header" } | GoogleMcpAuth);
+
+export type GoogleMcpAuth = { auth: "oauth-client"; scope: string; productApi?: string };
 
 export const mcpServerName = /^[A-Za-z0-9_-]{1,32}$/;
 const headerName = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
@@ -50,6 +51,7 @@ export async function saveMcpDeclaration(
   botId: string | undefined,
   body: McpServerInput,
   headers: McpHeaderDraft[],
+  newClientSecret?: string,
 ) {
   const scope = botId ? "agent" : "dex";
   const path = { botId: botId ?? "default" };
@@ -70,6 +72,13 @@ export async function saveMcpDeclaration(
     } else {
       values.set(name, value);
     }
+  }
+
+  if (body.oauth && newClientSecret) {
+    const key = `MCP_OAUTH_CLIENT_${id}`;
+
+    secrets.set(key, newClientSecret);
+    body.oauth.clientSecret = `vault:${key}`;
   }
 
   const keys = [...secrets.keys()];
@@ -99,7 +108,7 @@ export async function saveMcpDeclaration(
     const remaining = await removeSecrets();
 
     throw new Error(
-      `Could not store the header secrets. ${errorText(failed.reason)}${remaining.length ? ` Check Secrets for ${remaining.join(", ")}.` : ""}`,
+      `Could not store the MCP secrets. ${errorText(failed.reason)}${remaining.length ? ` Check Secrets for ${remaining.join(", ")}.` : ""}`,
       { cause: failed.reason },
     );
   }

@@ -91,9 +91,13 @@ Both catalogs debounce searches and load more results through the Dex API.
 sends the prompt from `src/lib/skill-install.ts`, and opens the transcript.
 The browser does not download the skill. Official MCP presets in
 `src/lib/mcp-presets.ts` and addable MCP Registry results open the same MCP
-dialog as a custom add. The default MCP target is Shared. The dialog saves
-secret HTTP header values to the selected vault and puts only references in
-the create request. The POST confirms the save independently of the status
+dialog as a custom add. Google Workspace presets use `oauth-client`. The
+dialog shows setup steps and a copyable callback URL. It preloads editable
+scopes and requires a registered client ID and secret. The Owner can paste a
+secret or select a name from the vault at the selected target level. The
+default MCP target is Shared. The dialog saves new OAuth client secrets and
+secret HTTP header values to the selected vault. The create request sends only
+references for secrets. The POST confirms the save independently of the status
 read. The dialog offers Try again if the read fails. Done is disabled while
 OAuth starts.
 

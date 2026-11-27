@@ -190,6 +190,22 @@ connect to servers. It shows connection state `idle` or `disabled`, no tools,
 and the OAuth grant state. It omits URLs and plain header and environment values.
 
 **Official presets** fill in a known server URL and its authentication method.
+The Google Workspace group includes Gmail, Drive, Docs, Sheets, Slides,
+Calendar, Chat, and Tasks. Each uses an `oauth-client` preset with suggested
+scopes and requires a pre-registered client. Follow the [Google Workspace
+setup guide](https://developers.google.com/workspace/guides/configure-mcp-servers).
+In Google Cloud, enable the services listed in the dialog and create a Web
+application client for an AI-powered agent. Add the callback URL shown in the
+form. Add the needed scopes to the consent screen. If the audience is External,
+add test users. To use Chat write tools, also configure a Chat app.
+
+The same Google client can serve all eight presets. Paste the client secret to
+save it to the selected vault, or select an existing secret at that level.
+Dex stores only `vault:NAME` in `oauth.clientSecret`. Edit the scope list to
+request only the access you need. The presets use Google's `/mcp/v1` endpoints.
+Some operations on those endpoints require Google form elicitation. The presets
+do not add an approval flow for those operations.
+
 **Search MCP Registry** uses `GET /api/integrations/catalog/mcp` to search the
 [official registry](https://registry.modelcontextprotocol.io/) for the latest
 versions. The API returns a cursor when another page is available. Only

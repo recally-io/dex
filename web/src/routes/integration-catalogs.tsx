@@ -113,7 +113,12 @@ export function SkillCatalog({
   );
 }
 
-const presetAuth = { none: "No sign-in", oauth: "Browser OAuth", header: "Token" };
+const presetAuth = {
+  none: "No sign-in",
+  oauth: "Browser OAuth",
+  header: "Token",
+  "oauth-client": "Registered OAuth client",
+};
 
 export function McpCatalog({ onAdd }: { onAdd: (draft: McpDraft) => void }) {
   const search = useCatalogSearch();

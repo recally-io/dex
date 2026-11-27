@@ -2,6 +2,19 @@ import type { McpDraft } from "./mcp-declaration";
 
 type Preset = McpDraft & { title: string };
 
+const driveScopes = ["drive.readonly", "drive.file"];
+
+function googlePreset(title: string, product: string, scopes: string[], productApi?: string): Preset {
+  return {
+    title,
+    name: product === "gmail" ? "gmail" : `google-${product}`,
+    url: `https://${product}mcp.googleapis.com/mcp/v1`,
+    auth: "oauth-client",
+    scope: scopes.map((scope) => `https://www.googleapis.com/auth/${scope}`).join(" "),
+    productApi,
+  };
+}
+
 export const mcpPresets: { group: string; servers: Preset[] }[] = [
   {
     group: "Work",
@@ -37,6 +50,61 @@ export const mcpPresets: { group: string; servers: Preset[] }[] = [
       { title: "Vercel", name: "vercel", url: "https://mcp.vercel.com", auth: "oauth" },
       { title: "Supabase", name: "supabase", url: "https://mcp.supabase.com/mcp", auth: "oauth" },
       { title: "Hugging Face", name: "hugging-face", url: "https://huggingface.co/mcp", auth: "none" },
+    ],
+  },
+  {
+    group: "Google Workspace",
+    servers: [
+      googlePreset(
+        "Gmail",
+        "gmail",
+        ["gmail.readonly", "gmail.compose", "gmail.modify"],
+        "gmail.googleapis.com",
+      ),
+      googlePreset("Google Drive", "drive", driveScopes, "drive.googleapis.com"),
+      googlePreset(
+        "Google Docs",
+        "docs",
+        [...driveScopes, "documents.readonly", "documents"],
+        "docs.googleapis.com",
+      ),
+      googlePreset(
+        "Google Sheets",
+        "sheets",
+        [...driveScopes, "spreadsheets.readonly", "spreadsheets"],
+        "sheets.googleapis.com",
+      ),
+      googlePreset(
+        "Google Slides",
+        "slides",
+        [...driveScopes, "presentations.readonly", "presentations"],
+        "slides.googleapis.com",
+      ),
+      googlePreset(
+        "Google Calendar",
+        "calendar",
+        [
+          "calendar.calendarlist.readonly",
+          "calendar.events.freebusy",
+          "calendar.events.readonly",
+          "calendar.events",
+        ],
+        "calendar-json.googleapis.com",
+      ),
+      googlePreset(
+        "Google Chat",
+        "chat",
+        [
+          "chat.spaces.readonly",
+          "chat.memberships.readonly",
+          "chat.messages.readonly",
+          "chat.messages.create",
+          "chat.users.readstate",
+          "chat.users.spacesettings",
+        ],
+        "chat.googleapis.com",
+      ),
+      googlePreset("Google Tasks", "tasks", ["tasks.readonly", "tasks"]),
     ],
   },
   {

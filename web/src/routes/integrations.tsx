@@ -32,6 +32,7 @@ import {
 import { errorText, refreshSessions } from "../lib/queries";
 import { buildSkillInstallPrompt, validSkillDirectory } from "../lib/skill-install";
 import { newId } from "../lib/utils";
+import { GoogleMcpClientFields, reusedClientSecret, type GoogleClientForm } from "./google-mcp-client";
 import { McpCatalog, SkillCatalog } from "./integration-catalogs";
 import {
   Configuration,
@@ -357,7 +358,7 @@ function InstallSkillDialog({
   );
 }
 
-type Auth = McpDraft["auth"];
+type Auth = Exclude<McpDraft["auth"], "oauth-client">;
 
 /** A saved declaration. savedAt tells a status read after the save from the list cached before it. */
 type Added = { name: string; auth: Auth; savedAt: number; bot?: BotTarget };
@@ -373,9 +374,16 @@ type HeaderRow = McpHeaderDraft & { id: string };
 function AddMcpServerDialog({ initialTarget, onClose, draft }: AddDialogProps & { draft?: McpDraft }) {
   const target = useTarget(initialTarget);
   const client = useQueryClient();
+  const google = draft?.auth === "oauth-client" ? draft : undefined;
   const [name, setName] = useState(draft?.name ?? "");
   const [url, setUrl] = useState(draft?.url ?? "");
-  const [auth, setAuth] = useState<Auth>(draft?.auth ?? "none");
+  const [auth, setAuth] = useState<Auth>(draft?.auth === "oauth-client" ? "oauth" : (draft?.auth ?? "none"));
+
+  const [googleClient, setGoogleClient] = useState<GoogleClientForm>({
+    id: "",
+    scope: google?.scope ?? "",
+    secret: { kind: "paste", value: "" },
+  });
 
   const [headers, setHeaders] = useState<HeaderRow[]>(
     () => draft?.headers?.map((row) => ({ ...row, id: newId() })) ?? [],
@@ -399,7 +407,12 @@ function AddMcpServerDialog({ initialTarget, onClose, draft }: AddDialogProps & 
         ? "Add a Client ID for this client secret."
         : undefined;
 
-  const advancedError = auth === "oauth" ? secretError : undefined;
+  const advancedError = auth === "oauth" && !google ? secretError : undefined;
+  const reused = reusedClientSecret(googleClient.secret, target.bot?.id);
+  const pasted = googleClient.secret.kind === "paste" ? googleClient.secret.value.trim() : "";
+
+  const googleReady =
+    !google || (!!googleClient.id.trim() && !!googleClient.scope.trim() && !!(pasted || reused));
 
   const advancedSet = [
     clientId.trim() ? "Client ID" : "",
@@ -416,6 +429,7 @@ function AddMcpServerDialog({ initialTarget, onClose, draft }: AddDialogProps & 
     !saving &&
     mcpServerName.test(name.trim()) &&
     !!url.trim() &&
+    googleReady &&
     !advancedError &&
     !headerError;
 
@@ -424,8 +438,14 @@ function AddMcpServerDialog({ initialTarget, onClose, draft }: AddDialogProps & 
 
     const body: McpServerInput = { name: name.trim(), url: url.trim() };
 
-    // No authentication sends no OAuth settings, even if Advanced options hold values.
-    if (auth === "oauth") {
+    if (google) {
+      body.oauth = {
+        clientId: googleClient.id.trim(),
+        scope: googleClient.scope.trim().replace(/\s+/g, " "),
+      };
+
+      if (reused) body.oauth.clientSecret = `vault:${reused}`;
+    } else if (auth === "oauth") {
       const config: NonNullable<McpServerInput["oauth"]> = {};
 
       if (clientId.trim()) config.clientId = clientId.trim();
@@ -443,9 +463,12 @@ function AddMcpServerDialog({ initialTarget, onClose, draft }: AddDialogProps & 
     setSaveError(undefined);
 
     try {
-      await saveMcpDeclaration(bot?.id, body, auth === "header" ? headers : []);
+      await saveMcpDeclaration(bot?.id, body, auth === "header" ? headers : [], google ? pasted : undefined);
       // The POST decides the outcome. The status read that follows can fail on its own.
       setHeaders([]);
+
+      if (google) setGoogleClient({ ...googleClient, secret: { kind: "paste", value: "" } });
+
       setAdded({ name: body.name, auth, savedAt: Date.now(), bot });
 
       if (bot) {
@@ -457,7 +480,8 @@ function AddMcpServerDialog({ initialTarget, onClose, draft }: AddDialogProps & 
     } catch (error) {
       setSaveError(errorText(error));
     } finally {
-      if (auth === "header") void client.invalidateQueries({ queryKey: [{ _id: "listVault" }] });
+      if (auth === "header" || (google && pasted))
+        void client.invalidateQueries({ queryKey: [{ _id: "listVault" }] });
       setSaving(false);
     }
   }
@@ -512,6 +536,7 @@ function AddMcpServerDialog({ initialTarget, onClose, draft }: AddDialogProps & 
               type="url"
               inputMode="url"
               value={url}
+              readOnly={!!google}
               disabled={saving}
               onChange={(event) => setUrl(event.target.value)}
               autoComplete="off"
@@ -519,34 +544,45 @@ function AddMcpServerDialog({ initialTarget, onClose, draft }: AddDialogProps & 
             />
           )}
         </Field>
-        <div className="flex flex-col gap-1.5">
-          <span aria-hidden className="text-[12.5px] font-medium text-foreground">
-            Authentication
-          </span>
-          <RadioSegments
-            label="Authentication"
-            options={authOptions}
-            value={auth}
-            onChange={(value) => {
-              if (!saving) setAuth(value);
-            }}
-            className="[&_button]:px-2 [&_button]:text-xs"
+        {google ? (
+          <GoogleMcpClientFields
+            preset={google}
+            botId={target.bot?.id}
+            targetValid={target.valid}
+            pending={saving}
+            value={googleClient}
+            onChange={setGoogleClient}
           />
-          <p className="text-[12px] text-muted-foreground">
-            {auth === "none"
-              ? "For a public server. Dex sends no credentials."
-              : auth === "oauth"
-                ? "You sign in to the server in this browser after you add it. Most servers need nothing else."
-                : "Dex sends these headers to this server. Check the URL before you enter secrets."}
-          </p>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <span aria-hidden className="text-[12.5px] font-medium text-foreground">
+              Authentication
+            </span>
+            <RadioSegments
+              label="Authentication"
+              options={authOptions}
+              value={auth}
+              onChange={(value) => {
+                if (!saving) setAuth(value);
+              }}
+              className="[&_button]:px-2 [&_button]:text-xs"
+            />
+            <p className="text-[12px] text-muted-foreground">
+              {auth === "none"
+                ? "For a public server. Dex sends no credentials."
+                : auth === "oauth"
+                  ? "You sign in to the server in this browser after you add it. Most servers need nothing else."
+                  : "Dex sends these headers to this server. Check the URL before you enter secrets."}
+            </p>
+          </div>
+        )}
         {auth === "header" ? (
           <div className="space-y-2">
             <McpHeaderFields rows={headers} onChange={setHeaders} disabled={saving} />
             {headerError ? <p className="text-xs text-muted-foreground">{headerError}</p> : null}
           </div>
         ) : null}
-        {auth === "oauth" ? (
+        {auth === "oauth" && !google ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Button
