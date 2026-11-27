@@ -1,0 +1,512 @@
+{
+  "name": "phone-open-dark",
+  "status": "FAIL",
+  "failures": [
+    "crop search: 5696/5796 different; 56/351 active pixels unmatched (15.95%)"
+  ],
+  "edges": {
+    "board": {
+      "react": [
+        8,
+        708,
+        251,
+        740
+      ],
+      "nsgo": [
+        8,
+        708,
+        251,
+        740
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "bot-row-1": {
+      "react": [
+        8,
+        48,
+        251,
+        84
+      ],
+      "nsgo": [
+        8,
+        48,
+        251,
+        84
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "bot-row-2": {
+      "react": [
+        8,
+        88,
+        251,
+        124
+      ],
+      "nsgo": [
+        8,
+        88,
+        251,
+        124
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "bot-row-3": {
+      "react": [
+        8,
+        128,
+        251,
+        164
+      ],
+      "nsgo": [
+        8,
+        128,
+        251,
+        164
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "close-navigation": {
+      "react": [
+        8,
+        8,
+        40,
+        40
+      ],
+      "nsgo": [
+        8,
+        8,
+        40,
+        40
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "drawer": {
+      "react": [
+        0,
+        0,
+        260,
+        820
+      ],
+      "nsgo": [
+        0,
+        0,
+        260,
+        820
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "integrations": {
+      "react": [
+        8,
+        744,
+        251,
+        776
+      ],
+      "nsgo": [
+        8,
+        744,
+        251,
+        776
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "new-bot": {
+      "react": [
+        8,
+        172,
+        251,
+        204
+      ],
+      "nsgo": [
+        8,
+        172,
+        251,
+        204
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "search": {
+      "react": [
+        44,
+        10,
+        251,
+        38
+      ],
+      "nsgo": [
+        44,
+        10,
+        251,
+        38
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "settings": {
+      "react": [
+        8,
+        780,
+        251,
+        812
+      ],
+      "nsgo": [
+        8,
+        780,
+        251,
+        812
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "sidebar": {
+      "react": [
+        0,
+        0,
+        260,
+        820
+      ],
+      "nsgo": [
+        0,
+        0,
+        260,
+        820
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    }
+  },
+  "pixels": {
+    "whole": {
+      "width": 390,
+      "height": 820,
+      "pixels": 319800,
+      "exact": 21853,
+      "strong": 369,
+      "max": 129
+    },
+    "stats": {
+      "board": {
+        "area": 7776,
+        "exact": 65,
+        "strong": 6,
+        "active": 248,
+        "unmatched": 2,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "bot-row-1": {
+        "area": 8748,
+        "exact": 46,
+        "strong": 0,
+        "active": 511,
+        "unmatched": 0,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "bot-row-2": {
+        "area": 8748,
+        "exact": 54,
+        "strong": 0,
+        "active": 551,
+        "unmatched": 0,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "bot-row-3": {
+        "area": 8748,
+        "exact": 115,
+        "strong": 29,
+        "active": 798,
+        "unmatched": 21,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "close-navigation": {
+        "area": 1024,
+        "exact": 8,
+        "strong": 0,
+        "active": 57,
+        "unmatched": 0,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "integrations": {
+        "area": 7776,
+        "exact": 78,
+        "strong": 0,
+        "active": 420,
+        "unmatched": 0,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "new-bot": {
+        "area": 7776,
+        "exact": 18,
+        "strong": 0,
+        "active": 253,
+        "unmatched": 0,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "search": {
+        "area": 5796,
+        "exact": 5696,
+        "strong": 97,
+        "active": 351,
+        "unmatched": 56,
+        "baseA": [
+          38,
+          32,
+          30,
+          255
+        ],
+        "baseB": [
+          37,
+          31,
+          29,
+          255
+        ],
+        "fillDelta": 1
+      },
+      "settings": {
+        "area": 7776,
+        "exact": 69,
+        "strong": 22,
+        "active": 324,
+        "unmatched": 16,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "drawer-exposed-header": {
+        "area": 6240,
+        "exact": 1195,
+        "strong": 10,
+        "active": 704,
+        "unmatched": 10,
+        "baseA": [
+          11,
+          9,
+          8,
+          255
+        ],
+        "baseB": [
+          11,
+          9,
+          8,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "drawer-exposed-tail": {
+        "area": 23400,
+        "exact": 3291,
+        "strong": 10,
+        "active": 1822,
+        "unmatched": 10,
+        "baseA": [
+          11,
+          9,
+          8,
+          255
+        ],
+        "baseB": [
+          11,
+          9,
+          8,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "drawer-backdrop": {
+        "area": 144,
+        "exact": 0,
+        "strong": 0,
+        "active": 0,
+        "unmatched": 0,
+        "baseA": [
+          11,
+          9,
+          8,
+          255
+        ],
+        "baseB": [
+          11,
+          9,
+          8,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "sidebar-background": {
+        "area": 144,
+        "exact": 0,
+        "strong": 0,
+        "active": 0,
+        "unmatched": 0,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      }
+    }
+  }
+}

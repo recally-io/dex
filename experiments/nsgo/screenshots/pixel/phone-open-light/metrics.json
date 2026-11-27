@@ -1,0 +1,512 @@
+{
+  "name": "phone-open-light",
+  "status": "FAIL",
+  "failures": [
+    "crop search: 5655/5796 different; 58/356 active pixels unmatched (16.29%)"
+  ],
+  "edges": {
+    "board": {
+      "react": [
+        8,
+        708,
+        251,
+        740
+      ],
+      "nsgo": [
+        8,
+        708,
+        251,
+        740
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "bot-row-1": {
+      "react": [
+        8,
+        48,
+        251,
+        84
+      ],
+      "nsgo": [
+        8,
+        48,
+        251,
+        84
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "bot-row-2": {
+      "react": [
+        8,
+        88,
+        251,
+        124
+      ],
+      "nsgo": [
+        8,
+        88,
+        251,
+        124
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "bot-row-3": {
+      "react": [
+        8,
+        128,
+        251,
+        164
+      ],
+      "nsgo": [
+        8,
+        128,
+        251,
+        164
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "close-navigation": {
+      "react": [
+        8,
+        8,
+        40,
+        40
+      ],
+      "nsgo": [
+        8,
+        8,
+        40,
+        40
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "drawer": {
+      "react": [
+        0,
+        0,
+        260,
+        820
+      ],
+      "nsgo": [
+        0,
+        0,
+        260,
+        820
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "integrations": {
+      "react": [
+        8,
+        744,
+        251,
+        776
+      ],
+      "nsgo": [
+        8,
+        744,
+        251,
+        776
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "new-bot": {
+      "react": [
+        8,
+        172,
+        251,
+        204
+      ],
+      "nsgo": [
+        8,
+        172,
+        251,
+        204
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "search": {
+      "react": [
+        44,
+        10,
+        251,
+        38
+      ],
+      "nsgo": [
+        44,
+        10,
+        251,
+        38
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "settings": {
+      "react": [
+        8,
+        780,
+        251,
+        812
+      ],
+      "nsgo": [
+        8,
+        780,
+        251,
+        812
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "sidebar": {
+      "react": [
+        0,
+        0,
+        260,
+        820
+      ],
+      "nsgo": [
+        0,
+        0,
+        260,
+        820
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    }
+  },
+  "pixels": {
+    "whole": {
+      "width": 390,
+      "height": 820,
+      "pixels": 319800,
+      "exact": 23986,
+      "strong": 354,
+      "max": 136
+    },
+    "stats": {
+      "board": {
+        "area": 7776,
+        "exact": 64,
+        "strong": 6,
+        "active": 248,
+        "unmatched": 2,
+        "baseA": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "baseB": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "bot-row-1": {
+        "area": 8748,
+        "exact": 38,
+        "strong": 0,
+        "active": 196,
+        "unmatched": 0,
+        "baseA": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "baseB": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "bot-row-2": {
+        "area": 8748,
+        "exact": 46,
+        "strong": 0,
+        "active": 543,
+        "unmatched": 0,
+        "baseA": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "baseB": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "bot-row-3": {
+        "area": 8748,
+        "exact": 87,
+        "strong": 29,
+        "active": 473,
+        "unmatched": 21,
+        "baseA": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "baseB": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "close-navigation": {
+        "area": 1024,
+        "exact": 23,
+        "strong": 0,
+        "active": 57,
+        "unmatched": 0,
+        "baseA": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "baseB": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "integrations": {
+        "area": 7776,
+        "exact": 100,
+        "strong": 0,
+        "active": 422,
+        "unmatched": 0,
+        "baseA": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "baseB": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "new-bot": {
+        "area": 7776,
+        "exact": 35,
+        "strong": 0,
+        "active": 254,
+        "unmatched": 0,
+        "baseA": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "baseB": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "search": {
+        "area": 5796,
+        "exact": 5655,
+        "strong": 97,
+        "active": 356,
+        "unmatched": 58,
+        "baseA": [
+          246,
+          245,
+          245,
+          255
+        ],
+        "baseB": [
+          246,
+          245,
+          244,
+          255
+        ],
+        "fillDelta": 1
+      },
+      "settings": {
+        "area": 7776,
+        "exact": 83,
+        "strong": 22,
+        "active": 324,
+        "unmatched": 16,
+        "baseA": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "baseB": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "drawer-exposed-header": {
+        "area": 6240,
+        "exact": 1478,
+        "strong": 10,
+        "active": 695,
+        "unmatched": 10,
+        "baseA": [
+          229,
+          229,
+          229,
+          255
+        ],
+        "baseB": [
+          229,
+          229,
+          229,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "drawer-exposed-tail": {
+        "area": 23400,
+        "exact": 3652,
+        "strong": 10,
+        "active": 1138,
+        "unmatched": 10,
+        "baseA": [
+          229,
+          229,
+          229,
+          255
+        ],
+        "baseB": [
+          229,
+          229,
+          229,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "drawer-backdrop": {
+        "area": 144,
+        "exact": 0,
+        "strong": 0,
+        "active": 0,
+        "unmatched": 0,
+        "baseA": [
+          229,
+          229,
+          229,
+          255
+        ],
+        "baseB": [
+          229,
+          229,
+          229,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "sidebar-background": {
+        "area": 144,
+        "exact": 0,
+        "strong": 0,
+        "active": 0,
+        "unmatched": 0,
+        "baseA": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "baseB": [
+          251,
+          250,
+          249,
+          255
+        ],
+        "fillDelta": 0
+      }
+    }
+  }
+}

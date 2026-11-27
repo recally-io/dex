@@ -1,0 +1,699 @@
+{
+  "name": "desktop-closed-light",
+  "status": "FAIL",
+  "failures": [
+    "edges user-bubble Δ[L,T,R,B]=[-0.42, -1.38, 0.00, -0.75] px",
+    "crop activity: 110/2268 different; 20/313 active pixels unmatched (6.39%)",
+    "crop automations: 77/812 different; 19/138 active pixels unmatched (13.77%)",
+    "crop bot-settings: 82/812 different; 10/120 active pixels unmatched (8.33%)",
+    "crop header-title: 85/504 different; 35/124 active pixels unmatched (28.23%)",
+    "crop send: 176/784 different; 12/169 active pixels unmatched (7.10%)",
+    "crop sidebar-toggle: 92/1056 different; 40/112 active pixels unmatched (35.71%)",
+    "crop user-bubble: 2495/13662 different; 958/1634 active pixels unmatched (58.63%)",
+    "crop transcript-tail: 4482/112480 different; 1003/3765 active pixels unmatched (26.64%)"
+  ],
+  "edges": {
+    "activity": {
+      "react": [
+        305,
+        743,
+        385.6875,
+        771
+      ],
+      "nsgo": [
+        305,
+        743,
+        386,
+        771
+      ],
+      "deltas": [
+        0,
+        0,
+        0.3125,
+        0
+      ],
+      "max": 0.3125
+    },
+    "artifacts": {
+      "react": [
+        1122,
+        9.5,
+        1150,
+        37.5
+      ],
+      "nsgo": [
+        1122,
+        10,
+        1150,
+        38
+      ],
+      "deltas": [
+        0,
+        0.5,
+        0,
+        0.5
+      ],
+      "max": 0.5
+    },
+    "attach": {
+      "react": [
+        273,
+        743,
+        301,
+        771
+      ],
+      "nsgo": [
+        273,
+        743,
+        301,
+        771
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "automations": {
+      "react": [
+        1214,
+        9.5,
+        1242,
+        37.5
+      ],
+      "nsgo": [
+        1214,
+        10,
+        1242,
+        38
+      ],
+      "deltas": [
+        0,
+        0.5,
+        0,
+        0.5
+      ],
+      "max": 0.5
+    },
+    "bot-settings": {
+      "react": [
+        1244,
+        9.5,
+        1272,
+        37.5
+      ],
+      "nsgo": [
+        1244,
+        10,
+        1272,
+        38
+      ],
+      "deltas": [
+        0,
+        0.5,
+        0,
+        0.5
+      ],
+      "max": 0.5
+    },
+    "composer": {
+      "react": [
+        260,
+        682,
+        1020,
+        780
+      ],
+      "nsgo": [
+        260,
+        682,
+        1020,
+        780
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "header": {
+      "react": [
+        0,
+        0,
+        1280,
+        48
+      ],
+      "nsgo": [
+        0,
+        0,
+        1280,
+        48
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "header-title": {
+      "react": [
+        646.171875,
+        13.75,
+        669.828125,
+        33.25
+      ],
+      "nsgo": [
+        646,
+        14,
+        670,
+        34
+      ],
+      "deltas": [
+        -0.171875,
+        0.25,
+        0.171875,
+        0.75
+      ],
+      "max": 0.75
+    },
+    "input": {
+      "react": [
+        273,
+        691,
+        1007,
+        735
+      ],
+      "nsgo": [
+        273,
+        691,
+        1007,
+        735
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "new-session": {
+      "react": [
+        1154,
+        9.5,
+        1182,
+        37.5
+      ],
+      "nsgo": [
+        1154,
+        10,
+        1182,
+        38
+      ],
+      "deltas": [
+        0,
+        0.5,
+        0,
+        0.5
+      ],
+      "max": 0.5
+    },
+    "reply-text": {
+      "react": [
+        292,
+        623.75,
+        972,
+        650
+      ],
+      "nsgo": [
+        292,
+        623,
+        972,
+        650
+      ],
+      "deltas": [
+        0,
+        -0.75,
+        0,
+        0
+      ],
+      "max": 0.75
+    },
+    "send": {
+      "react": [
+        979,
+        743,
+        1007,
+        771
+      ],
+      "nsgo": [
+        979,
+        743,
+        1007,
+        771
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "sessions": {
+      "react": [
+        1184,
+        9.5,
+        1212,
+        37.5
+      ],
+      "nsgo": [
+        1184,
+        10,
+        1212,
+        38
+      ],
+      "deltas": [
+        0,
+        0.5,
+        0,
+        0.5
+      ],
+      "max": 0.5
+    },
+    "sidebar-toggle": {
+      "react": [
+        12,
+        7.5,
+        44,
+        39.5
+      ],
+      "nsgo": [
+        12,
+        8,
+        44,
+        40
+      ],
+      "deltas": [
+        0,
+        0.5,
+        0,
+        0.5
+      ],
+      "max": 0.5
+    },
+    "user-bubble": {
+      "react": [
+        691.421875,
+        535.375,
+        988,
+        579.75
+      ],
+      "nsgo": [
+        691,
+        534,
+        988,
+        579
+      ],
+      "deltas": [
+        -0.421875,
+        -1.375,
+        0,
+        -0.75
+      ],
+      "max": 1.375
+    }
+  },
+  "pixels": {
+    "whole": {
+      "width": 1280,
+      "height": 800,
+      "pixels": 1024000,
+      "exact": 5361,
+      "strong": 3487,
+      "max": 246
+    },
+    "stats": {
+      "activity": {
+        "area": 2268,
+        "exact": 110,
+        "strong": 24,
+        "active": 313,
+        "unmatched": 20,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "artifacts": {
+        "area": 812,
+        "exact": 31,
+        "strong": 2,
+        "active": 110,
+        "unmatched": 1,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "attach": {
+        "area": 784,
+        "exact": 40,
+        "strong": 0,
+        "active": 44,
+        "unmatched": 0,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "automations": {
+        "area": 812,
+        "exact": 77,
+        "strong": 30,
+        "active": 138,
+        "unmatched": 19,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "bot-settings": {
+        "area": 812,
+        "exact": 82,
+        "strong": 32,
+        "active": 120,
+        "unmatched": 10,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "composer": {
+        "area": 74480,
+        "exact": 389,
+        "strong": 150,
+        "active": 3131,
+        "unmatched": 32,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "header-title": {
+        "area": 504,
+        "exact": 85,
+        "strong": 62,
+        "active": 124,
+        "unmatched": 35,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "input": {
+        "area": 32296,
+        "exact": 39,
+        "strong": 0,
+        "active": 338,
+        "unmatched": 0,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "new-session": {
+        "area": 812,
+        "exact": 40,
+        "strong": 0,
+        "active": 44,
+        "unmatched": 0,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "reply-text": {
+        "area": 18360,
+        "exact": 1748,
+        "strong": 1479,
+        "active": 1805,
+        "unmatched": 0,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "send": {
+        "area": 784,
+        "exact": 176,
+        "strong": 126,
+        "active": 169,
+        "unmatched": 12,
+        "baseA": [
+          213,
+          207,
+          205,
+          255
+        ],
+        "baseB": [
+          213,
+          207,
+          205,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "sessions": {
+        "area": 812,
+        "exact": 54,
+        "strong": 0,
+        "active": 76,
+        "unmatched": 0,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "sidebar-toggle": {
+        "area": 1056,
+        "exact": 92,
+        "strong": 40,
+        "active": 112,
+        "unmatched": 40,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "user-bubble": {
+        "area": 13662,
+        "exact": 2495,
+        "strong": 1538,
+        "active": 1634,
+        "unmatched": 958,
+        "baseA": [
+          243,
+          241,
+          241,
+          255
+        ],
+        "baseB": [
+          243,
+          241,
+          241,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "transcript-tail": {
+        "area": 112480,
+        "exact": 4482,
+        "strong": 3171,
+        "active": 3765,
+        "unmatched": 1003,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "header-band": {
+        "area": 61440,
+        "exact": 490,
+        "strong": 166,
+        "active": 2356,
+        "unmatched": 105,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "page-background": {
+        "area": 144,
+        "exact": 0,
+        "strong": 0,
+        "active": 0,
+        "unmatched": 0,
+        "baseA": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "baseB": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "fillDelta": 0
+      }
+    },
+    "enabledSend": {
+      "react": [
+        12,
+        10,
+        9,
+        255
+      ],
+      "nsgo": [
+        12,
+        10,
+        9,
+        255
+      ],
+      "delta": 0
+    }
+  }
+}

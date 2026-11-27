@@ -1,0 +1,577 @@
+{
+  "name": "phone-closed-dark",
+  "status": "FAIL",
+  "failures": [
+    "edges user-bubble Δ[L,T,R,B]=[-0.42, -1.38, 0.00, -0.75] px",
+    "crop activity: 103/2268 different; 16/312 active pixels unmatched (5.13%)",
+    "crop bot-menu: 236/2175 different; 93/223 active pixels unmatched (41.70%)",
+    "crop composer: 1888/35868 different; 334/2674 active pixels unmatched (12.49%)",
+    "crop header-title: 90/504 different; 34/124 active pixels unmatched (27.42%)",
+    "crop input: 662/14960 different; 306/590 active pixels unmatched (51.86%)",
+    "crop send: 168/784 different; 12/169 active pixels unmatched (7.10%)",
+    "crop user-bubble: 2496/13662 different; 920/2493 active pixels unmatched (36.90%)",
+    "crop transcript-tail: 5677/65880 different; 1348/16377 active pixels unmatched (8.23%)",
+    "crop header-band: 834/18720 different; 131/1307 active pixels unmatched (10.02%)"
+  ],
+  "edges": {
+    "activity": {
+      "react": [
+        57,
+        771,
+        137.6875,
+        799
+      ],
+      "nsgo": [
+        57,
+        771,
+        138,
+        799
+      ],
+      "deltas": [
+        0,
+        0,
+        0.3125,
+        0
+      ],
+      "max": 0.3125
+    },
+    "artifacts": {
+      "react": [
+        275.6875,
+        9.5,
+        303.6875,
+        37.5
+      ],
+      "nsgo": [
+        276,
+        10,
+        304,
+        38
+      ],
+      "deltas": [
+        0.3125,
+        0.5,
+        0.3125,
+        0.5
+      ],
+      "max": 0.5
+    },
+    "attach": {
+      "react": [
+        25,
+        771,
+        53,
+        799
+      ],
+      "nsgo": [
+        25,
+        771,
+        53,
+        799
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "bot-menu": {
+      "react": [
+        307.6875,
+        9.5,
+        382,
+        37.5
+      ],
+      "nsgo": [
+        308,
+        10,
+        382,
+        38
+      ],
+      "deltas": [
+        0.3125,
+        0.5,
+        0,
+        0.5
+      ],
+      "max": 0.5
+    },
+    "composer": {
+      "react": [
+        12,
+        710,
+        378,
+        808
+      ],
+      "nsgo": [
+        12,
+        710,
+        378,
+        808
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "header": {
+      "react": [
+        0,
+        0,
+        390,
+        48
+      ],
+      "nsgo": [
+        0,
+        0,
+        390,
+        48
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "header-title": {
+      "react": [
+        199.171875,
+        13.75,
+        222.828125,
+        33.25
+      ],
+      "nsgo": [
+        199,
+        14,
+        223,
+        34
+      ],
+      "deltas": [
+        -0.171875,
+        0.25,
+        0.171875,
+        0.75
+      ],
+      "max": 0.75
+    },
+    "input": {
+      "react": [
+        25,
+        719,
+        365,
+        763
+      ],
+      "nsgo": [
+        25,
+        719,
+        365,
+        763
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "open-navigation": {
+      "react": [
+        8,
+        5.5,
+        44,
+        41.5
+      ],
+      "nsgo": [
+        8,
+        6,
+        44,
+        42
+      ],
+      "deltas": [
+        0,
+        0.5,
+        0,
+        0.5
+      ],
+      "max": 0.5
+    },
+    "reply-text": {
+      "react": [
+        16,
+        619.75,
+        374,
+        646
+      ],
+      "nsgo": [
+        16,
+        619,
+        374,
+        646
+      ],
+      "deltas": [
+        0,
+        -0.75,
+        0,
+        0
+      ],
+      "max": 0.75
+    },
+    "send": {
+      "react": [
+        337,
+        771,
+        365,
+        799
+      ],
+      "nsgo": [
+        337,
+        771,
+        365,
+        799
+      ],
+      "deltas": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "max": 0
+    },
+    "user-bubble": {
+      "react": [
+        77.421875,
+        531.375,
+        374,
+        575.75
+      ],
+      "nsgo": [
+        77,
+        530,
+        374,
+        575
+      ],
+      "deltas": [
+        -0.421875,
+        -1.375,
+        0,
+        -0.75
+      ],
+      "max": 1.375
+    }
+  },
+  "pixels": {
+    "whole": {
+      "width": 390,
+      "height": 820,
+      "pixels": 319800,
+      "exact": 8399,
+      "strong": 5565,
+      "max": 240
+    },
+    "stats": {
+      "activity": {
+        "area": 2268,
+        "exact": 103,
+        "strong": 20,
+        "active": 312,
+        "unmatched": 16,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "artifacts": {
+        "area": 841,
+        "exact": 31,
+        "strong": 2,
+        "active": 110,
+        "unmatched": 1,
+        "baseA": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "baseB": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "attach": {
+        "area": 784,
+        "exact": 43,
+        "strong": 0,
+        "active": 44,
+        "unmatched": 0,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "bot-menu": {
+        "area": 2175,
+        "exact": 236,
+        "strong": 175,
+        "active": 223,
+        "unmatched": 93,
+        "baseA": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "baseB": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "composer": {
+        "area": 35868,
+        "exact": 1888,
+        "strong": 698,
+        "active": 2674,
+        "unmatched": 334,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "header-title": {
+        "area": 504,
+        "exact": 90,
+        "strong": 61,
+        "active": 124,
+        "unmatched": 34,
+        "baseA": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "baseB": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "input": {
+        "area": 14960,
+        "exact": 662,
+        "strong": 552,
+        "active": 590,
+        "unmatched": 306,
+        "baseA": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "baseB": [
+          29,
+          24,
+          22,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "open-navigation": {
+        "area": 1332,
+        "exact": 60,
+        "strong": 3,
+        "active": 84,
+        "unmatched": 3,
+        "baseA": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "baseB": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "reply-text": {
+        "area": 9666,
+        "exact": 1858,
+        "strong": 1478,
+        "active": 1805,
+        "unmatched": 0,
+        "baseA": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "baseB": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "send": {
+        "area": 784,
+        "exact": 168,
+        "strong": 126,
+        "active": 169,
+        "unmatched": 12,
+        "baseA": [
+          77,
+          67,
+          63,
+          255
+        ],
+        "baseB": [
+          77,
+          67,
+          63,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "user-bubble": {
+        "area": 13662,
+        "exact": 2496,
+        "strong": 2110,
+        "active": 2493,
+        "unmatched": 920,
+        "baseA": [
+          43,
+          36,
+          34,
+          255
+        ],
+        "baseB": [
+          43,
+          36,
+          34,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "transcript-tail": {
+        "area": 65880,
+        "exact": 5677,
+        "strong": 4626,
+        "active": 16377,
+        "unmatched": 1348,
+        "baseA": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "baseB": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "header-band": {
+        "area": 18720,
+        "exact": 834,
+        "strong": 241,
+        "active": 1307,
+        "unmatched": 131,
+        "baseA": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "baseB": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "fillDelta": 0
+      },
+      "page-background": {
+        "area": 144,
+        "exact": 0,
+        "strong": 0,
+        "active": 0,
+        "unmatched": 0,
+        "baseA": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "baseB": [
+          12,
+          10,
+          9,
+          255
+        ],
+        "fillDelta": 0
+      }
+    },
+    "enabledSend": {
+      "react": [
+        251,
+        250,
+        249,
+        255
+      ],
+      "nsgo": [
+        251,
+        250,
+        249,
+        255
+      ],
+      "delta": 0
+    }
+  }
+}
