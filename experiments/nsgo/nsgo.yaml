@@ -1,6 +1,9 @@
-name: Dex Chat
+name: Dex Workspace
 id: io.recally.dex.chatpoc
 version: 0.1.0
+
+web:
+  base: /
 
 build:
   output: dist

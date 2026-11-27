@@ -1,38 +1,70 @@
-# Dex chat with NSGo
+# Dex Workspace with NSGo
 
-This experiment uses one Go screen for macOS, iOS and the web. It reads the default Bot's Main session from dex over HTTP and SSE. The bot runs on the dex host. The production UI and the root Go module do not use NSGo.
+This experiment is a Dex client for macOS, the iOS Simulator, and the web. It uses one Go UI and the existing [Dex HTTP API](../../api/openapi.yaml). Dex still runs the bots and stores their data. The [React web UI](../../web/AGENTS.md) remains the production client.
 
-## Try it
+The NSGo workspace follows the React UI layout: a Bot sidebar on wide screens, a navigation drawer on narrow screens, and a main area for chat, the Board, and settings. Open the two clients side by side to compare them. Full layout and feature parity is not an acceptance result.
 
-Use the [dex development setup](../../docs/dev/development.md). The preview needs `jq`, the installed web dependencies, and Go 1.27.3 or later for this module. Go can select the required toolchain from `go.mod`. The module pins NSGo 0.3.4; no global NSGo install is necessary.
+## Try the workspace
 
-1. From the repository root, run `mise run poc:nsgo-preview`.
-2. Open <http://127.0.0.1:19487/> and press **Connect**.
-3. Type a message. Return adds a line break. Press **发送** to send. The test provider replies with `echo: <message>`.
-4. Press **Reconnect**, or reload the browser and connect again. The latest snapshot should show each message once.
-5. Stop the preview with Ctrl+C. It removes the temporary dex home and data directory.
+Use the [Dex development setup](../../docs/dev/development.md). The preview needs `jq`, the installed web dependencies, and Go 1.27.3. The module pins NSGo 0.3.4. You do not need a global NSGo install.
 
-The preview serves the built Web app and proxies `/api` to its own loopback-only dex on port 19486. It does not use a provider key or `~/.dex`. Use the exact browser address above: `localhost` is a different origin from `127.0.0.1`.
-
-## Try another target
-
-Keep the preview running on the Mac. From `experiments/nsgo`, use `go tool nsgo dev` for macOS or `go tool nsgo dev -target ios_simulator` for a local iOS simulator.
-
-`go tool nsgo build` builds the targets in `nsgo.yaml`. A successful build does not verify input, scrolling or network access on the device. A physical iPhone cannot reach a Mac through the iPhone's loopback address. The current iOS preview is simulator-only. Do not expose this unauthenticated preview on a network.
-
-## What to check
-
-- Compose Chinese with a system keyboard. Confirm a candidate with Return. The draft must stay in the composer until you press the send button.
-- Open the same chat on two targets. Check that each sees the other's reply. Scroll up during a reply and use **最新消息** to return to the end.
-- Put the mobile app in the background, send a message on desktop, return and press **Reconnect**. Check for missing or duplicate messages.
-- In a fresh browser profile, measure the transfer and the time until **Connect** works with a slow network. Localhost timing does not predict a mobile cold start.
-
-In this build, the raw Wasm file is 25,287,929 bytes and the Brotli file is 5,200,513 bytes; a curl GET for the Wasm URL used on first load sent `Accept-Encoding: br, gzip` to `127.0.0.1:19487` and received HTTP 200 with no `Content-Encoding` and a 25,287,929-byte body, so the preview did not negotiate compression for that URL.
-
-Keep the isolated preview running. From `experiments/nsgo`, run this command to check chat in a native macOS window:
+From the repository root, run:
 
 ```sh
-mise exec -- go tool nsgo test -target macos -activate -env DEX_NSGO_POC_TEST=1 -run TestUserSendsChinese
+mise run poc:nsgo-preview
 ```
 
-The PoC displays plain text from the current snapshot and stream. It does not page through older history, render tool calls or Markdown, send attachments, authenticate to a remote host, or deliver push notifications. Reconnection is manual. Test on a physical iPhone before making a migration decision.
+- Open the **NSGo client** at <http://127.0.0.1:19487/>.
+- Open the **original React UI** at <http://127.0.0.1:19486/>. Both clients use the same temporary Dex, Bot, and Board. Changes in one client are visible in the other.
+- Send a message in a Main chat. The test model replies with `echo: <message>`. Use the seeded Task to compare how each client opens a linked conversation or the assigned Bot's Main chat.
+
+Use `127.0.0.1` in both URLs. The preview does not use a real provider key or `~/.dex`. Stop it with Ctrl+C to remove the temporary Dex home and data. Do not expose this unauthenticated preview on a network.
+
+With the trial preview running, start a native client from `experiments/nsgo`:
+
+```sh
+mise exec -- go tool nsgo dev
+mise exec -- go tool nsgo dev -target ios_simulator
+```
+
+The first command opens the macOS client. The second opens the iOS Simulator client. A physical iPhone cannot reach the Mac through the iPhone's loopback address.
+
+## What the client implements
+
+- **Workspace and chat.** Switch Bots, create a Bot with the default settings, and search Bot names and session titles. Open Main and other sessions. Send text, see live replies and basic tool or error entries, reconnect, and stop a run when the server permits it. Create, archive, and restore eligible sessions.
+- **Board and automation.** Create a Task, read its details, change its status, add a note, or send a message to the assigned Bot. Open a linked conversation or the assigned Bot's Main chat. Create a paused interval automation, enable or pause it, run it now, and open a session from its run history.
+- **Settings and files.** Edit a Bot's name, primary model, thinking level, fallback model, and instructions. Restore an archived Bot. View shared settings and integrations. View Bot Skills, MCP servers, and channel status. Reload Bot tools, disconnect a channel, and manage Bot secrets. List artifacts and preview supported UTF-8 files up to 64 KiB as plain text.
+
+## Limits
+
+The client does not load older transcript pages, send attachments, or render Markdown. It does not replace the React UI for provider setup, plugin controls, OAuth, channel setup, or other admin work. It does not send push notifications. The trial does not validate remote token login, real provider or channel access, or operation on a physical iPhone.
+
+## Run a native acceptance check
+
+Use a separate temporary Dex for tests that write data. From the repository root, start the dedicated preview in a separate terminal:
+
+```sh
+NSGO_PREVIEW_PORT=19489 mise run poc:nsgo-preview
+```
+
+This starts the NSGo gateway on <http://127.0.0.1:19489/> and its separate Dex on <http://127.0.0.1:19488/>. Native tests use the gateway on `19489`, not the trial on `19487`. From `experiments/nsgo`, select a test:
+
+```sh
+mise exec -- go tool nsgo test -target macos -activate \
+  -env DEX_NSGO_POC_TEST=1 -env DEX_NSGO_TEST_URL=http://127.0.0.1:19489 \
+  -run TestUserSendsChinese
+
+mise exec -- go tool nsgo test -target macos -activate \
+  -env DEX_NSGO_POC_TEST=1 -env DEX_NSGO_TEST_URL=http://127.0.0.1:19489 \
+  -env DEX_NSGO_BOTS_TEST=1 -run TestUserCreatesBotAndRenamesItWithoutLosingNewInstructions
+```
+
+From the repository root, compare the React and NSGo sidebars against the same Bot list. The check uses Chrome at 1280 × 800 and 390 × 820. It checks the order of the Bot rows, the fixed footer, and the drawer. It saves four screenshots locally. Do not publish screenshots that contain private Bot names.
+
+```sh
+node experiments/nsgo/sidebar-check.cjs 19489 .local/nsgo-poc/screens
+```
+
+The macOS and iOS Simulator checks covered navigation from Main to the Board and back, a chat reply after reconnect, and session archive and restore. A separate macOS check covered Bot creation, rename, and retention of a concurrent instruction change. These checks do not verify the full client or a physical iPhone.
+
+An earlier chat-only Web build sent 25,287,929 bytes for its Wasm file. The Brotli file was 5,200,513 bytes. Curl sent `Accept-Encoding: br, gzip` to the Wasm URL on port `19487`; the HTTP 200 response had no `Content-Encoding` and sent the full 25,287,929-byte body. Measure the current workspace build again with an empty browser cache and a slow connection. The earlier result is not a current size or cold-start measurement.

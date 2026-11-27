@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
-#MISE description="Preview NSGo chat with a temporary dex and the echo model"
+#MISE description="Run the NSGo workspace with an isolated dex or an explicit local service"
 #MISE depends=["build:web"]
 set -euo pipefail
 
+port=${NSGO_PREVIEW_PORT:-19487}
+valid_port() { [[ $1 =~ ^[1-9][0-9]{0,4}$ ]] && (( $1 > 1024 && $1 < 65536 )); }
+valid_port "$port" || { echo 'Invalid preview port.' >&2; exit 2; }
+upstream=$((port - 1))
+if (($#)); then
+  if [[ $# != 2 || $1 != --connect-local ]] || ! valid_port "$2" || [[ $2 == "$port" ]]; then
+    echo 'Usage: mise run poc:nsgo-preview [--connect-local PORT]' >&2
+    exit 2
+  fi
+  upstream=$2
+fi
+export DEX_API_URL="http://127.0.0.1:$upstream"
 work=$(mktemp -d)
 pid=
 preview_pid=
@@ -22,9 +34,10 @@ trap 'exit 130' INT TERM
 
 (cd experiments/nsgo && go tool nsgo build -target web -output "$work/site")
 site=("$work/site/"*-web)
+start_demo() {
 go build -tags dex_e2e -o "$work/dex" ./cmd/dex
 mkdir "$work/home"
-env -i HOME="$work/home" PATH="$PATH" "$work/dex" serve --host 127.0.0.1 --port 19486 --data-dir "$work/data" >"$work/dex.log" 2>&1 &
+env -i HOME="$work/home" PATH="$PATH" "$work/dex" serve --host 127.0.0.1 --port "$upstream" --data-dir "$work/data" >"$work/dex.log" 2>&1 &
 pid=$!
 # Only configure the process we started. Another service could own this port.
 for ((i=0; i<300; i++)); do
@@ -36,12 +49,19 @@ if ! grep -q 'dex is running' "$work/dex.log"; then
   tail -20 "$work/dex.log" >&2
   exit 1
 fi
-export DEX_API_URL=http://127.0.0.1:19486
 bot="$DEX_API_URL/api/bots/default"
 curl --noproxy '*' -fsS "$bot" | jq '. + {provider:"faux", modelId:"echo"}' | \
   curl --noproxy '*' -fsS -X PUT -H 'Content-Type: application/json' --data-binary @- "$bot" >/dev/null
 
+curl --noproxy '*' -fsS -H 'Content-Type: application/json' --data-binary '{"title":"体验 Bot 工作区","assigneeBotId":"default","note":"在这里添加备注，或发送给负责 Bot，然后查看它的主对话。"}' "$DEX_API_URL/api/tasks" >/dev/null
+}
+if (($# == 0)); then
+  start_demo
+else
+  echo "Connected mode: actions in this UI apply to $DEX_API_URL. No demo data will be created."
+fi
+
 cd web
-node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --strictPort --port 19487 --outDir "${site[0]}" &
+node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --strictPort --port "$port" --outDir "${site[0]}" &
 preview_pid=$!
 wait "$preview_pid"

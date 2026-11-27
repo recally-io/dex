@@ -9,14 +9,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 )
 
-const chatGateway = "http://127.0.0.1:19487"
-const chatSessions = "/api/bots/default/sessions/"
+var chatGateway = "http://127.0.0.1:19487"
 
 var chatClient = &http.Client{
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -24,31 +25,46 @@ var chatClient = &http.Client{
 
 type chatLine struct{ ID, Role, Text string }
 
-func openMain(ctx context.Context) (int, error) {
-	res, err := chatRequest(ctx, http.MethodGet, chatSessions+"main", "application/json", nil, http.StatusOK)
-	if err != nil {
-		return 0, err
-	}
-	defer closeChatBody(ctx, res.Body)()
-
-	var session struct {
-		ID int `json:"id"`
-	}
-	if err := json.UnmarshalRead(res.Body, &session); err != nil {
-		if ctx.Err() != nil {
-			return 0, ctx.Err()
-		}
-		return 0, fmt.Errorf("decode main session: %w", err)
-	}
-	if session.ID <= 0 {
-		return 0, errors.New("main session has no valid ID")
-	}
-	return session.ID, nil
+type chatUpdate struct {
+	Lines     []chatLine
+	Running   bool
+	RunTarget string
 }
 
-func watchChat(ctx context.Context, id int, update func([]chatLine)) error {
-	path := fmt.Sprintf("%s%d/events", chatSessions, id)
-	res, err := chatRequest(ctx, http.MethodGet, path, "text/event-stream", nil, http.StatusOK)
+type chatSession struct {
+	ID         int    `json:"id"`
+	Title      string `json:"title"`
+	Channel    string `json:"channel"`
+	Main       bool   `json:"main"`
+	ReadOnly   *bool  `json:"readOnly"`
+	ArchivedAt int64  `json:"archivedAt"`
+	Busy       bool   `json:"busy"`
+	BotID      string `json:"botId"`
+	BotName    string `json:"botName"`
+}
+
+func (s chatSession) writable() bool { return s.ReadOnly != nil && !*s.ReadOnly }
+
+func chatSessionsPath(botID string) string { return botPath(botID) + "/sessions" }
+
+func chatSessionPath(botID string, id int) string {
+	if id == 0 {
+		return chatSessionsPath(botID) + "/main"
+	}
+	return chatSessionsPath(botID) + "/" + strconv.Itoa(id)
+}
+
+func chatGetSession(ctx context.Context, botID string, id int) (chatSession, error) {
+	var session chatSession
+	err := requestJSON(ctx, http.MethodGet, chatSessionPath(botID, id), nil, &session)
+	if err == nil && (session.ID <= 0 || (id > 0 && id != session.ID)) {
+		err = errors.New("会话 ID 与请求不符")
+	}
+	return session, err
+}
+
+func watchChat(ctx context.Context, botID string, id int, update func(chatUpdate)) error {
+	res, err := gatewayRequest(ctx, http.MethodGet, chatSessionPath(botID, id)+"/events", "text/event-stream", nil, "")
 	if err != nil {
 		return err
 	}
@@ -56,49 +72,19 @@ func watchChat(ctx context.Context, id int, update func([]chatLine)) error {
 	return readChat(ctx, res.Body, update)
 }
 
-func sendChat(ctx context.Context, id int, requestID, text string) error {
-	body, err := json.Marshal(struct {
+func sendChat(ctx context.Context, botID string, id int, requestID, text string) error {
+	return requestJSON(ctx, http.MethodPost, chatSessionPath(botID, id)+"/messages", struct {
 		ID   string `json:"id"`
 		Text string `json:"text"`
-	}{requestID, text})
-	if err != nil {
-		return fmt.Errorf("encode chat message: %w", err)
-	}
-	path := fmt.Sprintf("%s%d/messages", chatSessions, id)
-	res, err := chatRequest(ctx, http.MethodPost, path, "application/json", body, http.StatusAccepted)
-	if err != nil {
-		return err
-	}
-	_ = res.Body.Close()
-	return nil
+	}{requestID, text}, nil)
 }
 
-func chatRequest(ctx context.Context, method, path, accept string, body []byte, status int) (*http.Response, error) {
-	var input io.Reader
-	if body != nil {
-		input = bytes.NewReader(body)
+func chatStopRun(ctx context.Context, botID string, id int, target string) error {
+	path := chatSessionPath(botID, id) + "/abort"
+	if target != "" {
+		path += "?" + url.Values{"runTarget": {target}}.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, method, chatGateway+path, input)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", accept)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if runtime.GOOS == "js" {
-		// Fetch can follow a redirect before net/http sees the response.
-		req.Header.Set("js.fetch:redirect", "error")
-	}
-	res, err := chatClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if res.StatusCode != status {
-		_ = res.Body.Close()
-		return nil, fmt.Errorf("%s %s: HTTP %s", method, path, res.Status)
-	}
-	return res, nil
+	return requestJSON(ctx, http.MethodPost, path, nil, nil)
 }
 
 func closeChatBody(ctx context.Context, body io.ReadCloser) func() {
@@ -116,18 +102,58 @@ func closeChatBody(ctx context.Context, body io.ReadCloser) func() {
 }
 
 type chatItem struct {
-	ID   string `json:"id"`
-	Kind string `json:"kind"`
-	Text string `json:"text"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Text      string `json:"text"`
+	Name      string `json:"name"`
+	Title     string `json:"title"`
+	Status    string `json:"status"`
+	Output    string `json:"output"`
+	Reason    string `json:"reason"`
+	Queued    bool   `json:"queued"`
+	Truncated bool   `json:"truncated"`
 }
 
 func (item chatItem) visible() bool {
-	return item.Kind == "user" || item.Kind == "assistant"
+	switch item.Kind {
+	case "user", "assistant", "tool", "error", "session_result", "wake", "task_wake":
+		return true
+	default:
+		return false
+	}
 }
 
-func readChat(ctx context.Context, stream io.Reader, update func([]chatLine)) error {
+func (item chatItem) line() chatLine {
+	line := chatLine{item.ID, item.Kind, item.Text}
+	switch item.Kind {
+	case "user":
+		if item.Queued {
+			line.Role = "queued"
+		}
+	case "tool":
+		status := map[string]string{"running": "运行中", "done": "完成", "error": "失败"}[item.Status]
+		line.Text = item.Name + " · " + status
+		if item.Output != "" {
+			line.Text += "\n" + item.Output
+		}
+		if item.Truncated {
+			line.Text += "\n输出过长，当前快照未包含完整内容。"
+		}
+	case "error":
+		line.Text = item.Reason
+	case "session_result", "wake", "task_wake":
+		line.Text = item.Title
+		if item.Reason != "" {
+			line.Text += "\n" + item.Reason
+		}
+	}
+	return line
+}
+
+func readChat(ctx context.Context, stream io.Reader, update func(chatUpdate)) error {
 	reader := bufio.NewReader(stream)
 	var items []chatItem
+	var state chatUpdate
 	ready := false
 	for ctx.Err() == nil {
 		kind, data, err := readChatEvent(reader)
@@ -142,6 +168,10 @@ func readChat(ctx context.Context, stream io.Reader, update func([]chatLine)) er
 		}
 		switch kind {
 		case "snapshot", "item", "append":
+		case "run":
+			if !ready {
+				continue
+			}
 		default:
 			continue
 		}
@@ -150,11 +180,13 @@ func readChat(ctx context.Context, stream io.Reader, update func([]chatLine)) er
 		}
 
 		var event struct {
-			Type  string     `json:"type"`
-			Items []chatItem `json:"items"`
-			Item  chatItem   `json:"item"`
-			ID    string     `json:"id"`
-			Text  string     `json:"text"`
+			Type      string     `json:"type"`
+			Items     []chatItem `json:"items"`
+			Item      chatItem   `json:"item"`
+			ID        string     `json:"id"`
+			Text      string     `json:"text"`
+			Running   bool       `json:"running"`
+			RunTarget string     `json:"runTarget"`
 		}
 		if err := json.Unmarshal(data, &event); err != nil {
 			return fmt.Errorf("decode %s event: %w", kind, err)
@@ -168,6 +200,9 @@ func readChat(ctx context.Context, stream io.Reader, update func([]chatLine)) er
 				return errors.New("snapshot has no items array")
 			}
 			items, ready = event.Items, true
+			state.Running, state.RunTarget = event.Running, event.RunTarget
+		case "run":
+			state.Running, state.RunTarget = event.Running, event.RunTarget
 		case "item":
 			if event.Item.ID == "" {
 				return errors.New("item event has no item ID")
@@ -198,10 +233,11 @@ func readChat(ctx context.Context, stream io.Reader, update func([]chatLine)) er
 		lines := make([]chatLine, 0, len(items))
 		for _, item := range items {
 			if item.visible() {
-				lines = append(lines, chatLine{ID: item.ID, Role: item.Kind, Text: item.Text})
+				lines = append(lines, item.line())
 			}
 		}
-		update(lines)
+		state.Lines = lines
+		update(state)
 	}
 	return ctx.Err()
 }

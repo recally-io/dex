@@ -38,8 +38,8 @@ data: {"type":"append","id":"a","text":"still hidden"}
 		"event: append\ndata: {\"type\":\"append\",\"id\":\"new\",\"text\":\"incomplete\"}\n"
 
 	var updates [][]chatLine
-	err := readChat(t.Context(), strings.NewReader(stream), func(lines []chatLine) {
-		updates = append(updates, lines)
+	err := readChat(t.Context(), strings.NewReader(stream), func(update chatUpdate) {
+		updates = append(updates, update.Lines)
 	})
 
 	if !errors.Is(err, io.EOF) {
@@ -63,6 +63,45 @@ data: {"type":"append","id":"a","text":"still hidden"}
 	}
 }
 
+func TestUserSeesOnlyCurrentRunAndToolOutput(t *testing.T) {
+	t.Parallel()
+
+	// Given a running snapshot, a successor run, and a replacement snapshot.
+	stream := `event: snapshot
+data: {"type":"snapshot","items":[],"running":true,"runTarget":"first"}
+
+event: run
+data: {"type":"run","running":true,"runTarget":"second"}
+
+event: item
+data: {"type":"item","item":{"kind":"tool","id":"call","name":"echo","status":"done","output":"中文工具结果"}}
+
+event: snapshot
+data: {"type":"snapshot","items":[],"running":false}
+
+`
+	// When the client reads the stream, it receives only the current run target.
+	var got []string
+	var tool string
+	err := readChat(t.Context(), strings.NewReader(stream), func(update chatUpdate) {
+		got = append(got, update.RunTarget)
+		if len(update.Lines) == 1 {
+			tool = update.Lines[0].Text
+		}
+	})
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("stream ended with %v, want EOF", err)
+	}
+
+	// Then the tool result is visible and the new snapshot clears the target.
+	if want := []string{"first", "second", "second", ""}; !slices.Equal(got, want) {
+		t.Fatalf("run targets = %q, want %q", got, want)
+	}
+	if !strings.Contains(tool, "中文工具结果") {
+		t.Fatalf("tool text = %q, want the tool result", tool)
+	}
+}
+
 func TestUserDoesNotSeeReadyWithoutSnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -75,7 +114,7 @@ func TestUserDoesNotSeeReadyWithoutSnapshot(t *testing.T) {
 		{name: "invalid JSON", stream: "event: snapshot\ndata: {\n\n", message: "decode snapshot"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := readChat(t.Context(), strings.NewReader(tc.stream), func([]chatLine) { t.Fatal("unexpected update") })
+			err := readChat(t.Context(), strings.NewReader(tc.stream), func(chatUpdate) { t.Fatal("unexpected update") })
 			if err == nil || !strings.Contains(err.Error(), tc.message) || (tc.cause != nil && !errors.Is(err, tc.cause)) {
 				t.Fatalf("unexpected stream error: %v", err)
 			}
@@ -84,7 +123,7 @@ func TestUserDoesNotSeeReadyWithoutSnapshot(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := readChat(ctx, strings.NewReader(""), func([]chatLine) { t.Fatal("unexpected update") }); !errors.Is(err, context.Canceled) {
+	if err := readChat(ctx, strings.NewReader(""), func(chatUpdate) { t.Fatal("unexpected update") }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("got %v, want context cancellation", err)
 	}
 }
