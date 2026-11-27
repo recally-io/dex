@@ -1,27 +1,31 @@
 import { useBotId } from "../lib/bot-scope";
 import type { ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { BotIntegrations, McpServer, Skill } from "../api/generated/types.gen";
+import { Link } from "@tanstack/react-router";
+import { Plus } from "lucide-react";
+import type { BotIntegrations, IntegrationScope, McpServer, Skill } from "../api/generated/types.gen";
 import {
   getBotIntegrationsOptions,
   reloadBotIntegrationsMutation,
-  startMcpOAuthMutation,
 } from "../api/generated/@tanstack/react-query.gen";
+import { startMcpOAuth, startSharedMcpOAuth } from "../api/generated/sdk.gen";
 import { Failure, Loading } from "../components/feedback";
 import { FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, buttonVariants } from "../components/ui/button";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
 import { Vault } from "../components/vault";
 
-export function SkillsPage() {
+export type IntegrationSection = "skills" | "mcp";
+
+export function BotIntegrationsPage({ section }: { section?: IntegrationSection }) {
   return (
     <FramedPage
-      title="Skills"
-      toolbar={<BotSettingsSwitcher segment="skills" />}
-      description="Browse this bot's skills. A skill with the same name replaces a shared skill."
+      title="Integrations"
+      toolbar={<BotSettingsSwitcher segment="integrations" />}
+      description="Browse this Bot's effective skills and MCP servers. Bot entries can override shared entries."
     >
-      <IntegrationCatalog section="skills" />
+      <BotCatalog section={section} />
     </FramedPage>
   );
 }
@@ -42,14 +46,7 @@ export function BotSecretsPage() {
   );
 }
 
-export function IntegrationCatalog({
-  section,
-  addAction,
-}: {
-  section: "skills" | "integrations";
-  /** A control that adds a declaration to this bot, next to Reload. */
-  addAction?: ReactNode;
-}) {
+function BotCatalog({ section }: { section?: IntegrationSection }) {
   const botId = useBotId();
 
   const query = useQuery({
@@ -64,41 +61,31 @@ export function IntegrationCatalog({
 
   if (!query.data) return <Loading />;
 
-  const reloadAction = (
-    <Button
-      variant="secondary"
-      size="sm"
-      disabled={reload.isPending}
-      onClick={() => reload.mutate({ path: { botId } })}
-    >
-      {reload.isPending ? "Reloading…" : "Reload"}
-    </Button>
-  );
-
   return (
     <>
       {query.data.reloadPending && !query.data.errors.length ? (
         <Note>Change waiting for this bot to be idle</Note>
       ) : null}
       <Configuration extensions={query.data} />
-      {section === "skills" ? (
-        <Skills extensions={query.data} reloadAction={reloadAction} />
-      ) : (
-        <McpServers
-          servers={query.data.servers}
-          canAdd={!!addAction}
-          reloadAction={
-            addAction ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {addAction}
-                {reloadAction}
-              </div>
-            ) : (
-              reloadAction
-            )
-          }
-        />
-      )}
+      <IntegrationSections
+        {...query.data}
+        section={section}
+        botId={botId}
+        skillAction={<AddLink section="skills" botId={botId} />}
+        mcpAction={
+          <div className="flex flex-wrap items-center gap-2">
+            <AddLink section="mcp" botId={botId} />
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={reload.isPending}
+              onClick={() => reload.mutate({ path: { botId } })}
+            >
+              {reload.isPending ? "Reloading…" : "Reload"}
+            </Button>
+          </div>
+        }
+      />
       {reload.isError ? (
         <Failure title="Could not reload tools and MCP servers" error={reload.error} />
       ) : null}
@@ -106,38 +93,92 @@ export function IntegrationCatalog({
   );
 }
 
-function Skills({ extensions: e, reloadAction }: { extensions: BotIntegrations; reloadAction: ReactNode }) {
+function AddLink({ section, botId }: { section: IntegrationSection; botId: string }) {
+  return (
+    <Link
+      to="/integrations"
+      search={{ section, target: botId, add: section === "skills" ? "skill" : "mcp" }}
+      className={buttonVariants({ size: "sm" })}
+    >
+      <Plus aria-hidden /> {section === "skills" ? "Add skill" : "Add MCP server"}
+    </Link>
+  );
+}
+
+function focusHeading(heading: HTMLHeadingElement | null) {
+  if (!heading) return;
+
+  const frame = requestAnimationFrame(() => {
+    heading.focus({ preventScroll: true });
+    heading.scrollIntoView({ block: "start" });
+  });
+
+  return () => cancelAnimationFrame(frame);
+}
+
+export function IntegrationSections({
+  skills,
+  servers,
+  levels,
+  section,
+  botId,
+  skillAction,
+  mcpAction,
+}: Pick<BotIntegrations, "skills" | "servers"> & {
+  levels?: BotIntegrations["levels"];
+  section?: IntegrationSection;
+  botId?: string;
+  skillAction: ReactNode;
+  mcpAction: ReactNode;
+}) {
   return (
     <>
-      <Section title="File levels" caption="Each holds skills/.">
-        <Panel>
-          <ul className="divide-y divide-border">
-            {e.levels.map((level) => (
-              <li key={level.scope} className="px-4 py-3 text-[12px] [overflow-wrap:anywhere]">
-                <p className="mb-1 font-medium text-foreground">{level.scope}</p>
-                <Mono>{level.dir}/</Mono>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      </Section>
       <Section
-        title="Available skills"
-        caption="Skill edits apply to the next request. Reload refreshes the bot's tools and MCP connections when this bot is idle."
-        action={reloadAction}
+        title="Skills"
+        headingRef={section === "skills" ? focusHeading : undefined}
+        action={skillAction}
       >
         <List
-          items={e.skills.map((skill) => (
-            <SkillRow key={skill.name} skill={skill} />
+          items={skills.map((skill) => (
+            <SkillRow key={skill.name} skill={skill} botView={!!botId} />
           ))}
-          empty={<>Add skills/&lt;name&gt;/SKILL.md in a level above. Nested directories work too.</>}
+          empty={botId ? "No skills available to this Bot." : "No shared skills yet."}
+        />
+        {levels?.length ? (
+          <details className="mt-3 text-[12.5px] text-muted-foreground">
+            <summary className="cursor-pointer">Skill file levels</summary>
+            <ul className="mt-2 space-y-1 [overflow-wrap:anywhere]">
+              {levels.map((level) => (
+                <li key={level.scope}>
+                  {level.scope}: <Mono>{level.dir}/skills/</Mono>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+      </Section>
+      <Section
+        title="MCP servers"
+        headingRef={section === "mcp" ? focusHeading : undefined}
+        caption={botId ? "Reload refreshes this Bot's tools and MCP connections when it is idle." : undefined}
+        action={mcpAction}
+      >
+        <List
+          items={servers.map((server) => (
+            <ServerRow key={server.name} server={server} botId={botId} />
+          ))}
+          empty={botId ? "No MCP servers available to this Bot." : "No shared MCP servers yet."}
         />
       </Section>
     </>
   );
 }
 
-function Configuration({ extensions: e }: { extensions: BotIntegrations }) {
+export function Configuration({
+  extensions: e,
+}: {
+  extensions: Pick<BotIntegrations, "warnings" | "errors">;
+}) {
   if (!e.warnings.length && !e.errors.length) return null;
 
   return (
@@ -166,40 +207,6 @@ function Configuration({ extensions: e }: { extensions: BotIntegrations }) {
   );
 }
 
-function McpServers({
-  servers,
-  canAdd,
-  reloadAction,
-}: {
-  servers: McpServer[];
-  canAdd: boolean;
-  reloadAction: ReactNode;
-}) {
-  return (
-    <Section
-      title="MCP servers"
-      caption={`${canAdd ? "Add a remote server here, or manage" : "Manage"} declarations with mcp_server tools in an owner session. Reload refreshes this bot's MCP connections when this bot is idle.`}
-      action={reloadAction}
-    >
-      <List
-        items={servers.map((server) => (
-          <ServerRow key={server.name} server={server} />
-        ))}
-        empty={
-          canAdd ? (
-            "No MCP servers yet. Add a remote server for this Bot."
-          ) : (
-            <>
-              Ask the bot to add a server with mcp_server_set. A bot declaration with disabled: true turns off
-              a dex server with the same name.
-            </>
-          )
-        }
-      />
-    </Section>
-  );
-}
-
 function List({ items, empty }: { items: ReactNode[]; empty: ReactNode }) {
   return (
     <Panel>
@@ -217,18 +224,27 @@ function Header({ name, scope, overrides }: { name: string; scope: Skill["scope"
     <>
       <span className="font-mono text-[12.5px] font-medium text-foreground">{name}</span>
       <span className="text-[11.5px] text-muted-foreground">
-        {scope}
+        {scope === "dex" ? "Shared" : scope}
         {overrides ? ", replaces a wider entry" : ""}
       </span>
     </>
   );
 }
 
-function SkillRow({ skill: s }: { skill: Skill }) {
+function ManageShared({ section }: { section: IntegrationSection }) {
+  return (
+    <Link to="/integrations" search={{ section }} className="text-[12px] text-muted-foreground underline">
+      Manage in Integrations
+    </Link>
+  );
+}
+
+function SkillRow({ skill: s, botView }: { skill: Skill; botView: boolean }) {
   return (
     <li className="px-4 py-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center gap-2">
         <Header name={s.name} scope={s.scope} overrides={s.overrides} />
+        {botView && s.scope === "dex" ? <ManageShared section="skills" /> : null}
       </div>
       <p className={`mt-1 text-[12.5px] ${s.error ? "text-red" : "text-muted-foreground"}`}>
         {s.error ?? s.description}
@@ -272,62 +288,62 @@ function StateBadge({
   );
 }
 
-/** Starts the browser authorization for a stored declaration. The callback returns to Bot Integrations. */
-export function useAuthorizeMcp() {
+export function useAuthorizeMcp(botId?: string) {
   return useMutation({
-    ...startMcpOAuthMutation(),
+    mutationFn: ({ name, scope }: { name: string; scope: IntegrationScope }) =>
+      botId
+        ? startMcpOAuth({ path: { botId, name }, body: { scope }, throwOnError: true })
+        : startSharedMcpOAuth({ path: { name }, throwOnError: true }),
     gcTime: 0,
-    onSuccess: (data) => window.location.assign(data.authorizationUrl),
+    onSuccess: ({ data }) => window.location.assign(data.authorizationUrl),
   });
 }
 
-/** The authorization badge, for OAuth, and the connection badge of one MCP declaration. */
-export function McpServerStatus({ server: s }: { server: McpServer }) {
+export function McpServerStatus({ server: s, botView }: { server: McpServer; botView: boolean }) {
   const state = STATE[s.state];
   const auth = s.oauth && s.state !== "disabled" ? AUTH[s.oauth] : undefined;
 
   return (
     <>
       {auth ? <StateBadge name="Authorization" label={auth.label} tone={auth.tone} /> : null}
-      <StateBadge name="Connection" label={state.label} tone={state.tone} />
+      {botView || s.state === "disabled" ? (
+        <StateBadge name={botView ? "Connection" : "Declaration"} label={state.label} tone={state.tone} />
+      ) : null}
     </>
   );
 }
 
-function ServerRow({ server: s }: { server: McpServer }) {
-  const auth = s.oauth && s.state !== "disabled" ? AUTH[s.oauth] : undefined;
-  const botId = useBotId();
+function ServerRow({ server: s, botId }: { server: McpServer; botId?: string }) {
   const shared = s.scope === "dex";
-  const authorizeLabel = `${s.oauth === "authorize" ? "Authorize" : "Reauthorize"}${shared ? " for Dex" : ""}`;
-  const authorize = useAuthorizeMcp();
+  // Bot Settings manages only the Bot's own entries. Shared entries are authorized on the global page.
+  const canAuthorize = s.oauth && s.state !== "disabled" && !(botId && shared);
+  const authorizeLabel = s.oauth === "authorize" ? "Authorize" : "Reauthorize";
+  const authorize = useAuthorizeMcp(botId);
 
   return (
     <li className="px-4 py-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center gap-2">
         <Header name={s.name} scope={s.scope} overrides={s.overrides} />
+        {s.transport ? <Mono>{s.transport}</Mono> : null}
+        {botId && shared ? <ManageShared section="mcp" /> : null}
         <span className="flex-1" />
-        <McpServerStatus server={s} />
-        {s.oauth && s.state !== "disabled" ? (
+        <McpServerStatus server={s} botView={!!botId} />
+        {canAuthorize ? (
           <Button
             size="sm"
             variant="outline"
             disabled={authorize.isPending}
-            onClick={() => authorize.mutate({ path: { botId, name: s.name }, body: { scope: s.scope } })}
+            onClick={() => authorize.mutate({ name: s.name, scope: s.scope })}
           >
             {authorize.isPending ? "Starting…" : authorizeLabel}
           </Button>
         ) : null}
       </div>
-      {shared && auth ? (
-        <p className="mt-1 text-[12.5px] text-muted-foreground">
-          All Bots that inherit this server use the same authorization.
-        </p>
-      ) : null}
       {authorize.isError ? <Failure error={authorize.error} title="Could not start authorization" /> : null}
       {s.oauth === "reauthorize" ? (
         <p className="mt-1 text-[12.5px] text-red">This connection needs a new grant.</p>
       ) : null}
-      {s.tools.length ? (
+      {botId && s.tools.length ? (
         <p className="mt-1 font-mono text-[11.5px] text-muted-foreground">{s.tools.join(", ")}</p>
       ) : null}
       {s.error ? <p className="mt-1 text-[12.5px] text-red">{s.error}</p> : null}

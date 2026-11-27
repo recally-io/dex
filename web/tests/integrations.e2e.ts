@@ -170,14 +170,14 @@ test("keeps Board, Integrations, and Settings in a fixed navigation footer", asy
   expect(layout.bottom <= layout.height).toBe(true);
   expect(layout.botsScroll).toBe("auto");
 
-  // When the owner opens Integrations from the footer, then the hub names the selected Bot.
+  // When the owner opens Integrations from the footer, then it lists shared Skills and MCP servers.
   await footer.getByRole("link", "Integrations", { exact: true }).tap();
-  await expect(browser).toHaveURL("/integrations?bot=default");
+  await expect(browser).toHaveURL("/integrations");
   await expect(screen.getByRole("heading", "Integrations", { exact: true })).toBeVisible();
-  await expect(screen.getByRole("combobox", "Bot", { exact: true })).toHaveValue("default");
-  await expect(
-    screen.getByText("Channels and new MCP servers belong to this Bot. Inherited Dex servers are shared."),
-  ).toBeVisible();
+  await expect(screen.getByRole("heading", "Skills", { exact: true })).toBeVisible();
+  await expect(screen.getByRole("heading", "MCP servers", { exact: true })).toBeVisible();
+  await expect(screen.getByRole("combobox")).toHaveCount(0);
+  await expect(screen.getByRole("heading", "Sources", { exact: true })).toHaveCount(0);
 
   // A global page has no Bot actions.
   await expect(screen.getByRole("navigation", "Bot navigation")).toHaveCount(0);
@@ -253,7 +253,11 @@ test("shows an unsaved instructions draft on the mobile Bot menu", async ({ app,
   }
 });
 
-test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, browser, screen }) => {
+test("adds Bot-only and shared MCP servers and authorizes the shared server", async ({
+  app,
+  browser,
+  screen,
+}) => {
   await app.open("/");
 
   const dex = new URL(await browser.url()).origin;
@@ -263,27 +267,20 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
   const serverName = `hub_${Date.now() % 100000}`;
   // Holds the status read after a save. The finally block opens it even when a step fails.
   const statusGate = Promise.withResolvers<void>();
+  const held = Promise.withResolvers<void>();
 
   try {
-    // Given the hub opened for an unknown Bot, then it asks for a Bot and shows no Bot settings.
-    await app.open("/integrations?bot=missing-bot");
-    await expect(screen.getByText("This Bot is not available. Choose a Bot.")).toBeVisible();
-    await expect(screen.getByRole("button", "Add MCP server", { exact: true })).toHaveCount(0);
-    await expect(screen.getByRole("heading", "Sources", { exact: true })).toBeVisible();
-
-    // When the owner selects the new Bot.
-    await screen.getByRole("combobox", "Bot", { exact: true }).selectOption({ value: id });
-    await expect(browser).toHaveURL(`/integrations?bot=${id}`);
-    await expect(screen.getByRole("heading", "Channels", { exact: true })).toBeVisible();
-    await expect(screen.getByRole("heading", "Sources", { exact: true })).toBeVisible();
-
-    // When the owner opens Add MCP server, then the form names the target Bot and asks only for a
-    // name, a URL, and authentication. No authentication is the default.
+    // An old Bot parameter does not select a Bot. A target on the dialog does.
+    await app.open(`/integrations?bot=${id}`);
+    await expect(screen.getByRole("heading", "MCP servers", { exact: true })).toBeVisible();
+    await expect(screen.getByRole("combobox")).toHaveCount(0);
     await screen.getByRole("button", "Add MCP server", { exact: true }).tap();
 
     let dialog = screen.getByRole("dialog", "Add MCP server");
 
-    await expect(dialog.getByText(`Bot: ${name}`, { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("option", "Shared (all Bots)", { exact: true })).toHaveCount(1);
+    await expect(dialog.getByLabel("Target", { exact: true })).toHaveValue("");
+    await dialog.getByLabel("Target", { exact: true }).selectOption({ value: id });
     await expect(dialog.getByRole("button", "No authentication", { exact: true })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -313,13 +310,23 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
     await expect(added.getByText("Starts with the bot", { exact: true })).toBeVisible();
     await expect(added.getByRole("button", /^Authorize/)).toHaveCount(0);
     await added.getByRole("button", "Done", { exact: true }).tap();
+    await expect(screen.getByText(`${serverName}_open`, { exact: true })).toHaveCount(0);
+    await app.open(`/b/${id}/integrations`);
     await expect(screen.getByText(`${serverName}_open`, { exact: true })).toBeVisible();
     await expect(screen.getByText("Not authorized", { exact: true })).toHaveCount(0);
     await expect(screen.getByRole("button", "Authorize", { exact: true })).toHaveCount(0);
 
-    // When the owner adds a server with browser OAuth and keeps Advanced options closed.
-    await screen.getByRole("button", "Add MCP server", { exact: true }).tap();
+    // The Bot's Add link opens the global dialog with that Bot selected. Switch to Shared for OAuth.
+    await screen.getByRole("link", "Add MCP server", { exact: true }).tap();
+    const addUrl = new URL(await browser.url());
+
+    expect(addUrl.pathname).toBe("/integrations");
+    expect(addUrl.searchParams.get("section")).toBe("mcp");
+    expect(addUrl.searchParams.get("target")).toBe(id);
+    expect(addUrl.searchParams.get("add")).toBe("mcp");
     dialog = screen.getByRole("dialog", "Add MCP server");
+    await expect(dialog.getByLabel("Target", { exact: true })).toHaveValue(id);
+    await dialog.getByLabel("Target", { exact: true }).selectOption({ value: "" });
     await dialog.getByLabel("Name", { exact: true }).fill(serverName);
     await dialog.getByLabel("Server URL", { exact: true }).fill(url);
     await dialog.getByRole("button", "Browser OAuth", { exact: true }).tap();
@@ -340,7 +347,7 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
 
     // While the status read after the save is slow, the dialog confirms the save and waits for
     // the read. It makes no claim from the list cached before the save.
-    const statusPath = `**/api/bots/${id}/integrations`;
+    const statusPath = "**/api/integrations";
     let holdStatus = true;
 
     await browser.route(statusPath, async (route) => {
@@ -351,7 +358,9 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
     await dialog.getByRole("button", "Add server", { exact: true }).tap();
     added = screen.getByRole("dialog", `Added ${serverName}`);
     await expect(
-      added.getByText(`Saved for ${name}. Other Bots do not change.`, { exact: true }),
+      added.getByText("Saved as shared. Bots inherit it unless they override or disable it.", {
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(added.getByText("Checking server status…", { exact: true })).toBeVisible();
     await expect(added.getByText(/is idle/)).toHaveCount(0);
@@ -370,8 +379,7 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
 
     // When the owner authorizes from the dialog while the start is slow, then the dialog stays
     // open: Done, Escape, the backdrop, and a second Authorize do nothing until it answers.
-    const startPath = `**/api/bots/${id}/integrations/mcp/${serverName}/oauth`;
-    const held = Promise.withResolvers<void>();
+    const startPath = `**/api/integrations/mcp/${serverName}/oauth`;
     let starts = 0;
 
     await browser.route(startPath, async (route) => {
@@ -387,40 +395,61 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
     await expect(added).toBeVisible();
     await expect(added.getByRole("button", "Starting…", { exact: true })).toBeDisabled();
 
-    // Then the existing callback returns to Bot Integrations after one start.
+    // The shared callback returns to the global MCP section and reports the grant only.
     held.resolve();
-    await expect(screen.getByRole("button", "Reauthorize", { exact: true })).toBeVisible();
-    expect(new URL(await browser.url()).pathname).toBe(`/b/${id}/integrations`);
+    await expect(browser).toHaveURL("/integrations?section=mcp");
+    const row = screen.getByRole("listitem").filter({ hasText: serverName });
+
+    await expect(row.getByText("Authorized", { exact: true })).toBeVisible();
+    await expect(row.getByText("Starts with the bot", { exact: true })).toHaveCount(0);
+    await expect(row.getByText(/Connect(ed|ing)/)).toHaveCount(0);
+    await expect(row.getByText("http", { exact: true })).toBeVisible();
     expect(starts).toBe(1);
     await browser.unroute(startPath);
 
-    // A grant alone is not a live connection: this Bot has not started yet.
-    const row = screen
+    // A Bot shows the inherited server and links to the global section that manages it.
+    await app.open(`/b/${id}/integrations`);
+
+    const inherited = screen
       .getByRole("listitem")
       .filter({ hasText: serverName, hasNotText: `${serverName}_open` });
 
-    await expect(row.getByText("Authorized", { exact: true })).toBeVisible();
-    await expect(row.getByText("Starts with the bot", { exact: true })).toBeVisible();
-    await expect(row.getByText("Connected", { exact: true })).toHaveCount(0);
-
-    // When the owner reloads the Bot, then the authorized connection is live.
-    await screen.getByRole("button", "Reload", { exact: true }).tap();
-    await expect(row.getByText("Connected", { exact: true })).toBeVisible();
-    await expect(row.getByText("Authorized", { exact: true })).toBeVisible();
-
-    // And the default Bot does not get the declaration.
-    await app.open("/integrations?bot=default");
-    await expect(screen.getByRole("combobox", "Bot", { exact: true })).toHaveValue("default");
-    await expect(
-      screen.getByText("Channels and new MCP servers belong to this Bot. Inherited Dex servers are shared."),
-    ).toBeVisible();
-    await expect(screen.getByRole("heading", "MCP servers", { exact: true })).toBeVisible();
-    await expect(screen.getByText(serverName, { exact: true })).toHaveCount(0);
+    await expect(inherited.getByText("Shared", { exact: true })).toBeVisible();
+    await expect(inherited.getByText("Authorized", { exact: true })).toBeVisible();
+    // Bot Settings does not change a shared entry. It links to the global page instead.
+    await expect(inherited.getByRole("button", /authorize/i)).toHaveCount(0);
+    await inherited.getByRole("link", "Manage in Integrations").tap();
+    await expect(browser).toHaveURL("/integrations?section=mcp");
+    await expect.poll(() => browser.evaluate(() => document.activeElement?.textContent)).toBe("MCP servers");
   } finally {
+    held.resolve();
     statusGate.resolve();
     await fetch(`${dex}/api/bots/${id}`, { method: "DELETE" });
     server.close();
   }
+});
+
+test("blocks an unavailable target and explains how to add skills", async ({ app, browser, screen }) => {
+  await app.open("/integrations?add=mcp&target=missing-bot");
+  const mcp = screen.getByRole("dialog", "Add MCP server");
+
+  await mcp.getByLabel("Name", { exact: true }).fill("not-saved");
+  await mcp.getByLabel("Server URL", { exact: true }).fill("http://127.0.0.1:9/mcp");
+  await expect(mcp.getByText("This Bot is not available. Choose a target.")).toBeVisible();
+  await expect(mcp.getByRole("button", "Add server", { exact: true })).toBeDisabled();
+
+  await app.open("/b/default/skills");
+  await expect(browser).toHaveURL("/b/default/integrations?section=skills");
+  await expect.poll(() => browser.evaluate(() => document.activeElement?.textContent)).toBe("Skills");
+  await screen.getByRole("link", "Add skill", { exact: true }).tap();
+  const skill = screen.getByRole("dialog", "Add skill");
+
+  await expect(skill.getByText(/Use skill_import.*level agent/)).toBeVisible();
+  await expect(skill.getByRole("link", /^Open .* chat$/)).toHaveAttribute("href", "/b/default");
+  await skill.getByLabel("Target", { exact: true }).selectOption({ value: "" });
+  await expect(skill.getByText(/Use skill_import.*level dex/)).toBeVisible();
+  await expect(skill.getByText(/Ask any Bot/)).toBeVisible();
+  await expect(skill.getByRole("button", "Copy request", { exact: true })).toBeEnabled();
 });
 
 test("keeps a saved MCP server confirmed when its status cannot load", async ({ app, browser, screen }) => {
@@ -449,11 +478,9 @@ test("keeps a saved MCP server confirmed when its status cannot load", async ({ 
 
       await route.continue();
     });
-    await app.open(`/integrations?bot=${id}`);
-    await expect(screen.getByRole("heading", "MCP servers", { exact: true })).toBeVisible();
+    await app.open(`/integrations?section=mcp&target=${id}&add=mcp`);
 
     // When the owner adds an OAuth server, and the status read after the save fails.
-    await screen.getByRole("button", "Add MCP server", { exact: true }).tap();
 
     const dialog = screen.getByRole("dialog", "Add MCP server");
 
@@ -490,6 +517,7 @@ test("keeps a saved MCP server confirmed when its status cannot load", async ({ 
     expect(creates).toBe(1);
     await added.getByRole("button", "Done", { exact: true }).tap();
     await expect(screen.getByRole("dialog", `Added ${serverName}`)).toHaveCount(0);
+    await app.open(`/b/${id}/integrations`);
     await expect(screen.getByText(serverName, { exact: true })).toBeVisible();
   } finally {
     await fetch(`${dex}/api/bots/${id}`, { method: "DELETE" });

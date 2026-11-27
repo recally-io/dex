@@ -2561,6 +2561,65 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/integrations:
+    get:
+      operationId: getSharedIntegrations
+      description: List Dex-level skills and MCP declarations without opening a Bot or connecting to a server.
+      responses:
+        "200":
+          description: Shared integrations and skill scan warnings.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SharedIntegrations" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/integrations/mcp:
+    post:
+      operationId: createSharedMcpServer
+      description: >
+        Add a Dex-level Streamable HTTP MCP declaration without contacting the server.
+        An existing Dex declaration with the same name answers 409. Bot overrides stay in place.
+        The URL must use HTTPS, or HTTP on loopback, without user information, a query, or a fragment.
+        Unknown fields answer 400 and store nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/McpServerInput" }
+      responses:
+        "201":
+          description: The declaration is saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/integrations/mcp/{name}/oauth:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema: { type: string }
+    post:
+      operationId: startSharedMcpOAuth
+      description: Start browser authorization for the named Dex-level MCP declaration.
+      responses:
+        "200":
+          description: The authorization URL and a browser binding cookie.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authorizationUrl]
+                properties:
+                  authorizationUrl: { type: string }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/bots/{botId}/integrations:
     parameters:
       - in: path
@@ -4770,6 +4829,25 @@ components:
         scope: { $ref: "#/components/schemas/IntegrationScope" }
         updatedAt: { type: string, format: date-time }
 
+    SharedIntegrations:
+      x-go-type: engine.SharedIntegrations
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/engine
+      type: object
+      required: [skills, servers, errors]
+      properties:
+        skills:
+          type: array
+          items: { $ref: "#/components/schemas/Skill" }
+        servers:
+          type: array
+          description: Stored declarations with no tools and state idle or disabled.
+          items: { $ref: "#/components/schemas/McpServer" }
+        errors:
+          type: array
+          description: Skill scan errors and warnings.
+          items: { type: string }
+
     BotIntegrations:
       type: object
       required: [levels, skills, servers, warnings, errors, reloadPending]
@@ -4838,8 +4916,8 @@ components:
         path: github.com/recally-io/dex/internal/engine
       type: object
       description: >
-        A remote Streamable HTTP declaration for one Bot. It takes no headers
-        or static tokens. The server decodes it strictly.
+        A remote Streamable HTTP declaration. It takes no headers or static
+        tokens. The server decodes it strictly.
       required: [name, url]
       additionalProperties: false
       properties:
@@ -4876,7 +4954,7 @@ components:
           enum: [stdio, http]
         state:
           type: string
-          description: idle means that the bot has not started, so dex has not connected.
+          description: idle means this view does not report a live connection.
           enum: [idle, connected, failed, disabled]
         tools:
           type: array

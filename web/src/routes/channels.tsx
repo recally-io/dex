@@ -35,7 +35,6 @@ import {
   type ChannelId,
 } from "../components/channel-kit";
 import { FeishuChannel } from "./feishu";
-import { IntegrationCatalog } from "./skills";
 import { TelegramOptionsFields } from "../components/telegram-options";
 import { TelegramManagedCreation, TelegramManagerSettings } from "../components/telegram-managed";
 
@@ -61,7 +60,7 @@ function ChannelRow({ channel, text, state }: { channel: ChannelId; text: string
   );
 }
 
-export function ChannelsSection({ settings }: { settings: Settings }) {
+function ChannelsSection({ settings }: { settings: Settings }) {
   const botId = useBotId();
   const saved = useQuery({ ...getChannelsOptions({ path: { botId } }), refetchInterval: 3000 });
   const current = saved.data ?? settings;
@@ -129,15 +128,14 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
   );
 }
 
-export function BotIntegrationsPage() {
+export function BotChannelsPage() {
   return (
     <FramedPage
-      title="Integrations"
-      description="Connect this bot to private channels and MCP servers. Channel chats share Main."
-      toolbar={<BotSettingsSwitcher segment="integrations" />}
+      title="Channels"
+      description="Connect this Bot to private channels. Channel chats share Main."
+      toolbar={<BotSettingsSwitcher segment="channels" />}
     >
       <WithChannels>{(settings) => <ChannelsSection settings={settings} />}</WithChannels>
-      <IntegrationCatalog section="integrations" />
     </FramedPage>
   );
 }
@@ -505,7 +503,7 @@ function TelegramDialog({
   );
 }
 
-export function WithChannels({ children }: { children: (settings: Settings) => ReactNode }) {
+function WithChannels({ children }: { children: (settings: Settings) => ReactNode }) {
   const botId = useBotId();
   const settings = useQuery(getChannelsOptions({ path: { botId } }));
 

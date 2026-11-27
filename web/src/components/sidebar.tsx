@@ -121,7 +121,7 @@ function Footer({ area, attentionCount }: { area: string | undefined; attentionC
       <Link
         to="/integrations"
         aria-current={area === "integrations" ? "page" : undefined}
-        title="Connections for each Bot, and Sources for this Dex"
+        title="Shared skills and MCP servers"
         className={link}
       >
         <Cable size={15} aria-hidden />

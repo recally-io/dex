@@ -56,6 +56,12 @@ type ExtensionInfo struct {
 	// ReloadPending reports changed files or settings that wait for all bots to be idle.
 	ReloadPending bool `json:"reloadPending"`
 }
+type SharedIntegrations struct {
+	Skills  []SkillInfo     `json:"skills"`
+	Servers []McpServerInfo `json:"servers"`
+	Errors  []string        `json:"errors"`
+}
+
 type extensionValidationError struct{ Message string }
 
 func (e *extensionValidationError) Error() string { return e.Message }
@@ -155,6 +161,26 @@ func newBotExtensions(home, dataDir, botID string, handle runner.Handle, env *to
 		a.stores[l.Scope] = &skillStore{}
 	}
 	return a
+}
+
+// SharedIntegrations reads control-host declarations without opening a Runner or an MCP connection.
+func (a *Bots) SharedIntegrations(ctx context.Context) (SharedIntegrations, error) {
+	entries, err := a.config.MCPServers.list(ctx, "")
+	if err != nil {
+		return SharedIntegrations{}, err
+	}
+	servers := make([]McpServerInfo, 0, len(entries))
+	for _, entry := range entries {
+		entry.info.OAuth = entry.oauthStatus(a.vault)
+		// An inline vault reference can contain literal configuration values.
+		entry.info.VaultReferences = nil
+		servers = append(servers, entry.info)
+	}
+	level := ExtensionLevel{Scope: "dex", Dir: canonicalExtensionPath(filepath.Join(a.config.DataDir, ".agents"))}
+	skills, warnings := managedSkills([]ExtensionLevel{level}, map[string]*skillStore{level.Scope: a.skillStore(level)}, func(base, _ string, rel string) string {
+		return filepath.Join(base, filepath.FromSlash(rel))
+	})
+	return SharedIntegrations{Skills: skills, Servers: servers, Errors: warnings}, nil
 }
 
 func (a *botExtensions) forHandle(h runner.Handle) *botExtensions {

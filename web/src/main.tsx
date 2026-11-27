@@ -1,4 +1,4 @@
-import { StrictMode, useCallback } from "react";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -13,7 +13,7 @@ import {
 import { errorText, queryClient } from "./lib/queries";
 import { BoardResultPage } from "./components/board-results";
 import { BoardPage } from "./routes/board";
-import { IntegrationsPage } from "./routes/integrations";
+import { IntegrationsPage, type IntegrationsSearch } from "./routes/integrations";
 import { TaskDetailPage } from "./routes/task-detail";
 import { Shell } from "./components/shell";
 import { BotLayout } from "./components/bot-layout";
@@ -23,8 +23,8 @@ import { SessionsPage } from "./routes/sessions";
 import { BotPage } from "./routes/bot";
 import { GeneralSettingsPage } from "./routes/general-settings";
 import { ProvidersPage } from "./routes/providers";
-import { BotIntegrationsPage, ChannelPage } from "./routes/channels";
-import { BotSecretsPage, SkillsPage } from "./routes/skills";
+import { BotChannelsPage, ChannelPage } from "./routes/channels";
+import { BotIntegrationsPage, BotSecretsPage, type IntegrationSection } from "./routes/skills";
 import { ArchivedPage } from "./routes/archived";
 import { GlobalIntegrationsPage, RunnersPage, SharedSecretsPage } from "./routes/runners";
 import { AboutPage } from "./routes/about";
@@ -82,8 +82,27 @@ const botPage = <P extends string>(path: P, component: () => React.ReactNode) =>
   createRoute({ getParentRoute: () => botPages, path, component });
 
 const botSettings = botPage("/bot", BotPage);
-const skills = botPage("/skills", SkillsPage);
-const botIntegrations = botPage("/integrations", BotIntegrationsPage);
+
+const skills = createRoute({
+  getParentRoute: () => botPages,
+  path: "/skills",
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: "/b/$botId/integrations", params, search: { section: "skills" }, replace: true });
+  },
+});
+
+function sectionSearch({ section }: { section?: unknown }): { section?: IntegrationSection } {
+  return section === "skills" || section === "mcp" ? { section } : {};
+}
+
+const botIntegrations = createRoute({
+  getParentRoute: () => botPages,
+  path: "/integrations",
+  validateSearch: sectionSearch,
+  component: () => <BotIntegrationsPage section={botIntegrations.useSearch().section} />,
+});
+
+const botChannels = botPage("/channels", BotChannelsPage);
 const botSecrets = botPage("/secrets", BotSecretsPage);
 
 const automations = botPage("/automations", AutomationsPage);
@@ -109,25 +128,31 @@ const board = createRoute({
 const integrations = createRoute({
   getParentRoute: () => root,
   path: "/integrations",
-  validateSearch: (search: { bot?: unknown }) => {
+  validateSearch: (search: { section?: unknown; add?: unknown; target?: unknown }): IntegrationsSearch => ({
+    ...sectionSearch(search),
+    add: search.add === "mcp" || search.add === "skill" ? search.add : undefined,
+    // The router parses JSON in the URL. Keep an invalid target distinct from an absent target.
     // eslint-disable-next-line anti-slop/no-runtime-typeof
-    if (typeof search.bot === "string" && search.bot) return { bot: search.bot };
-
-    return {};
-  },
+    target: typeof search.target === "string" ? search.target : search.target === undefined ? undefined : "",
+  }),
   component: IntegrationsRoute,
 });
 
 function IntegrationsRoute() {
-  const { bot } = integrations.useSearch();
+  const { section, add, target } = integrations.useSearch();
   const navigate = integrations.useNavigate();
 
-  const change = useCallback(
-    (id: string, replace: boolean) => void navigate({ search: { bot: id }, replace }),
-    [navigate],
+  return (
+    <IntegrationsPage
+      section={section}
+      add={add}
+      target={target}
+      onAdd={(kind) =>
+        void navigate({ search: { section: kind === "skill" ? "skills" : "mcp", add: kind, target } })
+      }
+      onClose={() => void navigate({ search: { section }, replace: true })}
+    />
   );
-
-  return <IntegrationsPage bot={bot} onBotChange={change} />;
 }
 
 const taskDetail = page("/board/$taskKey", () => {
@@ -215,6 +240,7 @@ const router = createRouter({
       botSettings,
       skills,
       botIntegrations,
+      botChannels,
       botSecrets,
     ]),
     index,

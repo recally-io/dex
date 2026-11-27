@@ -118,11 +118,13 @@ func (s *MCPStore) write(ctx context.Context, botID, name string, c serverConfig
 		if err == nil {
 			return ErrMCPServerExists
 		}
-		if _, err := getMCPConfig(ctx, q, "", name); !errors.Is(err, sql.ErrNoRows) {
-			if err == nil {
-				return ErrMCPServerExists
+		if botID != "" {
+			if _, err := getMCPConfig(ctx, q, "", name); !errors.Is(err, sql.ErrNoRows) {
+				if err == nil {
+					return ErrMCPServerExists
+				}
+				return err
 			}
-			return err
 		}
 	}
 	if err := keepMCPValues(c.Env, previous.Env); err != nil {
@@ -208,8 +210,20 @@ func (in *MCPServerInput) UnmarshalJSON(data []byte) error {
 // CreateMCPServer adds a Bot-level declaration and never replaces or masks a stored one.
 // It does not contact the server. The bot reloads when it is idle.
 func (a *Bots) CreateMCPServer(ctx context.Context, botID string, in MCPServerInput) error {
+	if !botIDPattern.MatchString(botID) {
+		return ErrInvalidInput
+	}
+	return a.createMCPServer(ctx, botID, "agent", in)
+}
+
+// CreateSharedMCPServer adds a Dex-level declaration without replacing a Bot override.
+func (a *Bots) CreateSharedMCPServer(ctx context.Context, in MCPServerInput) error {
+	return a.createMCPServer(ctx, "", "dex", in)
+}
+
+func (a *Bots) createMCPServer(ctx context.Context, botID, scope string, in MCPServerInput) error {
 	store := a.config.MCPServers
-	if store == nil || !botIDPattern.MatchString(botID) {
+	if store == nil {
 		return ErrInvalidInput
 	}
 	u, err := mcpOAuthURL(in.URL)
@@ -223,7 +237,7 @@ func (a *Bots) CreateMCPServer(ctx context.Context, botID string, in MCPServerIn
 	if err := store.write(ctx, botID, in.Name, c, true); err != nil {
 		return err
 	}
-	a.markExtensionChange(botID, "agent", "MCP server create")
+	a.markExtensionChange(botID, scope, "MCP server create")
 	return nil
 }
 

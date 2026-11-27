@@ -246,7 +246,8 @@ func botID(ctx context.Context) string {
 // withBot checks the path before the strict handler decodes the body or opens storage.
 func (h *handler) withBot(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if id := r.PathValue("botId"); id != "" {
+		id := r.PathValue("botId")
+		if id != "" {
 			archived, err := h.Bots.Bot(r.Context(), id)
 			// An archived bot is hidden: only its restore route answers.
 			if err == nil && archived.ArchivedAt != 0 && !isRestore(r) {
@@ -265,12 +266,11 @@ func (h *handler) withBot(next http.Handler) http.Handler {
 				writeError(w, status, err.Error())
 				return
 			}
-			ctx := context.WithValue(r.Context(), botKey{}, id)
-			if strings.HasSuffix(r.URL.Path, "/oauth") {
-				w.Header().Set("Cache-Control", "no-store")
-				ctx = context.WithValue(ctx, mcpOAuthRequestKey{}, mcpOAuthOrigin{origin: r.Header.Get("Origin"), host: r.Host})
-			}
-			r = r.WithContext(ctx)
+			r = r.WithContext(context.WithValue(r.Context(), botKey{}, id))
+		}
+		if (id != "" && strings.HasSuffix(r.URL.Path, "/oauth")) || r.Pattern == "POST /api/integrations/mcp/{name}/oauth" {
+			w.Header().Set("Cache-Control", "no-store")
+			r = r.WithContext(context.WithValue(r.Context(), mcpOAuthRequestKey{}, mcpOAuthOrigin{origin: r.Header.Get("Origin"), host: r.Host}))
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -341,6 +341,19 @@ func (h *handler) CreateMcpServer(ctx context.Context, req api.CreateMcpServerRe
 		return nil, err
 	}
 	return api.CreateMcpServer201JSONResponse(ok), nil
+}
+func (h *handler) GetSharedIntegrations(ctx context.Context, _ api.GetSharedIntegrationsRequestObject) (api.GetSharedIntegrationsResponseObject, error) {
+	out, err := h.Engine.SharedIntegrations(ctx)
+	return api.GetSharedIntegrations200JSONResponse(out), err
+}
+func (h *handler) CreateSharedMcpServer(ctx context.Context, req api.CreateSharedMcpServerRequestObject) (api.CreateSharedMcpServerResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	if err := h.Engine.CreateSharedMCPServer(ctx, *req.Body); err != nil {
+		return nil, err
+	}
+	return api.CreateSharedMcpServer201JSONResponse(ok), nil
 }
 func (h *handler) ListVault(ctx context.Context, _ api.ListVaultRequestObject) (api.ListVaultResponseObject, error) {
 	list, err := h.Engine.VaultList(botID(ctx))
