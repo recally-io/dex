@@ -2573,6 +2573,48 @@ paths:
               schema: { $ref: "#/components/schemas/SharedIntegrations" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/integrations/catalog/skills:
+    get:
+      operationId: searchSkillCatalog
+      description: Search the public skill catalog without fetching skill files.
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: A page of skill results.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SkillCatalogPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/integrations/catalog/mcp:
+    get:
+      operationId: searchMcpCatalog
+      description: Search the official MCP Registry for current server versions.
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 200 }
+        - in: query
+          name: cursor
+          schema: { type: string, maxLength: 1024 }
+      responses:
+        "200":
+          description: A page of MCP results and their addability.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/McpCatalogPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/integrations/mcp:
     post:
       operationId: createSharedMcpServer
@@ -2580,7 +2622,7 @@ paths:
         Add a Dex-level Streamable HTTP MCP declaration without contacting the server.
         An existing Dex declaration with the same name answers 409. Bot overrides stay in place.
         The URL must use HTTPS, or HTTP on loopback, without user information, a query, or a fragment.
-        Unknown fields answer 400 and store nothing.
+        Use static headers or OAuth. Unknown fields answer 400 and store nothing.
       requestBody:
         required: true
         content:
@@ -2652,10 +2694,9 @@ paths:
         Adds a Bot-level Streamable HTTP MCP declaration. It never replaces a
         declaration: a Bot-level or Dex-level declaration with the same name
         answers 409. The URL must use HTTPS, or HTTP on loopback, and must not
-        contain user information, a query, or a fragment. The request takes no
-        headers or static tokens. Use OAuth and authorize the connection in the
-        browser. A client secret must be a vault:NAME reference. Dex does not
-        contact the server here. The bot reloads when it is idle. Unknown
+        contain user information, a query, or a fragment. Use static headers
+        or browser OAuth. Store secrets in the vault. Dex does not contact the
+        server here. The Bot reloads when it is idle. Unknown
         fields, also inside oauth, answer 400 and store nothing.
       requestBody:
         required: true
@@ -4910,19 +4951,95 @@ components:
           type: string
           description: Why the skill is not valid. The prompt does not list it.
 
+    SkillCatalogPage:
+      type: object
+      required: [skills]
+      properties:
+        skills:
+          type: array
+          items: { $ref: "#/components/schemas/SkillCatalogEntry" }
+        nextOffset: { type: integer }
+
+    SkillCatalogEntry:
+      type: object
+      required: [id, name, description, sourceUrl]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        namespace: { type: string }
+        description: { type: string }
+        sourceUrl: { type: string }
+        author: { type: string }
+        stars: { type: integer }
+        installs: { type: integer }
+        directoryPath: { type: string }
+
+    McpCatalogPage:
+      type: object
+      required: [servers]
+      properties:
+        servers:
+          type: array
+          items: { $ref: "#/components/schemas/McpCatalogEntry" }
+        nextCursor: { type: string }
+
+    McpCatalogEntry:
+      type: object
+      required: [name, description, version, addable, remotes]
+      properties:
+        name: { type: string }
+        title: { type: string }
+        description: { type: string }
+        version: { type: string }
+        addable: { type: boolean }
+        reason: { type: string }
+        remotes:
+          type: array
+          description: The Streamable HTTP remotes, including remotes that require setup before add.
+          items: { $ref: "#/components/schemas/McpCatalogRemote" }
+
+    McpCatalogRemote:
+      type: object
+      required: [url, addable, headers]
+      properties:
+        url: { type: string }
+        addable: { type: boolean }
+        reason: { type: string }
+        headers:
+          type: array
+          items: { $ref: "#/components/schemas/McpCatalogHeader" }
+
+    McpCatalogHeader:
+      type: object
+      required: [name, isRequired, isSecret]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        isRequired: { type: boolean }
+        isSecret: { type: boolean }
+        value: {
+          type: string,
+          description: A public default. Dex omits secret values.,
+        }
+
     McpServerInput:
       x-go-type: engine.MCPServerInput
       x-go-type-import:
         path: github.com/recally-io/dex/internal/engine
       type: object
       description: >
-        A remote Streamable HTTP declaration. It takes no headers or static
-        tokens. The server decodes it strictly.
+        A remote Streamable HTTP declaration. The server decodes it strictly.
       required: [name, url]
       additionalProperties: false
       properties:
         name: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
         url: { type: string }
+        headers:
+          type: object
+          description: >
+            Static HTTP headers. Store secret values as vault references such as
+            Bearer ${vault:GITHUB_TOKEN}. Do not send headers with OAuth.
+          additionalProperties: { type: string }
         oauth:
           type: object
           description: >

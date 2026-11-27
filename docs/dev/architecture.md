@@ -273,7 +273,9 @@ A stdio MCP server runs on the control host as the dex user, without a
 sandbox. It gets the explicit bot environment plus its own `env`.
 `control.sqlite` stores any plain MCP credentials in declarations as plain
 text, within the same trust boundary as provider keys. Use vault references
-in `env` and `headers`. The Integrations API and `mcp_server_list` show status,
+in `env` and `headers`. The Web Add dialog saves secret header values to the
+vault. Dex keeps static headers on the configured origin. The Integrations API
+and `mcp_server_list` show status,
 tool names, and the unresolved references. `mcp_server_get` hides plain
 environment and header values and URL queries. A failed server shows a safe
 error, such as an HTTP status or the name of a missing secret. To see the full

@@ -47,9 +47,22 @@ and does not block MCP Reload.
 
 `GET /api/integrations` reads only `<data dir>/.agents/skills` on the control host.
 It reports duplicate names and import warnings in `errors`. It does not open a
-Bot or lease a Runner. Global Integrations shows these skills. **Add skill**
-gives chat instructions for `skill_import`; it does not upload files. Bot
-Settings → Integrations shows the effective skills for that Bot.
+Bot or lease a Runner. Global Integrations shows these skills. Bot Settings →
+Integrations shows the effective skills for that Bot.
+
+**Add skill** opens the Skill catalog search on global Integrations.
+`GET /api/integrations/catalog/skills` passes the search text and offset to
+[Claude Plugins](https://claude-plugins.dev/). It returns a page of results and
+the next offset if more results are available. It does not fetch skill files.
+
+**Install** opens a dialog for the source, Bot, and install level. The Owner can
+also set a directory name. The browser creates a new Web Session, sends the
+install prompt, and opens the transcript. The Bot fetches the selected GitHub
+folder on the Session's Runner, reads the files as untrusted data, and reports
+a review with file and line evidence. The prompt tells the Bot to import a
+safe skill and ask the Owner in the same Session about any other verdict. It
+also tells the Bot to remove the temporary files before the turn ends. The
+review is model-assisted. It is not a sandbox or a guarantee of safety.
 
 The dex and bot stores are on the control host. Owner sessions use
 `skill_list` and `skill_read` to inspect these stores. Use `skill_write`,
@@ -174,7 +187,37 @@ open bots for reload.
 
 The global Integrations API lists only Dex-level MCP declarations. It does not
 connect to servers. It shows connection state `idle` or `disabled`, no tools,
-and the OAuth grant state. It omits URLs, headers, and environment values.
+and the OAuth grant state. It omits URLs and plain header and environment values.
+
+**Official presets** fill in a known server URL and its authentication method.
+The Google Workspace group includes Gmail, Drive, Docs, Sheets, Slides,
+Calendar, Chat, and Tasks. Each uses an `oauth-client` preset with suggested
+scopes and requires a pre-registered client. Follow the [Google Workspace
+setup guide](https://developers.google.com/workspace/guides/configure-mcp-servers).
+In Google Cloud, enable the services listed in the dialog and create a Web
+application client for an AI-powered agent. Add the callback URL shown in the
+form. Add the needed scopes to the consent screen. If the audience is External,
+add test users. To use Chat write tools, also configure a Chat app.
+
+The same Google client can serve all eight presets. Paste the client secret to
+save it to the selected vault, or select an existing secret at that level.
+Dex stores only `vault:NAME` in `oauth.clientSecret`. Edit the scope list to
+request only the access you need. The presets use Google's `/mcp/v1` endpoints.
+Some operations on those endpoints require Google form elicitation. The presets
+do not add an approval flow for those operations.
+
+**Search MCP Registry** uses `GET /api/integrations/catalog/mcp` to search the
+[official registry](https://registry.modelcontextprotocol.io/) for the latest
+versions. The API returns a cursor when another page is available. Only
+Streamable HTTP remotes with concrete, valid URLs can be added. Local packages
+cannot be added from this view. The Add dialog includes required headers from
+the selected remote. A registry listing is not a security review. Check the
+URL and the requested credentials before you add a server.
+
+Both catalog endpoints use Owner authentication. Dex sends the search and page
+parameters to the configured catalog origins with an eight-second limit. Dex
+does not forward Owner credentials or follow redirects on catalog requests.
+
 `POST /api/integrations/mcp` adds a Dex-level remote declaration. It returns 409
 only for a name already declared at the Dex level. Bot overrides stay in place.
 On the global Integrations page, the Add dialog can target Shared or one Bot.
@@ -182,19 +225,26 @@ Bot Integrations links to that dialog with its Bot selected.
 
 The owner can also add a Bot-level remote declaration from Web Integrations.
 `POST /api/bots/{botId}/integrations/mcp` takes a name, a URL, and optional
-`oauth` with `clientId`, `clientSecret` as `vault:NAME`, and `scope`. It saves
+`headers` or `oauth`. The `oauth` object can include `clientId`, `clientSecret`
+as `vault:NAME`, and `scope`. Both create endpoints accept the same input. Dex saves
 `type: "http"` (Streamable HTTP) through the same store and validation as
 `mcp_server_set`, and it marks only that bot for idle reload. It never replaces
 a declaration. The same name at the bot level or at the dex level returns 409,
 so a Web add cannot mask an inherited server. The store lock orders the check
 and the insert against all other declaration writes. The URL must use HTTPS,
-or HTTP on loopback, without user information, a query, or a fragment. The
-request takes no headers or environment, so it cannot store a static token.
-The body type decodes strictly: an unknown field, also inside `oauth`, returns
-the generic 400 and stores nothing, so a caller never gets a save without the
-authentication that it sent. It
-does not contact the server. A server that needs sign-in uses browser
-authorization below.
+or HTTP on loopback, without user information, a query, or a fragment. An unknown
+field, also inside `oauth`, returns 400 and stores nothing. The create request
+does not contact the server.
+
+Choose **HTTP headers** for a server that needs a static token. For each secret
+header, the browser saves the value with the vault API at the declaration's
+level. It puts only a `${vault:NAME}` reference in the declaration. A preset
+can keep a plain prefix, as in `Bearer ${vault:GITHUB_TOKEN}`. Plain non-secret
+headers are allowed. For a custom credential header, turn on **Store in vault**.
+Common credential headers such as `Authorization` and `X-API-Key` require a
+vault reference in the Web create API. A connection with static headers does
+not follow redirects to a different origin. Dex rejects headers with `oauth`
+because browser authorization does not fall back to static credentials.
 
 `mcp_server_get` hides plain `env` and `headers` values and the URL query.
 dex resolves `vault:NAME` and inline `${vault:NAME}` in `env` and `headers`
@@ -234,6 +284,9 @@ RFC 8414 or OIDC. Dex uses a challenged scope when present. Otherwise dex
 uses `oauth.scope` or the scopes in the protected resource metadata, in that
 order. Dex uses the first listed issuer. Discovered endpoints on other origins
 must use public HTTPS. Discovery and token requests do not follow redirects.
+For the `https://accounts.google.com` issuer, Dex requests `access_type=offline`
+and `prompt=consent` so Google can issue a refresh token. Google ignores the
+`offline_access` scope.
 
 The authenticated start binds a 10-minute, one-time state to the initiating
 browser, effective declaration, and MCP resource. Dex holds the PKCE verifier

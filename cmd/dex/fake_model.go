@@ -12,6 +12,8 @@ func testFakeModel() bool { return false }
 
 func testTelegramAPI() (string, func()) { return "", func() {} }
 
+func testCatalogAPI() (string, func()) { return "", func() {} }
+
 func testLoginEnv() func(ctx context.Context, base map[string]string) (map[string]string, error) {
 	return loginenv.Environment
 }

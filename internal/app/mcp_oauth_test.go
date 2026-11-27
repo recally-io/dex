@@ -162,6 +162,9 @@ func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 			t.Fatal(err)
 		}
 		q := u.Query()
+		if q.Has("access_type") || q.Has("prompt") {
+			t.Fatal("Google offline access parameters reached another issuer")
+		}
 		if q.Get("scope") != "read" || q.Get("resource") != origin+"/mcp" || q.Get("code_challenge_method") != "S256" || q.Get("state") == "" {
 			t.Fatalf("wrong authorization request: %v", q)
 		}

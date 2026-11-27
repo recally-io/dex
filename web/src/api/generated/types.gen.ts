@@ -1496,13 +1496,73 @@ export type Skill = {
     error?: string;
 };
 
+export type SkillCatalogPage = {
+    skills: Array<SkillCatalogEntry>;
+    nextOffset?: number;
+};
+
+export type SkillCatalogEntry = {
+    id: string;
+    name: string;
+    namespace?: string;
+    description: string;
+    sourceUrl: string;
+    author?: string;
+    stars?: number;
+    installs?: number;
+    directoryPath?: string;
+};
+
+export type McpCatalogPage = {
+    servers: Array<McpCatalogEntry>;
+    nextCursor?: string;
+};
+
+export type McpCatalogEntry = {
+    name: string;
+    title?: string;
+    description: string;
+    version: string;
+    addable: boolean;
+    reason?: string;
+    /**
+     * The Streamable HTTP remotes, including remotes that require setup before add.
+     */
+    remotes: Array<McpCatalogRemote>;
+};
+
+export type McpCatalogRemote = {
+    url: string;
+    addable: boolean;
+    reason?: string;
+    headers: Array<McpCatalogHeader>;
+};
+
+export type McpCatalogHeader = {
+    name: string;
+    description?: string;
+    isRequired: boolean;
+    isSecret: boolean;
+    /**
+     * A public default. Dex omits secret values.
+     */
+    value?: string;
+};
+
 /**
- * A remote Streamable HTTP declaration. It takes no headers or static tokens. The server decodes it strictly.
+ * A remote Streamable HTTP declaration. The server decodes it strictly.
  *
  */
 export type McpServerInput = {
     name: string;
     url: string;
+    /**
+     * Static HTTP headers. Store secret values as vault references such as Bearer ${vault:GITHUB_TOKEN}. Do not send headers with OAuth.
+     *
+     */
+    headers?: {
+        [key: string]: string;
+    };
     /**
      * Browser authorization. An empty object discovers the provider and registers a client.
      *
@@ -5908,6 +5968,78 @@ export type GetSharedIntegrationsResponses = {
 };
 
 export type GetSharedIntegrationsResponse = GetSharedIntegrationsResponses[keyof GetSharedIntegrationsResponses];
+
+export type SearchSkillCatalogData = {
+    body?: never;
+    path?: never;
+    query?: {
+        q?: string;
+        offset?: number;
+    };
+    url: '/api/integrations/catalog/skills';
+};
+
+export type SearchSkillCatalogErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    502: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SearchSkillCatalogError = SearchSkillCatalogErrors[keyof SearchSkillCatalogErrors];
+
+export type SearchSkillCatalogResponses = {
+    /**
+     * A page of skill results.
+     */
+    200: SkillCatalogPage;
+};
+
+export type SearchSkillCatalogResponse = SearchSkillCatalogResponses[keyof SearchSkillCatalogResponses];
+
+export type SearchMcpCatalogData = {
+    body?: never;
+    path?: never;
+    query?: {
+        q?: string;
+        cursor?: string;
+    };
+    url: '/api/integrations/catalog/mcp';
+};
+
+export type SearchMcpCatalogErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    502: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SearchMcpCatalogError = SearchMcpCatalogErrors[keyof SearchMcpCatalogErrors];
+
+export type SearchMcpCatalogResponses = {
+    /**
+     * A page of MCP results and their addability.
+     */
+    200: McpCatalogPage;
+};
+
+export type SearchMcpCatalogResponse = SearchMcpCatalogResponses[keyof SearchMcpCatalogResponses];
 
 export type CreateSharedMcpServerData = {
     body: McpServerInput;
