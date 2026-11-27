@@ -1,6 +1,6 @@
 # Dex WebView trial
 
-This native shell opens the React UI that Dex already serves. The browser and the shell use the same pages, HTTP API, and event stream. The shell has no chat components, injected scripts, or handler for commands from the page. The Go server still runs the Bot. This trial does not change the production client.
+This native shell opens the React UI that Dex already serves. The browser and the shell use the same pages, HTTP API, and event stream. The shell has no chat components. It does not inject app scripts or handle commands from the page. The Go server still runs the Bot. This trial does not change the production client. See the [screenshots and observed differences](screenshots/README.md).
 
 ## Try it on a Mac
 
@@ -37,7 +37,7 @@ mise exec -- go tool nsgo build -target android_arm64,windows_x64 -installers=fa
 
 For an Android test device with USB debugging, install the APK and use `adb -s <serial> reverse tcp:19681 tcp:19681` to reach the demo on the development machine. After the test, run `adb -s <serial> reverse --remove tcp:19681`.
 
-On Windows, install the WebView2 Runtime. Run a disposable Dex at `127.0.0.1:19681` on that machine, or forward that local port to the demo over an authenticated tunnel. The shell does not include a Dex server. Open the unpacked package with its companion files in place. A build on a Mac does not test a Windows WebView or an Android device.
+On Windows, install the WebView2 Runtime. Without it, the shell cannot display Dex. Run a disposable Dex at `127.0.0.1:19681` on that machine, or forward that local port to the demo over an authenticated tunnel. The shell does not include a Dex server. Open the unpacked package with its companion files in place. A build on a Mac does not test a Windows WebView or an Android device.
 
 ## Limits
 
