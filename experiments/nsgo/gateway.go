@@ -79,12 +79,15 @@ func requestJSON(ctx context.Context, method, path string, body, out any) error 
 	return json.UnmarshalRead(res.Body, out)
 }
 
-// Leaving the page cancels its request. A disposed scope drops queued UI updates.
+// Start under cx, not under the owner of the button or menu event.
+// Leaving cx cancels the request and drops queued updates.
 func work[T any](cx *core.Scope, run func(context.Context) (T, error), done func(T, error)) {
-	ctx, cancel := context.WithTimeout(cx.Context(), 20*time.Second)
-	go func() {
-		defer cancel()
-		v, err := run(ctx)
-		cx.Post(func() { done(v, err) })
-	}()
+	cx.Post(func() {
+		ctx, cancel := context.WithTimeout(cx.Context(), 20*time.Second)
+		go func() {
+			defer cancel()
+			v, err := run(ctx)
+			cx.Post(func() { done(v, err) })
+		}()
+	})
 }

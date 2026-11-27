@@ -45,14 +45,14 @@ data: {"type":"append","id":"a","text":"still hidden"}
 	if !errors.Is(err, io.EOF) {
 		t.Fatalf("stream ended with %v, want EOF", err)
 	}
-	u := chatLine{"u", "user", "hi"}
-	b := chatLine{"b", "assistant", "later"}
+	u := chatLine{ID: "u", Role: "user", Text: "hi"}
+	b := chatLine{ID: "b", Role: "assistant", Text: "later"}
 	want := [][]chatLine{
 		{u, b},
-		{u, {"a", "assistant", "yes"}, b},
-		{u, {"a", "assistant", "yes!"}, b},
+		{u, {ID: "a", Role: "assistant", Text: "yes"}, b},
+		{u, {ID: "a", Role: "assistant", Text: "yes!"}, b},
 		{u, b},
-		{{"new", "assistant", long}},
+		{{ID: "new", Role: "assistant", Text: long}},
 	}
 	if !slices.EqualFunc(updates, want, slices.Equal[[]chatLine]) {
 		t.Fatalf("got %d updates, want %d with the expected text and order", len(updates), len(want))
@@ -99,6 +99,41 @@ data: {"type":"snapshot","items":[],"running":false}
 	}
 	if !strings.Contains(tool, "中文工具结果") {
 		t.Fatalf("tool text = %q, want the tool result", tool)
+	}
+}
+
+func TestUserSeesAttachmentAndResetChangesCommandAvailability(t *testing.T) {
+	t.Parallel()
+
+	stream := `event: snapshot
+data: {"type":"snapshot","items":[{"kind":"user","id":"file","text":"","attachments":[{"id":"upload-id","name":"报告.txt"}]}]}
+
+event: item
+data: {"type":"item","item":{"kind":"boundary","id":"reset","boundary":"reset"}}
+
+event: item
+data: {"type":"item","item":{"kind":"boundary","id":"summary","boundary":"compaction","text":"旧摘要"}}
+
+event: item
+data: {"type":"item","item":{"kind":"boundary","id":"reset","boundary":"reset","text":"交接"}}
+
+`
+	var availability []bool
+	var file chatLine
+	err := readChat(t.Context(), strings.NewReader(stream), func(update chatUpdate) {
+		availability = append(availability, update.HasContext)
+		if len(update.Lines) > 0 {
+			file = update.Lines[0]
+		}
+	})
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("stream ended with %v, want EOF", err)
+	}
+	if file.Attachments != "报告.txt" || file.Text != "" {
+		t.Fatalf("attachment-only message = %+v", file)
+	}
+	if want := []bool{true, false, true}; !slices.Equal(availability, want) {
+		t.Fatalf("command availability = %v, want %v", availability, want)
 	}
 }
 

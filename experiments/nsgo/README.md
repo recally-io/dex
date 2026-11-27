@@ -31,13 +31,13 @@ The first command opens the macOS client. The second opens the iOS Simulator cli
 
 ## What the client implements
 
-- **Workspace and chat.** Switch Bots, create a Bot with the default settings, and search Bot names and session titles. Open Main and other sessions. Send text, see live replies and basic tool or error entries, reconnect, and stop a run when the server permits it. Create, archive, and restore eligible sessions.
+- **Workspace and chat.** Switch Bots, create a Bot with the default settings, and search Bot names and session titles. Open Main and other sessions. Send text or files, read live replies and basic tool or error entries, and reconnect. During a run, steer the current turn, queue a message, or stop the run. Use `/clear` (also `/new`) or `/compact` in a writable session. Open Activity from Main or settings from a separate session. Create, archive, and restore eligible sessions.
 - **Board and automation.** Create a Task, read its details, change its status, add a note, or send a message to the assigned Bot. Open a linked conversation or the assigned Bot's Main chat. Create a paused interval automation, enable or pause it, run it now, and open a session from its run history.
 - **Settings and files.** Edit a Bot's name, primary model, thinking level, fallback model, and instructions. Restore an archived Bot. View shared settings and integrations. View Bot Skills, MCP servers, and channel status. Reload Bot tools, disconnect a channel, and manage Bot secrets. List artifacts and preview supported UTF-8 files up to 64 KiB as plain text.
 
 ## Limits
 
-The client does not load older transcript pages, send attachments, or render Markdown. It does not replace the React UI for provider setup, plugin controls, OAuth, channel setup, or other admin work. It does not send push notifications. The trial does not validate remote token login, real provider or channel access, or operation on a physical iPhone.
+The client does not load older transcript pages or render Markdown. Use the file picker for attachments. Clipboard images, file drops, and image thumbnails do not have full React parity. On the iPhone software keyboard, Return inserts a new line. Use the Send button to submit. It does not replace the React UI for provider setup, plugin controls, OAuth, channel setup, or other admin work. It does not send push notifications. The trial does not validate remote token login, real provider or channel access, or operation on a physical iPhone.
 
 ## Run a native acceptance check
 
@@ -70,6 +70,8 @@ For a shell or chat style review, use a fresh disposable preview. In the default
 ```sh
 node experiments/nsgo/sidebar-check.cjs 19489 .local/nsgo-poc/screens 'echo: The release notes are ready for review.'
 ```
+
+To check the composer in Chrome, run `DEX_NSGO_POC_TEST=1 node experiments/nsgo/composer-check.cjs 19489` against the disposable preview above. The check adds a Bot and sends messages. It does not use a connected service or a real provider.
 
 The macOS and iOS Simulator checks covered navigation from Main to the Board and back, a chat reply after reconnect, and session archive and restore. A separate macOS check covered Bot creation, rename, and retention of a concurrent instruction change. These checks do not verify the full client or a physical iPhone.
 

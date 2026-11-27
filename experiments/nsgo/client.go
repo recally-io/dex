@@ -23,24 +23,29 @@ var chatClient = &http.Client{
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 }
 
-type chatLine struct{ ID, Role, Text string }
+type chatLine struct{ ID, Role, Text, Attachments string }
 
 type chatUpdate struct {
-	Lines     []chatLine
-	Running   bool
-	RunTarget string
+	Lines      []chatLine
+	Running    bool
+	RunTarget  string
+	HasContext bool
+	Started    bool
 }
 
 type chatSession struct {
-	ID         int    `json:"id"`
-	Title      string `json:"title"`
-	Channel    string `json:"channel"`
-	Main       bool   `json:"main"`
-	ReadOnly   *bool  `json:"readOnly"`
-	ArchivedAt int64  `json:"archivedAt"`
-	Busy       bool   `json:"busy"`
-	BotID      string `json:"botId"`
-	BotName    string `json:"botName"`
+	ID         int                     `json:"id"`
+	Title      string                  `json:"title"`
+	Channel    string                  `json:"channel"`
+	Main       bool                    `json:"main"`
+	ReadOnly   *bool                   `json:"readOnly"`
+	ArchivedAt int64                   `json:"archivedAt"`
+	Busy       bool                    `json:"busy"`
+	BotID      string                  `json:"botId"`
+	BotName    string                  `json:"botName"`
+	Settings   composerSessionSettings `json:"settings"`
+	RunnerID   string                  `json:"runnerId"`
+	Cwd        string                  `json:"cwd"`
 }
 
 func (s chatSession) writable() bool { return s.ReadOnly != nil && !*s.ReadOnly }
@@ -72,11 +77,22 @@ func watchChat(ctx context.Context, botID string, id int, update func(chatUpdate
 	return readChat(ctx, res.Body, update)
 }
 
-func sendChat(ctx context.Context, botID string, id int, requestID, text string) error {
+type chatSendOptions struct {
+	Mode        string
+	Attachments []string
+}
+
+func sendChat(ctx context.Context, botID string, id int, requestID, text string, options ...chatSendOptions) error {
+	var send chatSendOptions
+	if len(options) != 0 {
+		send = options[0]
+	}
 	return requestJSON(ctx, http.MethodPost, chatSessionPath(botID, id)+"/messages", struct {
-		ID   string `json:"id"`
-		Text string `json:"text"`
-	}{requestID, text}, nil)
+		ID          string   `json:"id"`
+		Text        string   `json:"text"`
+		Mode        string   `json:"mode,omitempty"`
+		Attachments []string `json:"attachments,omitempty"`
+	}{requestID, text, send.Mode, send.Attachments}, nil)
 }
 
 func chatStopRun(ctx context.Context, botID string, id int, target string) error {
@@ -102,16 +118,31 @@ func closeChatBody(ctx context.Context, body io.ReadCloser) func() {
 }
 
 type chatItem struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"`
-	Text      string `json:"text"`
-	Name      string `json:"name"`
-	Title     string `json:"title"`
-	Status    string `json:"status"`
-	Output    string `json:"output"`
-	Reason    string `json:"reason"`
-	Queued    bool   `json:"queued"`
-	Truncated bool   `json:"truncated"`
+	ID          string `json:"id"`
+	Kind        string `json:"kind"`
+	Text        string `json:"text"`
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Status      string `json:"status"`
+	Output      string `json:"output"`
+	Reason      string `json:"reason"`
+	Queued      bool   `json:"queued"`
+	Truncated   bool   `json:"truncated"`
+	Boundary    string `json:"boundary"`
+	Attachments []struct {
+		Name string `json:"name"`
+	} `json:"attachments"`
+}
+
+func chatHasContext(items []chatItem) bool {
+	for i := len(items) - 1; i >= 0; i-- {
+		item := items[i]
+		if item.Kind == "boundary" && item.Boundary == "compaction" {
+			continue
+		}
+		return item.Kind != "boundary" || item.Boundary != "reset" || item.Text != ""
+	}
+	return false
 }
 
 func (item chatItem) visible() bool {
@@ -124,9 +155,16 @@ func (item chatItem) visible() bool {
 }
 
 func (item chatItem) line() chatLine {
-	line := chatLine{item.ID, item.Kind, item.Text}
+	line := chatLine{ID: item.ID, Role: item.Kind, Text: item.Text}
 	switch item.Kind {
 	case "user":
+		var names []string
+		for _, file := range item.Attachments {
+			if file.Name != "" {
+				names = append(names, file.Name)
+			}
+		}
+		line.Attachments = strings.Join(names, "\n")
 		if item.Queued {
 			line.Role = "queued"
 		}
@@ -194,6 +232,7 @@ func readChat(ctx context.Context, stream io.Reader, update func(chatUpdate)) er
 		if event.Type != kind {
 			return fmt.Errorf("%s event has type %q", kind, event.Type)
 		}
+		visible := true
 		switch kind {
 		case "snapshot":
 			if event.Items == nil {
@@ -208,7 +247,7 @@ func readChat(ctx context.Context, stream io.Reader, update func(chatUpdate)) er
 				return errors.New("item event has no item ID")
 			}
 			i := slices.IndexFunc(items, func(item chatItem) bool { return item.ID == event.Item.ID })
-			visible := event.Item.visible()
+			visible = event.Item.visible()
 			// Keep hidden items in order because a later event can change their kind.
 			if i < 0 {
 				items = append(items, event.Item)
@@ -216,20 +255,24 @@ func readChat(ctx context.Context, stream io.Reader, update func(chatUpdate)) er
 				visible = visible || items[i].visible()
 				items[i] = event.Item
 			}
-			if !visible {
-				continue
-			}
 		case "append":
 			if event.ID == "" {
 				return errors.New("append event has no item ID")
 			}
 			i := slices.IndexFunc(items, func(item chatItem) bool { return item.ID == event.ID })
-			if i < 0 || !items[i].visible() {
+			if i < 0 {
 				continue
 			}
+			visible = items[i].visible()
 			items[i].Text += event.Text
 		}
 
+		hasContext := chatHasContext(items)
+		started := state.Started || state.Running || len(items) != 0
+		if !visible && state.HasContext == hasContext && state.Started == started {
+			continue
+		}
+		state.HasContext, state.Started = hasContext, started
 		lines := make([]chatLine, 0, len(items))
 		for _, item := range items {
 			if item.visible() {
