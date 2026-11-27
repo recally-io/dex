@@ -1067,7 +1067,7 @@ func withdrawQueuedInputs(ctx context.Context, conversation harness.Conversation
 		if err != nil {
 			return nil, err
 		}
-		if err := harness.WithdrawQueuedInputs(tx, conversation.Id()); err != nil {
+		if err := harness.WithdrawQueuedInputsFor(tx, conversation.Id(), "aborted"); err != nil {
 			return nil, err
 		}
 		for _, item := range queue.Items {

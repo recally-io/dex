@@ -4,7 +4,7 @@ go 1.27.2
 
 require (
 	filippo.io/age v1.3.2
-	github.com/MichaelKinsy/PiG v0.7.0
+	github.com/MichaelKinsy/PiG v0.8.0
 	github.com/coder/websocket v1.8.15
 	github.com/emersion/go-imap/v2 v2.0.0-beta.9
 	github.com/google/uuid v1.6.0
@@ -22,7 +22,7 @@ require (
 require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	filippo.io/hpke v0.4.0 // indirect
-	github.com/MichaelKinsy/PiG/extensions/sdk v0.7.0 // indirect
+	github.com/MichaelKinsy/PiG/extensions/sdk v0.8.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.47.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.10 // indirect
@@ -40,7 +40,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.23.1 // indirect
 	github.com/go-openapi/swag/jsonname v0.26.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4 // indirect
 	github.com/klauspost/compress v1.20.4 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mfridman/interpolate v0.2.0 // indirect
