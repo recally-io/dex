@@ -1,4 +1,4 @@
-import { createContext, useContext, useId, type ReactNode } from "react";
+import { createContext, useContext, useId, type ReactNode, type Ref } from "react";
 import { Menu, PanelLeft } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -192,11 +192,13 @@ function PanePage({ eyebrow, title, description, badge, actions, toolbar, wide, 
 /** One section: a heading row, then its content, divided from the next by a hairline. */
 export function Section({
   title,
+  headingRef,
   caption,
   action,
   children,
 }: {
   title: string;
+  headingRef?: Ref<HTMLHeadingElement>;
   caption?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
@@ -210,7 +212,12 @@ export function Section({
     >
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-          <h2 id={id} className="text-[14px] font-semibold text-foreground">
+          <h2
+            id={id}
+            ref={headingRef}
+            tabIndex={headingRef ? -1 : undefined}
+            className="text-[14px] font-semibold text-foreground"
+          >
             {title}
           </h2>
           {caption ? <p className="text-[13px] text-muted-foreground">{caption}</p> : null}

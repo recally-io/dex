@@ -35,7 +35,6 @@ import {
   type ChannelId,
 } from "../components/channel-kit";
 import { FeishuChannel } from "./feishu";
-import { IntegrationCatalog } from "./skills";
 import { TelegramOptionsFields } from "../components/telegram-options";
 import { TelegramManagedCreation, TelegramManagerSettings } from "../components/telegram-managed";
 
@@ -129,15 +128,14 @@ function ChannelsSection({ settings }: { settings: Settings }) {
   );
 }
 
-export function BotIntegrationsPage() {
+export function BotChannelsPage() {
   return (
     <FramedPage
-      title="Integrations"
-      description="Connect this bot to private channels and MCP servers. Channel chats share Main."
-      toolbar={<BotSettingsSwitcher segment="integrations" />}
+      title="Channels"
+      description="Connect this Bot to private channels. Channel chats share Main."
+      toolbar={<BotSettingsSwitcher segment="channels" />}
     >
       <WithChannels>{(settings) => <ChannelsSection settings={settings} />}</WithChannels>
-      <IntegrationCatalog section="integrations" />
     </FramedPage>
   );
 }

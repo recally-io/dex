@@ -1684,7 +1684,7 @@ type McpServer struct {
 	// Scope Shared across dex or scoped to one bot.
 	Scope IntegrationScope `json:"scope"`
 
-	// State idle means that the bot has not started, so dex has not connected.
+	// State idle means this view does not report a live connection.
 	State McpServerState `json:"state"`
 
 	// Tools The MCP tool names. The bot gets each tool as mcp__<server>__<tool>.
@@ -1701,11 +1701,14 @@ type McpServer struct {
 // McpServerOauth The action or status of an OAuth connection. Absent for other connections.
 type McpServerOauth string
 
-// McpServerState idle means that the bot has not started, so dex has not connected.
+// McpServerState idle means this view does not report a live connection.
 type McpServerState string
 
 // McpServerTransport Absent for a bot entry that only turns off a global server.
 type McpServerTransport string
+
+// McpServerInput A remote Streamable HTTP declaration. It takes no headers or static tokens. The server decodes it strictly.
+type McpServerInput = engine.MCPServerInput
 
 // MessageInput defines model for MessageInput.
 type MessageInput struct {
@@ -2210,6 +2213,9 @@ type Settings struct {
 	// Providers The providers that the user added, in the order of addition.
 	Providers []Provider `json:"providers"`
 }
+
+// SharedIntegrations defines model for SharedIntegrations.
+type SharedIntegrations = engine.SharedIntegrations
 
 // Skill defines model for Skill.
 type Skill struct {
@@ -3120,6 +3126,9 @@ type SetTelegramJSONRequestBody = TelegramInput
 // PollWechatLoginJSONRequestBody defines body for PollWechatLogin for application/json ContentType.
 type PollWechatLoginJSONRequestBody PollWechatLoginJSONBody
 
+// CreateMcpServerJSONRequestBody defines body for CreateMcpServer for application/json ContentType.
+type CreateMcpServerJSONRequestBody = McpServerInput
+
 // StartMcpOAuthJSONRequestBody defines body for StartMcpOAuth for application/json ContentType.
 type StartMcpOAuthJSONRequestBody StartMcpOAuthJSONBody
 
@@ -3155,6 +3164,9 @@ type CreateUploadMultipartRequestBody CreateUploadMultipartBody
 
 // PutVaultJSONRequestBody defines body for PutVault for application/json ContentType.
 type PutVaultJSONRequestBody PutVaultJSONBody
+
+// CreateSharedMcpServerJSONRequestBody defines body for CreateSharedMcpServer for application/json ContentType.
+type CreateSharedMcpServerJSONRequestBody = McpServerInput
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = NewSession
@@ -3946,6 +3958,9 @@ type ServerInterface interface {
 	// (GET /api/bots/{botId}/integrations)
 	GetBotIntegrations(w http.ResponseWriter, r *http.Request, botId string)
 
+	// (POST /api/bots/{botId}/integrations/mcp)
+	CreateMcpServer(w http.ResponseWriter, r *http.Request, botId string)
+
 	// (POST /api/bots/{botId}/integrations/mcp/{name}/oauth)
 	StartMcpOAuth(w http.ResponseWriter, r *http.Request, botId string, name string)
 
@@ -4053,6 +4068,15 @@ type ServerInterface interface {
 
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/integrations)
+	GetSharedIntegrations(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/integrations/mcp)
+	CreateSharedMcpServer(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/integrations/mcp/{name}/oauth)
+	StartSharedMcpOAuth(w http.ResponseWriter, r *http.Request, name string)
 
 	// (DELETE /api/maintenance)
 	ReleaseMaintenance(w http.ResponseWriter, r *http.Request)
@@ -5268,6 +5292,32 @@ func (siw *ServerInterfaceWrapper) GetBotIntegrations(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetBotIntegrations(w, r, botId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateMcpServer operation middleware
+func (siw *ServerInterfaceWrapper) CreateMcpServer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "botId" -------------
+	var botId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "botId", r.PathValue("botId"), &botId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "botId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateMcpServer(w, r, botId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6560,6 +6610,60 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSharedIntegrations operation middleware
+func (siw *ServerInterfaceWrapper) GetSharedIntegrations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSharedIntegrations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSharedMcpServer operation middleware
+func (siw *ServerInterfaceWrapper) CreateSharedMcpServer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSharedMcpServer(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartSharedMcpOAuth operation middleware
+func (siw *ServerInterfaceWrapper) StartSharedMcpOAuth(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartSharedMcpOAuth(w, r, name)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8117,7 +8221,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/bots/{botId}/artifacts/{artifactName}", wrapper.DeleteArtifact)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/bots/{botId}/artifacts/{artifactName}", wrapper.GetArtifact)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/bots/{botId}/artifacts/{artifactName}", wrapper.RenameArtifact)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/integrations", wrapper.GetSharedIntegrations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/integrations/mcp", wrapper.CreateSharedMcpServer)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/integrations/mcp/{name}/oauth", wrapper.StartSharedMcpOAuth)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/bots/{botId}/integrations", wrapper.GetBotIntegrations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/bots/{botId}/integrations/mcp", wrapper.CreateMcpServer)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/bots/{botId}/integrations/mcp/{name}/oauth", wrapper.StartMcpOAuth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/bots/{botId}/vault", wrapper.DeleteVault)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/bots/{botId}/vault", wrapper.ListVault)
@@ -10024,6 +10132,88 @@ type GetBotIntegrationsdefaultJSONResponse struct {
 }
 
 func (response GetBotIntegrationsdefaultJSONResponse) VisitGetBotIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMcpServerRequestObject struct {
+	BotId string `json:"botId"`
+	Body  *CreateMcpServerJSONRequestBody
+}
+
+type CreateMcpServerResponseObject interface {
+	VisitCreateMcpServerResponse(w http.ResponseWriter) error
+}
+
+type CreateMcpServer201JSONResponse Ok
+
+func (response CreateMcpServer201JSONResponse) VisitCreateMcpServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMcpServer400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateMcpServer400JSONResponse) VisitCreateMcpServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMcpServer404JSONResponse Error
+
+func (response CreateMcpServer404JSONResponse) VisitCreateMcpServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMcpServer409JSONResponse Error
+
+func (response CreateMcpServer409JSONResponse) VisitCreateMcpServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMcpServerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateMcpServerdefaultJSONResponse) VisitCreateMcpServerResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12484,6 +12674,162 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSharedIntegrationsRequestObject struct {
+}
+
+type GetSharedIntegrationsResponseObject interface {
+	VisitGetSharedIntegrationsResponse(w http.ResponseWriter) error
+}
+
+type GetSharedIntegrations200JSONResponse SharedIntegrations
+
+func (response GetSharedIntegrations200JSONResponse) VisitGetSharedIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSharedIntegrationsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetSharedIntegrationsdefaultJSONResponse) VisitGetSharedIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSharedMcpServerRequestObject struct {
+	Body *CreateSharedMcpServerJSONRequestBody
+}
+
+type CreateSharedMcpServerResponseObject interface {
+	VisitCreateSharedMcpServerResponse(w http.ResponseWriter) error
+}
+
+type CreateSharedMcpServer201JSONResponse Ok
+
+func (response CreateSharedMcpServer201JSONResponse) VisitCreateSharedMcpServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSharedMcpServer400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateSharedMcpServer400JSONResponse) VisitCreateSharedMcpServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSharedMcpServer409JSONResponse Error
+
+func (response CreateSharedMcpServer409JSONResponse) VisitCreateSharedMcpServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSharedMcpServerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateSharedMcpServerdefaultJSONResponse) VisitCreateSharedMcpServerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartSharedMcpOAuthRequestObject struct {
+	Name string `json:"name"`
+}
+
+type StartSharedMcpOAuthResponseObject interface {
+	VisitStartSharedMcpOAuthResponse(w http.ResponseWriter) error
+}
+
+type StartSharedMcpOAuth200ResponseHeaders struct {
+	SetCookie *string
+}
+
+type StartSharedMcpOAuth200JSONResponse struct {
+	Body struct {
+		AuthorizationUrl string `json:"authorizationUrl"`
+	}
+	Headers StartSharedMcpOAuth200ResponseHeaders
+}
+
+func (response StartSharedMcpOAuth200JSONResponse) VisitStartSharedMcpOAuthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartSharedMcpOAuthdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response StartSharedMcpOAuthdefaultJSONResponse) VisitStartSharedMcpOAuthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15302,6 +15648,9 @@ type StrictServerInterface interface {
 	// (GET /api/bots/{botId}/integrations)
 	GetBotIntegrations(ctx context.Context, request GetBotIntegrationsRequestObject) (GetBotIntegrationsResponseObject, error)
 
+	// (POST /api/bots/{botId}/integrations/mcp)
+	CreateMcpServer(ctx context.Context, request CreateMcpServerRequestObject) (CreateMcpServerResponseObject, error)
+
 	// (POST /api/bots/{botId}/integrations/mcp/{name}/oauth)
 	StartMcpOAuth(ctx context.Context, request StartMcpOAuthRequestObject) (StartMcpOAuthResponseObject, error)
 
@@ -15409,6 +15758,15 @@ type StrictServerInterface interface {
 
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+
+	// (GET /api/integrations)
+	GetSharedIntegrations(ctx context.Context, request GetSharedIntegrationsRequestObject) (GetSharedIntegrationsResponseObject, error)
+
+	// (POST /api/integrations/mcp)
+	CreateSharedMcpServer(ctx context.Context, request CreateSharedMcpServerRequestObject) (CreateSharedMcpServerResponseObject, error)
+
+	// (POST /api/integrations/mcp/{name}/oauth)
+	StartSharedMcpOAuth(ctx context.Context, request StartSharedMcpOAuthRequestObject) (StartSharedMcpOAuthResponseObject, error)
 
 	// (DELETE /api/maintenance)
 	ReleaseMaintenance(ctx context.Context, request ReleaseMaintenanceRequestObject) (ReleaseMaintenanceResponseObject, error)
@@ -16698,6 +17056,39 @@ func (sh *strictHandler) GetBotIntegrations(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// CreateMcpServer operation middleware
+func (sh *strictHandler) CreateMcpServer(w http.ResponseWriter, r *http.Request, botId string) {
+	var request CreateMcpServerRequestObject
+
+	request.BotId = botId
+
+	var body CreateMcpServerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateMcpServer(ctx, request.(CreateMcpServerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateMcpServer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateMcpServerResponseObject); ok {
+		if err := validResponse.VisitCreateMcpServerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // StartMcpOAuth operation middleware
 func (sh *strictHandler) StartMcpOAuth(w http.ResponseWriter, r *http.Request, botId string, name string) {
 	var request StartMcpOAuthRequestObject
@@ -17741,6 +18132,87 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSharedIntegrations operation middleware
+func (sh *strictHandler) GetSharedIntegrations(w http.ResponseWriter, r *http.Request) {
+	var request GetSharedIntegrationsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSharedIntegrations(ctx, request.(GetSharedIntegrationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSharedIntegrations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSharedIntegrationsResponseObject); ok {
+		if err := validResponse.VisitGetSharedIntegrationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSharedMcpServer operation middleware
+func (sh *strictHandler) CreateSharedMcpServer(w http.ResponseWriter, r *http.Request) {
+	var request CreateSharedMcpServerRequestObject
+
+	var body CreateSharedMcpServerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSharedMcpServer(ctx, request.(CreateSharedMcpServerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSharedMcpServer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSharedMcpServerResponseObject); ok {
+		if err := validResponse.VisitCreateSharedMcpServerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartSharedMcpOAuth operation middleware
+func (sh *strictHandler) StartSharedMcpOAuth(w http.ResponseWriter, r *http.Request, name string) {
+	var request StartSharedMcpOAuthRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartSharedMcpOAuth(ctx, request.(StartSharedMcpOAuthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartSharedMcpOAuth")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartSharedMcpOAuthResponseObject); ok {
+		if err := validResponse.VisitStartSharedMcpOAuthResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

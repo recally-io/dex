@@ -47,11 +47,15 @@ func (a *Bots) skillStore(level ExtensionLevel) *skillStore {
 }
 
 func (a *botExtensions) snapshots() (map[string]runner.SkillSnapshot, error) {
+	return scanSkillSnapshots(a.distinct(), a.stores)
+}
+
+func scanSkillSnapshots(levels []ExtensionLevel, stores map[string]*skillStore) (map[string]runner.SkillSnapshot, error) {
 	skillWrites.Lock()
 	defer skillWrites.Unlock()
-	out := make(map[string]runner.SkillSnapshot, len(a.levels))
-	for _, level := range a.distinct() {
-		snapshot := &a.stores[level.Scope].snapshot
+	out := make(map[string]runner.SkillSnapshot, len(levels))
+	for _, level := range levels {
+		snapshot := &stores[level.Scope].snapshot
 		if err := snapshot.Scan(filepath.Join(level.Dir, "skills")); err != nil {
 			return nil, err
 		}
@@ -142,13 +146,17 @@ func (a *Bots) commitSkills(ctx context.Context, botID, source string) error {
 
 // managedSkills lists both host levels, including skills that a narrower level overrides.
 func (a *botExtensions) managedSkills() ([]SkillInfo, []string) {
-	snapshots, err := a.snapshots()
+	return managedSkills(a.distinct(), a.stores, a.skillSessionPath)
+}
+
+func managedSkills(levels []ExtensionLevel, stores map[string]*skillStore, skillPath func(base, scope, rel string) string) ([]SkillInfo, []string) {
+	snapshots, err := scanSkillSnapshots(levels, stores)
 	out, warnings := []SkillInfo{}, []string{}
 	if err != nil {
 		return out, []string{err.Error()}
 	}
 	seen := map[string]bool{}
-	for _, level := range a.distinct() {
+	for _, level := range levels {
 		snapshot := snapshots[level.Scope]
 		for _, warning := range snapshot.Warnings() {
 			warnings = append(warnings, level.Scope+"/"+warning)
@@ -181,7 +189,7 @@ func (a *botExtensions) managedSkills() ([]SkillInfo, []string) {
 				continue
 			}
 			names[name] = true
-			out = append(out, SkillInfo{Name: name, Description: desc, Scope: level.Scope, Path: a.skillSessionPath(base, level.Scope, rel), Overrides: seen[name], Error: warning})
+			out = append(out, SkillInfo{Name: name, Description: desc, Scope: level.Scope, Path: skillPath(base, level.Scope, rel), Overrides: seen[name], Error: warning})
 		}
 		for name := range names {
 			seen[name] = true

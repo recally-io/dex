@@ -92,6 +92,13 @@ func getMCPConfig(ctx context.Context, q *sqlc.Queries, botID, name string) (ser
 }
 
 func (s *MCPStore) set(ctx context.Context, botID, name string, c serverConfig) error {
+	return s.write(ctx, botID, name, c, false)
+}
+
+// write saves one declaration. In create mode it keeps every stored declaration: a declaration
+// with this name at this level, or at the Dex level, fails with ErrMCPServerExists. The store
+// mutex orders the check and the insert against every other write.
+func (s *MCPStore) write(ctx context.Context, botID, name string, c serverConfig, create bool) error {
 	if !serverName.MatchString(name) || (!c.Disabled && ((c.Type == "http" && c.URL == "") || (c.Type != "http" && (c.Command == "" || c.Type != "" && c.Type != "stdio")))) {
 		return fmt.Errorf("%w: invalid MCP server declaration", ErrInvalidInput)
 	}
@@ -106,6 +113,19 @@ func (s *MCPStore) set(ctx context.Context, botID, name string, c serverConfig) 
 	previous, err := getMCPConfig(ctx, q, botID, name)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
+	}
+	if create {
+		if err == nil {
+			return ErrMCPServerExists
+		}
+		if botID != "" {
+			if _, err := getMCPConfig(ctx, q, "", name); !errors.Is(err, sql.ErrNoRows) {
+				if err == nil {
+					return ErrMCPServerExists
+				}
+				return err
+			}
+		}
 	}
 	if err := keepMCPValues(c.Env, previous.Env); err != nil {
 		return err
@@ -158,6 +178,66 @@ func (s *MCPStore) remove(ctx context.Context, botID, name string) error {
 		return sql.ErrNoRows
 	}
 	s.revisions[botID]++
+	return nil
+}
+
+// ErrMCPServerExists means that a create request would replace or mask a stored declaration.
+var ErrMCPServerExists = errors.New("an MCP server with this name exists for this bot or for Dex")
+
+// MCPServerInput is a remote Streamable HTTP declaration that the owner adds from the web UI.
+// It has no headers or environment, so it cannot hold a static token. The API uses it as the
+// request body, so the JSON tags match the McpServerInput schema.
+type MCPServerInput struct {
+	Name  string         `json:"name"`
+	URL   string         `json:"url"`
+	OAuth *MCPOAuthInput `json:"oauth,omitzero"`
+}
+
+// MCPOAuthInput selects browser authorization. ClientSecret is a vault:NAME reference.
+type MCPOAuthInput struct {
+	ClientID     string `json:"clientId,omitempty"`
+	ClientSecret string `json:"clientSecret,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+}
+
+// UnmarshalJSON refuses unknown members, also inside oauth. A dropped field such as headers
+// would save a connection without the authentication that the caller asked for.
+func (in *MCPServerInput) UnmarshalJSON(data []byte) error {
+	type plain MCPServerInput
+	return json.Unmarshal(data, (*plain)(in), json.RejectUnknownMembers(true))
+}
+
+// CreateMCPServer adds a Bot-level declaration and never replaces or masks a stored one.
+// It does not contact the server. The bot reloads when it is idle.
+func (a *Bots) CreateMCPServer(ctx context.Context, botID string, in MCPServerInput) error {
+	if !botIDPattern.MatchString(botID) {
+		return ErrInvalidInput
+	}
+	return a.createMCPServer(ctx, botID, "agent", in)
+}
+
+// CreateSharedMCPServer adds a Dex-level declaration without replacing a Bot override.
+func (a *Bots) CreateSharedMCPServer(ctx context.Context, in MCPServerInput) error {
+	return a.createMCPServer(ctx, "", "dex", in)
+}
+
+func (a *Bots) createMCPServer(ctx context.Context, botID, scope string, in MCPServerInput) error {
+	store := a.config.MCPServers
+	if store == nil {
+		return ErrInvalidInput
+	}
+	u, err := mcpOAuthURL(in.URL)
+	if err != nil || u.RawQuery != "" || u.ForceQuery || strings.ContainsAny(in.URL, "?#") {
+		return fmt.Errorf("%w: use an HTTPS URL, or HTTP on loopback, without user information, a query, or a fragment", ErrInvalidInput)
+	}
+	c := serverConfig{Type: "http", URL: in.URL}
+	if in.OAuth != nil {
+		c.OAuth = &mcpOAuthConfig{ClientID: in.OAuth.ClientID, ClientSecret: in.OAuth.ClientSecret, Scope: in.OAuth.Scope}
+	}
+	if err := store.write(ctx, botID, in.Name, c, true); err != nil {
+		return err
+	}
+	a.markExtensionChange(botID, scope, "MCP server create")
 	return nil
 }
 

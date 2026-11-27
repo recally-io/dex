@@ -1428,6 +1428,18 @@ export type VaultEntry = {
     updatedAt: string;
 };
 
+export type SharedIntegrations = {
+    skills: Array<Skill>;
+    /**
+     * Stored declarations with no tools and state idle or disabled.
+     */
+    servers: Array<McpServer>;
+    /**
+     * Skill scan errors and warnings.
+     */
+    errors: Array<string>;
+};
+
 export type BotIntegrations = {
     /**
      * The .bots directories, from wide to narrow. Each can hold skills/. Two levels can have the same directory.
@@ -1485,6 +1497,27 @@ export type Skill = {
 };
 
 /**
+ * A remote Streamable HTTP declaration. It takes no headers or static tokens. The server decodes it strictly.
+ *
+ */
+export type McpServerInput = {
+    name: string;
+    url: string;
+    /**
+     * Browser authorization. An empty object discovers the provider and registers a client.
+     *
+     */
+    oauth?: {
+        clientId?: string;
+        /**
+         * A vault:NAME reference. Dex rejects a secret value.
+         */
+        clientSecret?: string;
+        scope?: string;
+    };
+};
+
+/**
  * An MCP server from control storage. Plain environment and header values are not returned. Vault references are returned as written.
  *
  */
@@ -1500,7 +1533,7 @@ export type McpServer = {
      */
     transport?: 'stdio' | 'http';
     /**
-     * idle means that the bot has not started, so dex has not connected.
+     * idle means this view does not report a live connection.
      */
     state: 'idle' | 'connected' | 'failed' | 'disabled';
     /**
@@ -5851,6 +5884,93 @@ export type RenameArtifactResponses = {
 
 export type RenameArtifactResponse = RenameArtifactResponses[keyof RenameArtifactResponses];
 
+export type GetSharedIntegrationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/integrations';
+};
+
+export type GetSharedIntegrationsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetSharedIntegrationsError = GetSharedIntegrationsErrors[keyof GetSharedIntegrationsErrors];
+
+export type GetSharedIntegrationsResponses = {
+    /**
+     * Shared integrations and skill scan warnings.
+     */
+    200: SharedIntegrations;
+};
+
+export type GetSharedIntegrationsResponse = GetSharedIntegrationsResponses[keyof GetSharedIntegrationsResponses];
+
+export type CreateSharedMcpServerData = {
+    body: McpServerInput;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/mcp';
+};
+
+export type CreateSharedMcpServerErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateSharedMcpServerError = CreateSharedMcpServerErrors[keyof CreateSharedMcpServerErrors];
+
+export type CreateSharedMcpServerResponses = {
+    /**
+     * The declaration is saved.
+     */
+    201: Ok;
+};
+
+export type CreateSharedMcpServerResponse = CreateSharedMcpServerResponses[keyof CreateSharedMcpServerResponses];
+
+export type StartSharedMcpOAuthData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/api/integrations/mcp/{name}/oauth';
+};
+
+export type StartSharedMcpOAuthErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type StartSharedMcpOAuthError = StartSharedMcpOAuthErrors[keyof StartSharedMcpOAuthErrors];
+
+export type StartSharedMcpOAuthResponses = {
+    /**
+     * The authorization URL and a browser binding cookie.
+     */
+    200: {
+        authorizationUrl: string;
+    };
+};
+
+export type StartSharedMcpOAuthResponse = StartSharedMcpOAuthResponses[keyof StartSharedMcpOAuthResponses];
+
 export type GetBotIntegrationsData = {
     body?: never;
     path: {
@@ -5881,6 +6001,45 @@ export type GetBotIntegrationsResponses = {
 };
 
 export type GetBotIntegrationsResponse = GetBotIntegrationsResponses[keyof GetBotIntegrationsResponses];
+
+export type CreateMcpServerData = {
+    body: McpServerInput;
+    path: {
+        botId: string;
+    };
+    query?: never;
+    url: '/api/bots/{botId}/integrations/mcp';
+};
+
+export type CreateMcpServerErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateMcpServerError = CreateMcpServerErrors[keyof CreateMcpServerErrors];
+
+export type CreateMcpServerResponses = {
+    /**
+     * The declaration is saved.
+     */
+    201: Ok;
+};
+
+export type CreateMcpServerResponse = CreateMcpServerResponses[keyof CreateMcpServerResponses];
 
 export type StartMcpOAuthData = {
     body: {

@@ -56,6 +56,12 @@ type ExtensionInfo struct {
 	// ReloadPending reports changed files or settings that wait for all bots to be idle.
 	ReloadPending bool `json:"reloadPending"`
 }
+type SharedIntegrations struct {
+	Skills  []SkillInfo     `json:"skills"`
+	Servers []McpServerInfo `json:"servers"`
+	Errors  []string        `json:"errors"`
+}
+
 type extensionValidationError struct{ Message string }
 
 func (e *extensionValidationError) Error() string { return e.Message }
@@ -124,7 +130,7 @@ type serverConfig struct {
 	URL      string            `json:"url"`
 	Headers  map[string]string `json:"headers"`
 	Disabled bool              `json:"disabled"`
-	OAuth    *mcpOAuthConfig   `json:"oauth,omitempty"`
+	OAuth    *mcpOAuthConfig   `json:"oauth,omitzero"` // An empty block enables browser authorization.
 	OAuthID  string            `json:"oauthId,omitempty"`
 }
 type serverEntry struct {
@@ -155,6 +161,26 @@ func newBotExtensions(home, dataDir, botID string, handle runner.Handle, env *to
 		a.stores[l.Scope] = &skillStore{}
 	}
 	return a
+}
+
+// SharedIntegrations reads control-host declarations without opening a Runner or an MCP connection.
+func (a *Bots) SharedIntegrations(ctx context.Context) (SharedIntegrations, error) {
+	entries, err := a.config.MCPServers.list(ctx, "")
+	if err != nil {
+		return SharedIntegrations{}, err
+	}
+	servers := make([]McpServerInfo, 0, len(entries))
+	for _, entry := range entries {
+		entry.info.OAuth = entry.oauthStatus(a.vault)
+		// An inline vault reference can contain literal configuration values.
+		entry.info.VaultReferences = nil
+		servers = append(servers, entry.info)
+	}
+	level := ExtensionLevel{Scope: "dex", Dir: canonicalExtensionPath(filepath.Join(a.config.DataDir, ".agents"))}
+	skills, warnings := managedSkills([]ExtensionLevel{level}, map[string]*skillStore{level.Scope: a.skillStore(level)}, func(base, _ string, rel string) string {
+		return filepath.Join(base, filepath.FromSlash(rel))
+	})
+	return SharedIntegrations{Skills: skills, Servers: servers, Errors: warnings}, nil
 }
 
 func (a *botExtensions) forHandle(h runner.Handle) *botExtensions {
@@ -714,7 +740,7 @@ func extensionGuide(levels []ExtensionLevel, secrets string) string {
 		"Keep secrets in the vault. Use secret_list to find names and pass vault:NAME references in the env argument of bash, process_start, or a monitor_set check. Ask the user to add missing values in Settings. Do not put secrets in skill files. dex commits skill history; do not run Git in the stores.",
 		`MCP: use mcp_server_list and mcp_server_get to inspect declarations. Call mcp_server_set to replace one declaration at the dex or bot level. Call mcp_server_remove to delete it. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name. Changes apply after the bot finishes its current work.`,
 		`To use a JSON snippet, call mcp_server_set for each server. Ask the user to move secrets into the vault first: a pasted snippet is stored in the transcript. Use vault:NAME or ${vault:NAME} references in env and headers. Plain values are stored as plain text in control.sqlite.`,
-		`For browser OAuth, set type to http and add oauth: {}. If the provider requires a registered client, set oauth.clientId and use vault:NAME in oauth.clientSecret. Ask the owner to authorize the connection in Tools. Never ask for OAuth tokens or codes.`,
+		`For browser OAuth, set type to http and add oauth: {}. If the provider requires a registered client, set oauth.clientId and use vault:NAME in oauth.clientSecret. Ask the owner to authorize the connection in Integrations. Never ask for OAuth tokens or codes.`,
 		"",
 		"The tool environment starts from the user's login shell environment.",
 		secrets,
