@@ -25,7 +25,7 @@ mise exec -- bash clients/native/uitests/run-ios.sh \
   .local/apple-v1/qa/ios
 ```
 
-The runner makes and deletes its own simulator. It tests TLS before it adds the QA root to that simulator. It does not change host trust. Use `QA_SIM_RUNTIME` and `QA_SIM_DEVICE_TYPE` if the default iOS 26.5 runtime or iPhone 17 type is not available.
+The runner makes and deletes its own simulator. It tests TLS before it adds the QA root to that simulator. It does not change host trust. Use `QA_SIM_RUNTIME` and `QA_SIM_DEVICE_TYPE` if the default iOS 26.5 runtime or iPhone 17 type is not available. Set `QA_IOS_ONLY=attachment` before the command to run only the Photos picker and attachment test.
 
 The runner keeps test summaries and selected screenshots. It keeps the token, raw result bundles and temporary signing files out of the output directory. Use a new output directory for each run.
 
