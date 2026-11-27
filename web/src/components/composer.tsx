@@ -268,6 +268,7 @@ export function Composer({
             {files.notice}
           </p>
         ) : null}
+        {/* WebKit can zoom when a touch user focuses an input with text smaller than 16px. */}
         <Textarea
           ref={(element) => {
             area.current = element;
@@ -278,7 +279,7 @@ export function Composer({
             }
           }}
           rows={1}
-          className="min-h-[44px] w-full min-w-0 resize-none rounded-none border-0 bg-transparent px-1 py-1.5 text-[14px] leading-5 text-foreground shadow-none outline-none [overflow-wrap:anywhere] dark:bg-transparent placeholder:text-muted-foreground focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed"
+          className="min-h-[44px] w-full min-w-0 resize-none rounded-none border-0 bg-transparent px-1 py-1.5 text-[14px] leading-5 text-foreground shadow-none outline-none [overflow-wrap:anywhere] dark:bg-transparent placeholder:text-muted-foreground focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed pointer-coarse:text-[16px]"
           maxLength={32000}
           placeholder={running ? "Add to this run…" : placeholder}
           aria-label={running ? "Add to this run…" : placeholder}

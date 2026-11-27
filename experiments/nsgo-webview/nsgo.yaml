@@ -2,7 +2,7 @@ name: Dex WebView POC
 id: dev.vaayne.dex.webviewpoc
 version: 0.1.0
 build:
-  targets: [windows_x64, android_arm64, macos_arm64, ios_simulator]
+  targets: [macos_arm64, ios_simulator]
 apple:
   info:
     NSAppTransportSecurity:

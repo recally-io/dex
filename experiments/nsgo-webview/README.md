@@ -1,6 +1,6 @@
 # Dex WebView trial
 
-This native shell opens the React UI that Dex already serves. The browser and the shell use the same pages, HTTP API, and event stream. The shell has no chat components. It does not inject app scripts or handle commands from the page. The Go server still runs the Bot. This trial does not change the production client. See the [screenshots and observed differences](screenshots/README.md).
+This native shell opens the React UI that Dex already serves. The browser and the shell use the same pages, HTTP API, and event stream. The shell has no chat components. It does not inject app scripts or handle commands from the page. The Go server still runs the Bot. The first trial targets Apple Silicon Macs and the iOS Simulator. The shared chat composer uses 16 CSS pixels for touch input to prevent focus zoom on iPhone. Mouse and trackpad users keep their existing text size. The page still allows pinch zoom. See the [screenshots and observed differences](screenshots/README.md).
 
 ## Try it on a Mac
 
@@ -27,9 +27,21 @@ mise exec -- go tool nsgo dev -target ios_simulator -device '<simulator UDID>' -
 
 Send a short message in the shell. Check that its `echo:` reply appears in both clients. Open Board and return to chat. The iOS Simulator can reach the Mac through loopback; a physical iPhone cannot. This trial does not support remote servers or physical iPhones.
 
-## Android and Windows
+### Test iPhone input focus
 
-From `experiments/nsgo-webview`, build the Android arm64 APK and the Windows x64 package:
+Use the disposable demo and its default Bot. Install the shell on an iPhone simulator and enable the software keyboard. The [XCTest case](uitests/FocusZoom.swift) sends a message and checks the horizontal bounds of the composer and Send button during input, after keyboard dismissal, and after the echo. No app restart occurs between these steps.
+
+To run the case in Xcode, add it to an iOS UI Testing Bundle. If you use XcodeGen, you can run the same test from `experiments/nsgo-webview/uitests`:
+
+```sh
+xcodegen generate
+xcodebuild test -project ZoomQA.xcodeproj -scheme FocusZoom \
+  -destination 'platform=iOS Simulator,id=<simulator UDID>' -parallel-testing-enabled NO
+```
+
+## Optional Android and Windows builds
+
+These targets are outside the first trial. From `experiments/nsgo-webview`, explicitly build the Android arm64 APK and the Windows x64 package:
 
 ```sh
 mise exec -- go tool nsgo build -target android_arm64,windows_x64 -installers=false
