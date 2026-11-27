@@ -573,6 +573,8 @@ func (a *botExtensions) connect(ctx context.Context, entry serverEntry, env map[
 	var transport mcp.Transport
 	var auth *mcpOAuthConnection
 	switch {
+	case c.incompleteOAuth():
+		return nil, nil, errMCPIncompleteOAuth
 	case c.OAuth != nil:
 		if err := validateMCPOAuth(c); err != nil {
 			return nil, nil, err
@@ -697,6 +699,9 @@ func (a *botExtensions) connect(ctx context.Context, entry serverEntry, env map[
 	return client, tools, nil
 }
 func mcpFailure(err error) string {
+	if errors.Is(err, errMCPIncompleteOAuth) {
+		return errMCPIncompleteOAuth.Error()
+	}
 	if errors.Is(err, errMCPAuthorize) {
 		return errMCPAuthorize.Error()
 	}

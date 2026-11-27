@@ -243,6 +243,13 @@ func (a *Bots) createMCPServer(ctx context.Context, botID, scope string, in MCPS
 
 const hiddenMCPValue = "[hidden]"
 
+var errMCPIncompleteOAuth = errors.New("this MCP declaration has an OAuth identity but no OAuth settings, so dex does not connect it; ask the owner for the intended settings and replace the declaration with mcp_server_set")
+
+// incompleteOAuth reports a stored declaration whose OAuth settings are
+// missing next to its OAuth identity, such as a row from an older writer.
+// Dex must not connect it as plain HTTP or infer OAuth settings or a grant.
+func (c serverConfig) incompleteOAuth() bool { return c.OAuth == nil && c.OAuthID != "" }
+
 var mcpOAuthSecret = regexp.MustCompile(`^vault:[A-Za-z_][A-Za-z0-9_]*$`)
 
 var mcpVaultReference = regexp.MustCompile(`^vault:[A-Za-z_][A-Za-z0-9_]*$|\$\{vault:[A-Za-z_][A-Za-z0-9_]*\}`)

@@ -251,6 +251,14 @@ or URL cannot use the old grant. The server reads the current pre-registered
 secret from its vault entry at exchange and refresh. To preserve grants,
 back up the private vault files with the other vault files.
 
+A stored declaration that has an OAuth identity but no OAuth settings, such
+as a row from an older writer, is incomplete. Dex does not connect it, does
+not treat it as plain HTTP, and does not infer settings or reuse a grant.
+`mcp_server_get` and the loaded connection state report the problem. The row
+stays unchanged until the owner replaces it with `mcp_server_set`. If the
+owner selects OAuth again, Dex requires a fresh authorization. The change
+applies at the next idle reload.
+
 `POST /api/integrations/mcp/{name}/oauth` starts authorization for the Dex
 level. Bot overrides do not affect this flow. Its callback opens
 `/integrations?section=mcp`. A callback for a start from a Bot opens
