@@ -23,7 +23,10 @@ for origin in "$primary" "$alternate" "$open" "$navigation"; do
 done
 [[ "$(basename "$fixture")" == dex-apple-qa.* && -f "$fixture/ca.pem" ]] || exit 2
 token=$(< "$fixture/token")
-[[ "$token" =~ ^[A-Za-z0-9_-]{32,256}$ ]] || exit 2
+[[ "$token" =~ ^[A-Za-z0-9_-]+$ ]] && (( ${#token} >= 32 && ${#token} <= 256 )) || {
+  printf 'The QA fixture token is invalid.\n' >&2
+  exit 2
+}
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/dex-apple-ui.XXXXXXXX")
 device=
@@ -78,23 +81,40 @@ run_test() {
   return "$status"
 }
 
+reinstall() {
+  xcrun simctl uninstall "$device" "$bundle"
+  xcrun simctl install "$device" "$app"
+}
+
+run_attachment() {
+  printf 'P3\n2 2\n255\n230 30 30 30 230 30\n30 30 230 250 250 250\n' > "$work/file.ppm" || return $?
+  sips -s format png "$work/file.ppm" --out "$work/dex-qa-image.png" >/dev/null || return $?
+  xcrun simctl addmedia "$device" "$work/dex-qa-image.png" || return $?
+  run_test attachment testUserAttachesAndSendsAnImage
+}
+
 "${xcode[@]}" build-for-testing > "$output/ui-build.log" 2>&1
-run_test untrusted testUserCannotConnectToUntrustedTLS || untrusted=$?
-# Clear app state from the negative test. Trust only this new simulator.
-xcrun simctl uninstall "$device" "$bundle"
-xcrun simctl keychain "$device" add-root-cert "$fixture/ca.pem"
-xcrun simctl install "$device" "$app"
-run_test trusted testUserConnectsSignsInAndCatchesUpAfterBackground || trusted=$?
-xcrun simctl uninstall "$device" "$bundle"
-xcrun simctl install "$device" "$app"
-run_test switch testUserSwitchesAndForgetsTheServer || switched=$?
-xcrun simctl uninstall "$device" "$bundle"
-xcrun simctl install "$device" "$app"
-printf 'P3\n2 2\n255\n230 30 30 30 230 30\n30 30 230 250 250 250\n' > "$work/file.ppm"
-sips -s format png "$work/file.ppm" --out "$work/dex-qa-image.png" >/dev/null
-xcrun simctl addmedia "$device" "$work/dex-qa-image.png"
-run_test attachment testUserAttachesAndSendsAnImage || attached=$?
-xcrun simctl uninstall "$device" "$bundle"
-xcrun simctl install "$device" "$app"
-run_test navigation testUserSeesDifferentPromptsForLinksAndSilentOAuth || navigated=$?
-(( ${untrusted:-0} == 0 && ${trusted:-0} == 0 && ${switched:-0} == 0 && ${attached:-0} == 0 && ${navigated:-0} == 0 ))
+case ${QA_IOS_ONLY:-all} in
+  attachment)
+    xcrun simctl keychain "$device" add-root-cert "$fixture/ca.pem"
+    run_attachment
+    ;;
+  all)
+    run_test untrusted testUserCannotConnectToUntrustedTLS || untrusted=$?
+    # Trust only this new simulator.
+    xcrun simctl keychain "$device" add-root-cert "$fixture/ca.pem"
+    reinstall
+    run_test trusted testUserConnectsSignsInAndCatchesUpAfterBackground || trusted=$?
+    reinstall
+    run_test switch testUserSwitchesAndForgetsTheServer || switched=$?
+    reinstall
+    run_attachment || attached=$?
+    reinstall
+    run_test navigation testUserSeesDifferentPromptsForLinksAndSilentOAuth || navigated=$?
+    (( ${untrusted:-0} == 0 && ${trusted:-0} == 0 && ${switched:-0} == 0 && ${attached:-0} == 0 && ${navigated:-0} == 0 ))
+    ;;
+  *)
+    printf 'QA_IOS_ONLY must be all or attachment.\n' >&2
+    exit 2
+    ;;
+esac

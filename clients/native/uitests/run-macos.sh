@@ -47,34 +47,18 @@ plutil -insert home -string "$work/home" "$work/Fixture.plist"
 plutil -insert gate -string "$work/gate" "$work/Fixture.plist"
 (cd "$work" && xcodegen generate)
 
-printf '{\n  admin off\n  auto_https off\n}\nhttp://127.0.0.1:8787 {\n  bind 127.0.0.1\n  reverse_proxy %s\n}\n' \
-  "${local_url#http://}" > "$work/gate/Caddyfile"
-proxy=$(command -v caddy)
-(
-  proxy_pid=
-  stop_proxy() {
-    if [[ -n "$proxy_pid" ]]; then
-      kill "$proxy_pid" 2>/dev/null || true
-      wait "$proxy_pid" 2>/dev/null || true
-    fi
-  }
-  trap stop_proxy EXIT
-  trap 'exit 143' TERM
-  until [[ -f "$work/gate/start-default" ]]; do sleep 0.2; done
-  if lsof -nP -iTCP:8787 -sTCP:LISTEN >/dev/null; then
-    exit 2
-  fi
-  env -i HOME="$work/home" PATH=/usr/bin:/bin "$proxy" run --config "$work/gate/Caddyfile" --adapter caddyfile &
-  proxy_pid=$!
-  until lsof -nP -a -p "$proxy_pid" -iTCP:8787 -sTCP:LISTEN >/dev/null \
-    && "${http[@]}" http://127.0.0.1:8787/api/health >/dev/null; do
-    kill -0 "$proxy_pid"
-    sleep 0.2
-  done
-  touch "$work/gate/ready-default"
-  wait "$proxy_pid"
-) > "$output/mac-gate.log" 2>&1 &
+# Own the default port before the app starts. Return 503 until the test enables the QA backend.
+printf '{\n  admin off\n  auto_https off\n}\nhttp://127.0.0.1:8787 {\n  bind 127.0.0.1\n  @ready file {\n    root "%s/gate"\n    try_files /start-default\n  }\n  handle @ready {\n    reverse_proxy %s\n  }\n  handle {\n    respond 503\n  }\n}\n' \
+  "$work" "${local_url#http://}" > "$work/gate/Caddyfile"
+env -i HOME="$work/home" PATH=/usr/bin:/bin "$(command -v caddy)" run --config "$work/gate/Caddyfile" --adapter caddyfile > "$output/mac-gate.log" 2>&1 &
 gate_pid=$!
+deadline=$((SECONDS + 10))
+until lsof -nP -a -p "$gate_pid" -iTCP:8787 -sTCP:LISTEN >/dev/null; do
+  ((SECONDS < deadline))
+  kill -0 "$gate_pid"
+  sleep 0.2
+done
+[[ $(env -i PATH=/usr/bin:/bin curl -q --silent --noproxy '*' --max-time 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/health) == 503 ]]
 
 result="$work/mac.xcresult"
 status=0

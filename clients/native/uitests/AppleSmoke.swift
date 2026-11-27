@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 final class AppleSmoke: XCTestCase {
@@ -86,6 +87,7 @@ final class AppleSmoke: XCTestCase {
     private struct History: Decodable {
         struct Item: Decodable {
             struct Attachment: Decodable {
+                let id: String
                 let mimeType: String
                 let size: Int
             }
@@ -213,13 +215,21 @@ final class AppleSmoke: XCTestCase {
         let library = control("Photo Library")
         wait(library)
         library.tap()
-        let photo = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH[c] %@ OR elementType == %d", "Photo,", XCUIElement.ElementType.cell.rawValue)).firstMatch
-        guard photo.waitForExistence(timeout: 12) else {
-            capture("15-attachment-picker-diagnostic")
-            XCTFail("The photo picker did not expose the seeded image.\n\(app.debugDescription)")
-            return
+        let photos = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Photo,"))
+        let first = photos.matching(NSPredicate(format: "NOT label CONTAINS[c] %@", ", Photo,")).firstMatch
+        if first.waitForExistence(timeout: 4), first.isHittable {
+            first.tap()
+        } else {
+            // Some Photos builds expose the entire three-column grid as one element.
+            let grid = photos.matching(NSPredicate(format: "label CONTAINS[c] %@", ", Photo,")).firstMatch
+            wait(grid)
+            capture("15-attachment-picker")
+            let bounds = grid.frame
+            let appBounds = app.frame
+            let center = CGPoint(x: bounds.minX + bounds.width / 6, y: bounds.minY + bounds.width / 6)
+            app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: center.x - appBounds.minX, dy: center.y - appBounds.minY)).tap()
         }
-        photo.tap()
         let add = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Add", "Done")).firstMatch
         if add.waitForExistence(timeout: 2) { add.tap() }
         wait(app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Remove ")).firstMatch)
@@ -234,7 +244,12 @@ final class AppleSmoke: XCTestCase {
         let attachments = try XCTUnwrap(history.items.first { $0.text == message }?.attachments)
         XCTAssertEqual(attachments.count, 1)
         XCTAssertTrue(attachments.first?.mimeType.hasPrefix("image/") == true)
-        XCTAssertGreaterThan(attachments.first?.size ?? 0, 0)
+        let file = try XCTUnwrap(attachments.first)
+        XCTAssertGreaterThan(file.size, 0)
+        let uploaded = try await api("/uploads/\(file.id)")
+        let image = try XCTUnwrap(UIImage(data: uploaded)?.cgImage)
+        XCTAssertEqual(image.width, 2)
+        XCTAssertEqual(image.height, 2)
         capture("12-attachment-sent")
     }
 

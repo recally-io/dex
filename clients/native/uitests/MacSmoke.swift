@@ -19,11 +19,6 @@ final class MacSmoke: XCTestCase {
         capture(app, "01-mac-offline")
 
         try Data().write(to: gate.appendingPathComponent("start-default"))
-        let ready = gate.appendingPathComponent("ready-default").path
-        let listener = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            FileManager.default.fileExists(atPath: ready)
-        }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [listener], timeout: 20), .completed)
         retry.click()
 
         let composer = app.webViews.descendants(matching: .any)["Message Dex QA"].firstMatch

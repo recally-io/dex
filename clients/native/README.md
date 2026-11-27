@@ -36,9 +36,7 @@ xcrun simctl launch "$SIM_UDID" "$(plutil -extract CFBundleIdentifier raw -o - "
 
 ## Check the client
 
-Run `mise run apple:test` for the connection rules and the macOS WebKit navigation and cookie checks. To run the UI tests, install Caddy and XcodeGen on the test Mac. Start `bash clients/native/uitests/fixture.sh` from the repository root. It starts disposable Dex services and prints their addresses and its private fixture directory.
-
-In a second terminal, pass the simulator bundle, fixture directory, the HTTPS addresses printed by the fixture in the order shown by `run-ios.sh`, and an output directory to `bash clients/native/uitests/run-ios.sh`. The script creates its own simulator and deletes it when the test ends. Use `QA_SIM_RUNTIME` and `QA_SIM_DEVICE_TYPE` to select installed targets. The Mac test entry is `bash clients/native/uitests/run-macos.sh <local-fixture-url> <output-dir>`. It requires permission for Xcode UI automation and a free local port 8787. Stop the fixture after both tests finish. Never use a production Dex with these scripts.
+Run `mise run apple:test` for the connection rules and the macOS WebKit navigation and cookie checks. Follow [Apple UI acceptance](uitests/README.md) to run the app against disposable Dex services. Never use a production Dex with these tests.
 
 ## Build a signed IPA for a physical iPhone
 
