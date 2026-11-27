@@ -38,8 +38,9 @@ dex doctor
 
 `dex` with no arguments runs `serve` in the foreground. Flags override
 `DEX_ADDR` and `DEX_DATA_DIR`, which override the defaults shown above.
-The host must be an IP address; `localhost` becomes `127.0.0.1`. On a
-loopback host the API has no authentication.
+The host must be an IP address; `localhost` becomes `127.0.0.1`. A
+loopback host does not require a token by default. Do not expose that listener
+through a reverse proxy without [turning on authentication](#deploy-an-https-entry-point).
 
 ### Access from other devices
 
@@ -55,14 +56,14 @@ Open `http://<host address>:8787` on the other device and paste the token.
 The browser keeps it in a cookie. API clients send `Authorization: Bearer <token>`.
 dex creates the stored token on its first start and never replaces it.
 For a foreground `dex serve`, set `DEX_TOKEN` to your own random token of 32 to
-256 base64url characters. DEX_TOKEN also turns on the token for a loopback host.
-The service ignores DEX_TOKEN and always uses the stored token.
+256 base64url characters. `DEX_TOKEN` also turns on authentication for a loopback host.
+The service ignores `DEX_TOKEN`. When it requires authentication, it uses the stored token.
 
 dex serves plain HTTP, so anyone who can watch the network can read the token.
 Prefer a Tailscale address to `0.0.0.0` on a shared network.
 
-`service install` accepts `--host`, `--port`, and `--data-dir`. A reinstall
-keeps options that you omit and restarts dex. A new data directory selects
+`service install` accepts `--host`, `--port`, `--data-dir`, and `--require-token`.
+A reinstall keeps options that you omit and restarts dex. A new data directory selects
 another directory; it does not move data. The service saves these values as
 `serve` arguments. The service PATH contains only system directories and common
 package-manager directories. It does not copy PATH from the install shell.
@@ -96,6 +97,56 @@ Other operating systems are not supported.
 
 For a dedicated Linux machine that cannot accept SSH, see
 [Connect a remote machine](docs/remote-machines.md).
+
+### Deploy an HTTPS entry point
+
+Keep Dex on `127.0.0.1` and run a TLS reverse proxy on the same host. Use a
+DNS name and a certificate that client devices trust. Do not expose port `8787`
+through a port forward or any other listener.
+
+1. Stop any foreground Dex instance on port `8787`. Require the stored access
+   token on the loopback service:
+
+   ```sh
+   dex service install --host 127.0.0.1 --port 8787 --require-token
+   ```
+
+   For a foreground instance, run
+   `dex serve --host 127.0.0.1 --port 8787 --require-token --stored-token` instead.
+   If you use a custom data directory, use the same `--data-dir` with `dex token`.
+2. Before you enable the proxy, run the check below. **Stop if the response is
+   not `401`.** HTTPS alone does not turn on Dex authentication.
+
+   ```sh
+   curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8787/api/health
+   ```
+3. Add this site to your Caddyfile. Replace `dex.example.net` with your DNS
+   name. Caddy gets the TLS certificate and redirects HTTP to HTTPS. Do not add
+   a plain HTTP route to Dex.
+
+   ```caddyfile
+   dex.example.net {
+       reverse_proxy 127.0.0.1:8787 {
+           header_down Set-Cookie "^(dex_session=.*)$" "$1; Secure"
+       }
+   }
+   ```
+
+   The proxy adds `Secure` only to the Dex sign-in cookie. Dex already sets
+   `HttpOnly` and `SameSite=Strict`. Dex does not use `X-Forwarded-Proto` to set
+   the cookie. Keep the original `Host` header and do not log authorization
+   headers, cookies, or sign-in bodies.
+4. Run the same `curl` check against `https://dex.example.net/api/health`.
+   Expect `401` without a token. Open `https://dex.example.net` in a browser and
+   sign in with the token from `dex token`. Check that `dex_session` has both
+   `Secure` and `HttpOnly`. HTTPS API clients use the same token as a Bearer
+   token. The sign-in page and files are public; the admin API requires the token.
+
+Keep `--require-token` enabled for as long as the proxy points to Dex. Disable
+the proxy route before you remove the flag or downgrade to a version that lacks
+it. Check for `401` again before you restore the route after a service or
+upstream change. For a webhook-only public endpoint, use the path-limited proxy
+below instead.
 
 ### Channel webhooks
 

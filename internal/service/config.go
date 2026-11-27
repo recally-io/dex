@@ -20,13 +20,14 @@ import (
 
 // Config is stored inside the service definition. Arguments use the same values.
 type Config struct {
-	Host       string `json:"host"`
-	Port       int    `json:"port"`
-	DataDir    string `json:"dataDir"`
-	Executable string `json:"executable"`
-	Path       string `json:"path"`
-	AutoUpdate bool   `json:"autoUpdate"`
-	Channel    string `json:"channel"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	DataDir      string `json:"dataDir"`
+	Executable   string `json:"executable"`
+	Path         string `json:"path"`
+	AutoUpdate   bool   `json:"autoUpdate"`
+	Channel      string `json:"channel"`
+	RequireToken bool   `json:"requireToken,omitzero"`
 }
 
 // EnvironmentPath keeps service commands separate from the bot's login shell environment.
@@ -117,6 +118,9 @@ func (c Config) Loopback() bool {
 	return err == nil && ip.IsLoopback()
 }
 
+// RequiresToken reports whether the service needs its stored access token.
+func (c Config) RequiresToken() bool { return c.RequireToken || !c.Loopback() }
+
 func (c Config) Addr() string { return net.JoinHostPort(c.Host, strconv.Itoa(c.Port)) }
 
 // URL is the address that a local client uses. A wildcard host accepts loopback connections.
@@ -134,7 +138,11 @@ func (c Config) URL() string {
 // args select the stored token, so a DEX_TOKEN that the service manager passes on has no effect
 // and local clients always know the token.
 func (c Config) args() []string {
-	return []string{c.Executable, "serve", "--host", c.Host, "--port", strconv.Itoa(c.Port), "--data-dir", c.DataDir, "--stored-token"}
+	args := []string{c.Executable, "serve", "--host", c.Host, "--port", strconv.Itoa(c.Port), "--data-dir", c.DataDir, "--stored-token"}
+	if c.RequireToken {
+		args = append(args, "--require-token")
+	}
+	return args
 }
 func (c Config) record() string { // Validate guarantees that all strings can be encoded.
 	b, _ := json.Marshal(c)
