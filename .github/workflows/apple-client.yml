@@ -1,0 +1,30 @@
+name: Apple client
+
+on:
+  pull_request:
+    paths:
+      - clients/native/**
+      - .mise/tasks/apple/**
+      - .github/workflows/apple-client.yml
+  push:
+    branches: [main]
+    paths:
+      - clients/native/**
+      - .mise/tasks/apple/**
+      - .github/workflows/apple-client.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apple:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.3.0
+        with:
+          install: false
+      - run: mise run apple:test
+      - run: mise run apple:build

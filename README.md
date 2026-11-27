@@ -44,6 +44,9 @@ through a reverse proxy without [turning on authentication](#deploy-an-https-ent
 
 ### Access from other devices
 
+For the native development app on Apple silicon Macs and iPhones, see
+[Dex for Apple](clients/native/README.md). It uses the web UI from the same Dex server.
+
 The API can run shell commands, so a host that is not loopback requires an
 access token:
 
