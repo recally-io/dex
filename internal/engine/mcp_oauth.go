@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -231,11 +232,26 @@ func (a *Bots) StartMCPAuthorization(ctx context.Context, botID, scope, name, re
 			client = *registered
 		}
 	}
-	link, verifier, err := oauth.StartAuthorization(issuer, oauth.StartAuthorizationOptions{Metadata: metadata, ClientInformation: client, RedirectURL: redirect, Scope: requestedScope, State: state, Resource: resourceID})
+	link, verifier, err := startMCPAuthorizationURL(issuer, oauth.StartAuthorizationOptions{Metadata: metadata, ClientInformation: client, RedirectURL: redirect, Scope: requestedScope, State: state, Resource: resourceID})
 	if err != nil {
 		return fail("cannot start MCP authorization", err)
 	}
 	return link.Href(), &MCPAuthorization{botID: botID, entry: entry, redirect: redirect, verifier: verifier, grant: mcpGrant{Binding: entry.grantBinding(), Resource: resourceID, Redirect: redirect, Metadata: *metadata, Client: client, Scope: requestedScope}}, nil
+}
+
+func startMCPAuthorizationURL(issuer string, options oauth.StartAuthorizationOptions) (oauth.URL, string, error) {
+	link, verifier, err := oauth.StartAuthorization(issuer, options)
+	if err != nil || strings.TrimSuffix(options.Metadata.Issuer, "/") != "https://accounts.google.com" {
+		return link, verifier, err
+	}
+	// Google ignores the offline_access scope. Only this issuer needs these parameters.
+	params, err := url.ParseQuery(link.Query)
+	if err != nil {
+		return oauth.URL{}, "", err
+	}
+	params.Set("access_type", "offline")
+	params.Set("prompt", "consent")
+	return link.WithQuery(params.Encode()), verifier, nil
 }
 
 func (a *Bots) FinishMCPAuthorization(ctx context.Context, p *MCPAuthorization, code string, iss *string) error {

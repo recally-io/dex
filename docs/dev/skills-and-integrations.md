@@ -268,6 +268,9 @@ RFC 8414 or OIDC. Dex uses a challenged scope when present. Otherwise dex
 uses `oauth.scope` or the scopes in the protected resource metadata, in that
 order. Dex uses the first listed issuer. Discovered endpoints on other origins
 must use public HTTPS. Discovery and token requests do not follow redirects.
+For the `https://accounts.google.com` issuer, Dex requests `access_type=offline`
+and `prompt=consent` so Google can issue a refresh token. Google ignores the
+`offline_access` scope.
 
 The authenticated start binds a 10-minute, one-time state to the initiating
 browser, effective declaration, and MCP resource. Dex holds the PKCE verifier
