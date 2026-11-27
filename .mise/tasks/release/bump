@@ -39,7 +39,7 @@ printf '%s\n' "$next" > VERSION
 
 if [[ -f CHANGELOG.md ]]; then
   repo_url="$(awk -F': ' '/^\[Unreleased\]:/ { sub(/\/compare\/.*/, "", $2); print $2; exit }' CHANGELOG.md)"
-  repo_url="${repo_url:-https://github.com/recally-io/dex}"
+  repo_url="${repo_url:-https://github.com/vaayne/dex}"
 
   tmp="$(mktemp)"
   awk -v next_tag="$next_tag" -v prev_tag="$prev_tag" -v today="$today" -v repo_url="$repo_url" '

@@ -85,8 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Telegram**: Remove legacy text and delivery shims (#166).
 
-[Unreleased]: https://github.com/recally-io/dex/compare/v0.19.0...HEAD
-[v0.19.0]: https://github.com/recally-io/dex/compare/v0.18.0...v0.19.0
-[v0.18.0]: https://github.com/recally-io/dex/compare/v0.17.0...v0.18.0
-[v0.17.0]: https://github.com/recally-io/dex/compare/v0.16.1...v0.17.0
-[v0.16.1]: https://github.com/recally-io/dex/compare/v0.16.0...v0.16.1
+[Unreleased]: https://github.com/vaayne/dex/compare/v0.19.0...HEAD
+[v0.19.0]: https://github.com/vaayne/dex/compare/v0.18.0...v0.19.0
+[v0.18.0]: https://github.com/vaayne/dex/compare/v0.17.0...v0.18.0
+[v0.17.0]: https://github.com/vaayne/dex/compare/v0.16.1...v0.17.0
+[v0.16.1]: https://github.com/vaayne/dex/compare/v0.16.0...v0.16.1
