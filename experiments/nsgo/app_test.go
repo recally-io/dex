@@ -40,8 +40,19 @@ func chatTestViewport(cx *core.Scope, page core.Node) core.Node {
 
 func chatTestChoose(t *testing.T, app *nsgotest.App, action string) {
 	t.Helper()
-	app.Press("id:chat-menu")
+	if app.Exists("id:composer-activity") {
+		app.Press("id:composer-activity")
+	} else {
+		app.Press("id:chat-menu")
+	}
 	app.Press("id:" + action)
+}
+
+func chatTestWaitReady(app *nsgotest.App, timeout time.Duration) {
+	app.WaitUntil(timeout, func() bool {
+		fields := app.Query("id:draft")
+		return len(fields) == 1 && !fields[0].Input.Readonly
+	})
 }
 
 func TestUserSendsChineseAndSeesReplyAfterReconnect(t *testing.T) {
@@ -54,9 +65,9 @@ func TestUserSendsChineseAndSeesReplyAfterReconnect(t *testing.T) {
 	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
 		return chatTestViewport(cx, chatPage(cx, "default", 0, "Dex", map[string]string{}))
 	})
-	app.WaitFor("text:已连接", timeout)
+	chatTestWaitReady(app, timeout)
 
-	if got := app.Find("id:draft").Input.Placeholder; got != "给 Dex 发消息…" {
+	if got := app.Find("id:draft").Input.Placeholder; got != "Message Dex" {
 		t.Fatalf("draft placeholder = %q, want the bot name", got)
 	}
 	// When the user commits Chinese text and presses Send, the bot echoes the probe.
@@ -74,7 +85,7 @@ func TestUserSendsChineseAndSeesReplyAfterReconnect(t *testing.T) {
 
 	// Then the reply is still visible after the user reconnects.
 	chatTestChoose(t, app, "connect")
-	app.WaitFor("text:已连接", timeout)
+	chatTestWaitReady(app, timeout)
 	chatTestChoose(t, app, "latest")
 	app.WaitFor(reply, timeout)
 }
@@ -120,7 +131,7 @@ func TestUserCreatesArchivesAndRestoresSession(t *testing.T) {
 
 	// When the user creates a session and sends a message, it appears in the list.
 	app.Press("id:test-header-new")
-	app.WaitFor("text:已连接", timeout)
+	chatTestWaitReady(app, timeout)
 	var openedID string
 	select {
 	case sessionID := <-opened:
@@ -138,7 +149,8 @@ func TestUserCreatesArchivesAndRestoresSession(t *testing.T) {
 	reply := "text:echo: " + probe
 	app.WaitUntil(timeout, func() bool { return len(app.QueryMounted(reply)) == 1 })
 	chatTestChoose(t, app, "latest")
-	last := app.WaitFor(reply, timeout).Bounds()
+	app.WaitFor(reply, timeout)
+	last := app.Find("id:chat-assistant-turn").Bounds()
 	history := app.Find("id:history").Bounds()
 	if gap := history.Origin.Y + history.Size.Height - last.Origin.Y - last.Size.Height; gap < 0 || gap > 36 {
 		t.Fatalf("short history ends %v points above the scroll viewport bottom, want 0–36", gap)
@@ -154,9 +166,17 @@ func TestUserCreatesArchivesAndRestoresSession(t *testing.T) {
 	})
 	chatTestChoose(t, app, "latest")
 	app.WaitUntil(timeout, func() bool { return app.Find("id:history").Offset.Y > 120 })
-	app.Scroll("id:history", -10_000)
+	// The native Mac driver rounds each wheel tick down to a whole point.
+	// A second gesture covers any distance that the first one left.
+	for range 3 {
+		if app.Find("id:history").Offset.Y < 20 {
+			break
+		}
+		app.Scroll("id:history", -10_000)
+	}
 	app.WaitUntil(timeout, func() bool { return app.Find("id:history").Offset.Y < 20 })
-	chatTestChoose(t, app, "latest")
+	app.WaitFor("id:chat-jump", timeout)
+	app.Press("id:chat-jump")
 	app.WaitUntil(timeout, func() bool { return app.Find("id:history").Offset.Y > 120 })
 	app.Press("id:test-back")
 	app.WaitFor("id:sessions-archive-"+openedID, timeout)

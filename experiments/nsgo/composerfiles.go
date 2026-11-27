@@ -213,10 +213,11 @@ func composerFileRelease(file core.File) {
 func (f *composerFiles) Button() core.Node {
 	return ui.Button{TestID: "composer-files-add", Icon: lucide.Plus, LabelFunc: func() string {
 		if len(f.files.Get()) >= composerMaxFiles {
-			return "已达 10 个附件上限"
+			return "Limit of 10 attachments reached"
 		}
-		return "添加附件"
-	}, Variant: ui.ButtonGhost, Disabled: f.pickerDisabled, OnPress: f.pick, Side: 36, IconSize: 16}
+		return "Attach files"
+	}, Variant: ui.ButtonGhost, Disabled: f.pickerDisabled, OnPress: f.pick, Side: 28, IconSize: 16,
+		Tint: ui.ColorsOf(f.cx).Muted, Style: core.Style{CornerRadius: 6}}
 }
 
 func (f *composerFiles) Chips() core.Node {

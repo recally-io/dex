@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/nsgo-dev/nsgo"
-	"github.com/nsgo-dev/nsgo/base"
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/ui"
 )
@@ -307,11 +306,7 @@ func workspace(cx *core.Scope, reconnect func()) core.Node {
 	}, Children: []core.Node{
 		core.Show{When: func() bool { return !w.compact(cx) && !w.collapsed.Get() }, Then: func(cx *core.Scope) core.Node { return w.sidebar(cx, false) }}, page,
 		core.Show{When: func() bool { return w.compact(cx) && w.overlay.Get() == "drawer" }, Then: func(cx *core.Scope) core.Node {
-			return base.Dialog{Label: "Navigation", TestID: "workspace-drawer", DefaultOpen: true, OnOpenChange: func(open bool, _ base.Reason) {
-				if !open {
-					closeOverlay()
-				}
-			}, BackdropStyle: core.Style{Background: ui.Black(0.10), BackdropFilters: []core.Filter{core.Blur(4)}}, LayerStyle: core.Style{AlignItems: core.AlignStart}, PopupStyle: core.Style{Height: core.Pct(100), Width: core.Pt(260), MaxWidth: core.Pct(85)}, PopupStyleFunc: func() core.Style { return core.Style{Background: w.sidebarColor(cx), Padding: core.Insets(cx)} }, Children: []core.Node{w.sidebar(cx, true)}}
+			return w.drawer(cx, closeOverlay)
 		}},
 		core.Show{When: func() bool { return w.overlay.Get() == "search" }, Then: func(cx *core.Scope) core.Node { return workspaceSearch(cx, w.bots.Get, closeOverlay, openChat) }}, core.Show{When: func() bool { return w.overlay.Get() == "create" }, Then: func(cx *core.Scope) core.Node {
 			return botCreateDialog(cx, closeOverlay, func(id, name string) { w.reload(); openChat(id, 0, name) })

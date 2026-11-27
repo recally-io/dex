@@ -1,12 +1,15 @@
 package main
 
 import (
+	"cmp"
 	"context"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"uuid"
 
+	"github.com/nsgo-dev/nsgo/base"
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/icons/lucide"
 	"github.com/nsgo-dev/nsgo/ui"
@@ -47,6 +50,7 @@ func chatPage(cx *core.Scope, botID string, sessionID int, botName string, draft
 	colors := ui.ColorsOf(cx)
 	var history core.Ref
 	historyHeight := core.NewSignal(cx, core.Points(0))
+	away := core.NewSignal(cx, false)
 	var stopStream context.CancelFunc
 	var pending chatSubmission
 
@@ -101,17 +105,19 @@ func chatPage(cx *core.Scope, botID string, sessionID int, botName string, draft
 						hasContext.Set(update.HasContext)
 						started.Set(started.Get() || update.Started)
 						activity.Set(chatRun{update.Running, update.RunTarget})
+						if !away.Get() {
+							cx.Post(func() {
+								if attempt.Err() == nil && !away.Get() {
+									history.ScrollToEnd(false)
+								}
+							})
+						}
 						if !update.Running {
 							mode.Set("steer")
 						}
 						if phase.Get() == chatSyncing {
 							phase.Set(chatOnline)
 							connection.Set("已连接")
-							cx.Post(func() {
-								if attempt.Err() == nil {
-									history.ScrollToEnd(false)
-								}
-							})
 						}
 					})
 				})
@@ -212,17 +218,27 @@ func chatPage(cx *core.Scope, botID string, sessionID int, botName string, draft
 	wide := func() bool { return cx.Env().Window().Width >= 640 }
 	isOnline := func() bool { return phase.Get() == chatOnline }
 	readOnly := func() bool { return info.Get().ID != 0 && !info.Get().writable() }
+	blank := func() bool { return isOnline() && info.Get().writable() && !started.Get() && len(lines.Get()) == 0 }
+	name := func() string {
+		if catalog := controls.catalog.Get(); catalog != nil {
+			return cmp.Or(catalog.bot.Name, botName, "Dex")
+		}
+		return cmp.Or(botName, "Dex")
+	}
+	jump := func() { history.ScrollToEnd(false); away.Set(false) }
+	reconnect := func() { cx.Post(connect) }
+	welcome := chatLoadWelcome(cx, botID, blank)
 	menu := func() core.Node {
 		return core.Show{When: func() bool { return isOnline() || len(lines.Get()) > 0 }, Then: func(*core.Scope) core.Node {
 			return ui.Menu{Label: "会话操作", TestID: "chat-menu", Placement: core.PlaceTop, Align: core.AlignStart,
 				Trigger: ui.Button{Icon: lucide.Ellipsis, Variant: ui.ButtonGhost, Side: 36, Tint: colors.Muted},
 				Children: []core.Node{
 					core.Show{When: isOnline, Then: func(*core.Scope) core.Node {
-						return ui.MenuItem{Text: "重连", TestID: "connect", Disabled: func() bool { return !canConnect() }, OnSelect: connect}
+						return ui.MenuItem{Text: "重连", TestID: "connect", Disabled: func() bool { return !canConnect() }, OnSelect: reconnect}
 					}},
 					core.Show{When: func() bool { return len(lines.Get()) > 0 }, Then: func(*core.Scope) core.Node {
 						return ui.MenuItem{Text: "最新消息", TestID: "latest", Icon: lucide.ArrowDown,
-							OnSelect: func() { history.ScrollToEnd(false) }}
+							OnSelect: jump}
 					}},
 					core.Show{When: func() bool { return info.Get().writable() && activity.Get().running && hasDraft() }, Then: func(*core.Scope) core.Node {
 						return ui.MenuItem{Text: "停止运行", TestID: "chat-stop", Icon: lucide.Square, Disabled: func() bool { return !canStop() }, OnSelect: stop}
@@ -254,7 +270,7 @@ func chatPage(cx *core.Scope, botID string, sessionID int, botName string, draft
 
 	return core.View{
 		Style: core.Style{FlexGrow: 1, MinHeight: core.Pt(0), AlignSelf: core.AlignCenter,
-			Width: core.Pct(100), MaxWidth: core.Pt(824), Gap: 4},
+			Width: core.Pct(100), MaxWidth: core.Pt(824)},
 		StyleFunc: func() core.Style {
 			padding := core.Edges{Bottom: 12, Left: 12, Right: 12}
 			if wide() {
@@ -272,27 +288,42 @@ func chatPage(cx *core.Scope, botID string, sessionID int, botName string, draft
 					}},
 				}}
 			}},
-			core.Scroll{TestID: "history", Ref: &history,
-				Style:    core.Style{FlexGrow: 1, FlexBasis: core.Pt(0), MinHeight: core.Pt(0)},
-				OnLayout: func(bounds core.Bounds) { historyHeight.Set(bounds.Size.Height) },
-				Children: []core.Node{core.View{
-					Style: core.Style{JustifyContent: core.JustifyEnd, Gap: 16},
-					StyleFunc: func() core.Style {
-						padding := core.Symmetric(20, 4)
-						if wide() {
-							padding = core.Symmetric(24, 32)
+			core.View{Style: core.Style{FlexGrow: 1, FlexBasis: core.Pt(0), MinHeight: core.Pt(0), Position: core.Relative},
+				StyleFunc: func() core.Style {
+					if blank() {
+						return core.Style{Display: core.DisplayNone}
+					}
+					return core.Style{}
+				}, Children: []core.Node{core.Scroll{TestID: "history", Ref: &history,
+					Style:    core.Style{FlexGrow: 1, FlexBasis: core.Pt(0), MinHeight: core.Pt(0)},
+					OnLayout: func(bounds core.Bounds) { historyHeight.Set(bounds.Size.Height) },
+					OnScroll: func(event core.ScrollEvent) {
+						if !event.Stale {
+							away.Set(event.ContentSize.Height-event.Offset.Y-event.Size.Height > 100)
 						}
-						return core.Style{MinHeight: core.Pt(historyHeight.Get()), Padding: padding}
 					},
-					Children: []core.Node{
-						core.Show{When: func() bool { return isOnline() && len(lines.Get()) == 0 }, Then: func(*core.Scope) core.Node {
-							return core.Text{Content: "暂无消息", StyleFunc: ui.Colored(colors.Muted)}
-						}},
-						core.Each(lines.Get, func(line chatLine) string { return line.ID }, func(_ *core.Scope, line func() chatLine, _ func() int) core.Node {
-							return chatMessage(line, colors)
-						}),
-					},
-				}}},
+					Children: []core.Node{core.View{
+						Style: core.Style{JustifyContent: core.JustifyEnd, Gap: 12},
+						StyleFunc: func() core.Style {
+							padding := core.Symmetric(32, 4)
+							if wide() {
+								padding = core.Symmetric(32, 32)
+							}
+							return core.Style{MinHeight: core.Pt(historyHeight.Get()), Padding: padding}
+						},
+						Children: []core.Node{
+							core.Show{When: func() bool { return isOnline() && len(lines.Get()) == 0 }, Then: func(*core.Scope) core.Node {
+								return core.Text{Content: "暂无消息", StyleFunc: ui.Colored(colors.Muted)}
+							}},
+							core.Each(lines.Get, func(line chatLine) string { return line.ID }, func(cx *core.Scope, line func() chatLine, _ func() int) core.Node {
+								return chatMessage(cx, line, colors, wide)
+							}),
+						},
+					}}}, core.Show{When: away.Get, Then: func(*core.Scope) core.Node {
+					return ui.Button{TestID: "chat-jump", Label: "Jump to latest", Icon: lucide.ArrowDown, Side: 34,
+						Variant: ui.ButtonSecondary, OnPress: jump, Style: core.Style{Position: core.Absolute,
+							Bottom: core.Pt(10), Right: core.Pt(0), ZIndex: 1, CornerRadius: 17}}
+				}}}},
 			core.Show{When: readOnly, Then: func(*core.Scope) core.Node {
 				return core.View{Class: "flex-row items-center gap-1", Children: []core.Node{
 					menu(),
@@ -300,22 +331,21 @@ func chatPage(cx *core.Scope, botID string, sessionID int, botName string, draft
 				}}
 			}},
 			core.Show{When: func() bool { return info.Get().writable() }, Then: func(*core.Scope) core.Node {
-				return core.View{
-					Style: core.Style{Padding: core.Symmetric(6, 10), Gap: 2, BorderWidth: 1, CornerRadius: 14},
+				card := core.View{
+					TestID: "chat-composer",
+					Style:  core.Style{Padding: core.Symmetric(8, 12), Gap: 8, BorderWidth: 1, CornerRadius: 12},
 					StyleFunc: func() core.Style {
 						return core.Style{BorderColor: colors.Border(), Background: colors.Surface()}
 					},
 					Children: []core.Node{
-						commands.Panel(),
+						core.Show{When: func() bool { return len(commands.options()) > 0 || commands.hint.Get() != "" || commands.Pending() },
+							Then: func(*core.Scope) core.Node { return commands.Panel() }},
 						files.Chips(),
 						composerInput(cx, draft.Get, func() string {
 							if running() {
-								return "追加消息…"
+								return "Add to this run…"
 							}
-							if botName != "" {
-								return "给 " + botName + " 发消息…"
-							}
-							return "输入消息…"
+							return "Message " + name()
 						}, func() bool { return !editable() || controls.Reason() != "" }, setDraft,
 							func(value bool) { composing.Set(value) }, submit, commands.Navigate),
 						core.Show{When: func() bool { return isOnline() && controls.Reason() != "" }, Then: func(*core.Scope) core.Node {
@@ -323,37 +353,56 @@ func chatPage(cx *core.Scope, botID string, sessionID int, botName string, draft
 								Style: core.Style{FontSize: 12}, StyleFunc: ui.Colored(colors.Muted)}
 						}},
 						core.View{Style: core.Style{Direction: core.Row, AlignItems: core.AlignCenter, Gap: 4}, Children: []core.Node{
-							menu(), files.Button(),
+							files.Button(),
 							core.Show{When: func() bool { return info.Get().Main }, Then: func(cx *core.Scope) core.Node {
-								return composerActivity(cx, botID, info.Get)
-							}, Else: func(*core.Scope) core.Node { return controls.Controls() }},
-							core.Show{When: isOnline, Then: func(*core.Scope) core.Node {
-								return status(core.Style{FontSize: 12, MaxWidth: core.Pt(64)})
-							}},
+								return composerActivity(cx, botID, info.Get, func(closePanel func()) core.Node {
+									return core.View{Style: core.Style{Gap: 4}, Children: []core.Node{
+										status(core.Style{FontSize: 12}),
+										core.View{Class: "flex-row items-center gap-1", Children: []core.Node{
+											ui.Button{Text: "Reconnect", TestID: "connect", Variant: ui.ButtonGhost,
+												Disabled: func() bool { return !canConnect() }, OnPress: func() { closePanel(); reconnect() }},
+											core.Show{When: func() bool { return len(lines.Get()) > 0 }, Then: func(*core.Scope) core.Node {
+												return ui.Button{Text: "Jump to latest", TestID: "latest", Variant: ui.ButtonGhost,
+													OnPress: func() { closePanel(); jump() }}
+											}},
+										}},
+									}}
+								})
+							}, Else: func(*core.Scope) core.Node { return core.Group{menu(), controls.Controls()} }},
 							core.Text{ContentFunc: actionStatus.Get, Role: core.RoleStatus, TestID: "chat-action-status", MaxLines: 4,
 								Style: core.Style{FlexGrow: 1, FlexShrink: 1, MinWidth: core.Pt(0), FontSize: 12}, StyleFunc: ui.Colored(colors.Muted)},
 							sendMenu(),
 							core.Show{When: func() bool { return running() && !hasDraft() }, Then: func(*core.Scope) core.Node {
-								return ui.Button{TestID: "chat-stop", Label: "停止运行", Icon: lucide.Square, Side: 36, IconSize: 14,
-									Color: colors.Text, Tint: colors.Surface, Disabled: func() bool { return !canStop() }, OnPress: stop}
+								return chatComposerControl(cx, colors, "chat-stop", "Stop run", lucide.Square, 12, canStop, stop)
 							}, Else: func(*core.Scope) core.Node {
 								return core.Dynamic(func(*core.Scope) core.Node {
-									label, icon := "发送", lucide.ArrowUp
+									label, icon := "Send message", lucide.ArrowUp
 									if commands.Active() {
-										label = "执行命令"
+										label = "Run command"
 									} else if running() {
-										label, icon = "引导当前运行", lucide.CornerDownLeft
+										label, icon = "Steer", lucide.CornerDownLeft
 										if mode.Get() == "followUp" {
-											label, icon = "排队发送", lucide.ListEnd
+											label, icon = "Queue", lucide.ListEnd
 										}
 									}
-									return ui.Button{TestID: "send", Label: label, Icon: icon, Side: 36, IconSize: 16,
-										Color: colors.Text, Tint: colors.Surface, OnPress: submit, Disabled: func() bool { return !canSend() }}
+									return chatComposerControl(cx, colors, "send", label, icon, 16, canSend, submit)
 								})
 							}},
 						}},
 					},
 				}
+				return core.View{StyleFunc: func() core.Style {
+					if blank() {
+						return core.Style{FlexGrow: 1, MinHeight: core.Pt(0), JustifyContent: core.JustifyCenter}
+					}
+					return core.Style{}
+				}, Children: []core.Node{
+					core.Show{When: blank, Then: func(*core.Scope) core.Node { return chatWelcomeIntro(colors, name, info.Get) }},
+					card,
+					core.Show{When: func() bool { return blank() && cx.Env().KeyboardHeight() == 0 }, Then: func(*core.Scope) core.Node {
+						return chatWelcomeSummary(colors, controls, welcome.Get)
+					}},
+				}}
 			}},
 		},
 	}
@@ -364,9 +413,12 @@ type chatRun struct {
 	target  string
 }
 
-func chatMessage(line func() chatLine, colors ui.Colors) core.Node {
-	body := func() core.Node {
-		return core.Text{ContentFunc: func() string { return line().Text }, Style: core.Style{FontSize: 15, LineHeight: 23}}
+func chatMessage(cx *core.Scope, line func() chatLine, colors ui.Colors, wide func() bool) core.Node {
+	hovered := core.NewSignal(cx, false)
+	enter := func(core.MouseEvent) { hovered.Set(true) }
+	leave := func(core.MouseEvent) { hovered.Set(false) }
+	body := func(lineHeight core.Points) core.Node {
+		return core.Text{ContentFunc: func() string { return line().Text }, Style: core.Style{FontSize: 15, LineHeight: lineHeight}}
 	}
 	label := func(text func() string) core.Node {
 		return core.Text{ContentFunc: text, StyleFunc: func() core.Style {
@@ -376,10 +428,16 @@ func chatMessage(line func() chatLine, colors ui.Colors) core.Node {
 	return core.Show{
 		When: func() bool { return line().Role == "user" || line().Role == "queued" },
 		Then: func(*core.Scope) core.Node {
-			return core.View{Style: core.Style{AlignItems: core.AlignEnd, Padding: core.Edges{Left: 32}, Gap: 4}, Children: []core.Node{
-				core.View{Style: core.Style{Padding: core.Symmetric(9, 15), CornerRadius: 18, MaxWidth: core.Pct(100)},
+			return core.View{Style: core.Style{AlignItems: core.AlignEnd, Gap: 4}, OnMouseEnter: enter, OnMouseLeave: leave, StyleFunc: func() core.Style {
+				inset := core.Points(40)
+				if wide() {
+					inset = 96
+				}
+				return core.Style{Padding: core.Edges{Left: inset}}
+			}, Children: []core.Node{
+				core.View{TestID: "chat-user-bubble", Style: core.Style{Padding: core.Symmetric(10, 16), CornerRadius: 18, MaxWidth: core.Pct(100)},
 					StyleFunc: func() core.Style { return core.Style{Background: colors.Inset()} }, Children: []core.Node{
-						core.Show{When: func() bool { return line().Text != "" }, Then: func(*core.Scope) core.Node { return body() }},
+						core.Show{When: func() bool { return line().Text != "" }, Then: func(*core.Scope) core.Node { return body(24.375) }},
 						core.Show{When: func() bool { return line().Attachments != "" }, Then: func(*core.Scope) core.Node {
 							return core.Each(func() []string { return strings.Split(line().Attachments, "\n") },
 								func(name string) string { return name },
@@ -389,17 +447,155 @@ func chatMessage(line func() chatLine, colors ui.Colors) core.Node {
 				core.Show{When: func() bool { return line().Role == "queued" }, Then: func(*core.Scope) core.Node {
 					return label(func() string { return "已排队" })
 				}},
+				core.Show{When: func() bool { return line().Role != "queued" }, Then: func(cx *core.Scope) core.Node {
+					return chatUserFooter(cx, line, hovered.Get)
+				}},
 			}}
 		},
 		Else: func(*core.Scope) core.Node {
-			return core.View{Style: core.Style{Gap: 4}, Children: []core.Node{
-				core.Show{When: func() bool { return line().Role != "assistant" }, Then: func(*core.Scope) core.Node {
-					return label(func() string { return chatRoleLabel(line().Role) })
-				}},
-				body(),
+			return core.Show{When: func() bool { return line().Role == "assistant" }, Then: func(cx *core.Scope) core.Node {
+				return core.View{TestID: "chat-assistant-turn", OnMouseEnter: enter, OnMouseLeave: leave,
+					Style: core.Style{MaxWidth: core.Pt(680), Position: core.Relative}, Children: []core.Node{
+						body(26.25), chatAssistantFooter(cx, line, hovered.Get),
+					}}
+			}, Else: func(*core.Scope) core.Node {
+				return core.View{Style: core.Style{Gap: 4, MaxWidth: core.Pt(680)}, Children: []core.Node{
+					label(func() string { return chatRoleLabel(line().Role) }), body(26.25),
+				}}
 			}}
 		},
 	}
+}
+
+func chatComposerControl(cx *core.Scope, colors ui.Colors, id, label string, icon func() *core.SVG, size core.Points, enabled func() bool, press func()) core.Node {
+	ink := func() core.Color {
+		if !enabled() && id == "send" {
+			return ui.Alpha(colors.Muted(), .5)
+		}
+		return colors.Surface()
+	}
+	var glyph core.Node = ui.Icon(icon, size, ink)
+	if id == "chat-stop" {
+		glyph = core.View{Style: core.Style{Width: core.Pt(10), Height: core.Pt(10), CornerRadius: 2}, StyleFunc: ui.Filled(ink)}
+	}
+	return base.Button{TestID: id, Label: label, OnPress: func(core.PressEvent) { press() }, Disabled: func() bool { return !enabled() },
+		HitSlop: core.Edges{Top: 8, Bottom: 8},
+		Style: core.Style{Direction: core.Row, Width: core.Pt(28), Height: core.Pt(28), AlignItems: core.AlignCenter,
+			JustifyContent: core.JustifyCenter, CornerRadius: 6},
+		StyleFunc: func() core.Style {
+			background := colors.Text()
+			if !enabled() {
+				if id == "send" {
+					background = ui.Alpha(cx.Palette().Focus, .5)
+				} else {
+					background = ui.Alpha(background, .5)
+				}
+			}
+			return core.Style{Background: background, FocusVisible: ui.FocusRing(cx, 2)}
+		}, Children: []core.Node{glyph}}
+}
+
+type chatWelcome struct {
+	channels, sessions           int
+	channelsKnown, sessionsKnown bool
+}
+
+func chatLoadWelcome(cx *core.Scope, botID string, blank func() bool) *core.Signal[chatWelcome] {
+	result := core.NewSignal(cx, chatWelcome{})
+	requested := false
+	cx.Effect(func() {
+		if !blank() || requested {
+			return
+		}
+		requested = true
+		cx.Post(func() {
+			work(cx, func(ctx context.Context) (chatWelcome, error) {
+				var summary chatWelcome
+				var bots struct {
+					Bots []struct {
+						ID       string `json:"id"`
+						Activity struct {
+							RunningChannels int `json:"runningChannels"`
+						} `json:"activity"`
+					} `json:"bots"`
+				}
+				if requestJSON(ctx, http.MethodGet, "/api/bots", nil, &bots) == nil {
+					for _, bot := range bots.Bots {
+						if bot.ID == botID {
+							summary.channels, summary.channelsKnown = bot.Activity.RunningChannels, true
+							break
+						}
+					}
+				}
+				var sessions struct {
+					Sessions []chatSession `json:"sessions"`
+				}
+				if requestJSON(ctx, http.MethodGet, chatSessionsPath(botID), nil, &sessions) == nil {
+					summary.sessions, summary.sessionsKnown = len(sessions.Sessions), true
+				}
+				return summary, nil
+			}, func(value chatWelcome, _ error) { result.Set(value) })
+		})
+	})
+	return result
+}
+
+func chatWelcomeIntro(colors ui.Colors, name func() string, session func() chatSession) core.Node {
+	return core.View{TestID: "chat-welcome", Style: core.Style{Gap: 6, Padding: core.Symmetric(0, 8), Margin: core.Edges{Bottom: 16}}, Children: []core.Node{
+		core.Text{ContentFunc: func() string { return "What should " + name() + " do?" }, Role: core.RoleHeader,
+			Style: core.Style{FontSize: 20, FontWeight: core.FontWeightSemibold, LineHeight: 25, LetterSpacing: -.2}},
+		core.Text{ContentFunc: func() string {
+			text := "Tools run on this computer without a sandbox."
+			if !session().Main {
+				text = "This session has its own context. It does not see the main timeline. " + text
+			}
+			return text
+		}, Style: core.Style{FontSize: 13, LineHeight: 21.125}, StyleFunc: ui.Colored(colors.Muted)},
+	}}
+}
+
+func chatWelcomeSummary(colors ui.Colors, controls *composerContext, stats func() chatWelcome) core.Node {
+	row := func(label string, value func() string, rule bool) core.Node {
+		style := core.Style{Direction: core.Row, AlignItems: core.AlignCenter, Gap: 12, Padding: core.All(8)}
+		if rule {
+			style.Borders = core.Edges{Top: 1}
+		}
+		return core.View{Style: style, StyleFunc: func() core.Style { return core.Style{BorderColor: colors.Border()} }, Children: []core.Node{
+			core.Text{Content: label, Style: core.Style{FontSize: 13, LineHeight: 19.5, FlexGrow: 1}, StyleFunc: ui.Colored(colors.Muted)},
+			core.Text{ContentFunc: value, Style: core.Style{FontSize: 13, LineHeight: 19.5}},
+		}}
+	}
+	return core.View{Style: core.Style{Margin: core.Edges{Top: 24}}, Children: []core.Node{
+		core.Text{Content: "This bot so far", Style: core.Style{FontSize: 12, FontWeight: core.FontWeightMedium,
+			LineHeight: 18, Padding: core.Symmetric(0, 8), Margin: core.Edges{Bottom: 4}}, StyleFunc: ui.Colored(colors.Muted)},
+		row("Model", func() string {
+			catalog := controls.catalog.Get()
+			if catalog == nil || catalog.modelErr != nil || catalog.botErr != nil {
+				return "—"
+			}
+			if model, ok := catalog.model(catalog.primary(controls.current().Settings)); ok {
+				return cmp.Or(model.Name, model.ID)
+			}
+			return "None chosen"
+		}, false),
+		row("Channels", func() string {
+			s := stats()
+			if !s.channelsKnown {
+				return "—"
+			}
+			if s.channels == 0 {
+				return "None connected"
+			}
+			return strconv.Itoa(s.channels) + " connected"
+		}, true),
+		row("Sessions", func() string {
+			s := stats()
+			if !s.sessionsKnown {
+				return "—"
+			}
+			return strconv.Itoa(s.sessions)
+		}, true),
+	}}
 }
 
 func chatRoleLabel(role string) string {

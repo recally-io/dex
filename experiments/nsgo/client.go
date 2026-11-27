@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 var chatGateway = "http://127.0.0.1:19487"
@@ -23,7 +24,36 @@ var chatClient = &http.Client{
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 }
 
-type chatLine struct{ ID, Role, Text, Attachments string }
+type chatLine struct {
+	ID, Role, Text, Attachments string
+	Origin, Model               string
+	At, EntryID                 int64
+	Usage                       chatUsage
+	HasUsage, Ending, Live      bool
+}
+
+type chatUsage struct {
+	Input  int `json:"input"`
+	Output int `json:"output"`
+}
+
+func chatStamp(ms int64) string { return chatStampAt(ms, time.Now()) }
+
+func chatStampAt(ms int64, now time.Time) string {
+	if ms == 0 {
+		return ""
+	}
+	stamp := time.UnixMilli(ms).In(now.Location())
+	clock := stamp.Format("15:04")
+	if stamp.Year() == now.Year() && stamp.YearDay() == now.YearDay() {
+		return clock
+	}
+	month := stamp.Format("Jan")
+	if stamp.Month() == time.September {
+		month = "Sept"
+	}
+	return stamp.Format("Mon 2 ") + month + ", " + clock
+}
 
 type chatUpdate struct {
 	Lines      []chatLine
@@ -118,17 +148,22 @@ func closeChatBody(ctx context.Context, body io.ReadCloser) func() {
 }
 
 type chatItem struct {
-	ID          string `json:"id"`
-	Kind        string `json:"kind"`
-	Text        string `json:"text"`
-	Name        string `json:"name"`
-	Title       string `json:"title"`
-	Status      string `json:"status"`
-	Output      string `json:"output"`
-	Reason      string `json:"reason"`
-	Queued      bool   `json:"queued"`
-	Truncated   bool   `json:"truncated"`
-	Boundary    string `json:"boundary"`
+	ID          string     `json:"id"`
+	Kind        string     `json:"kind"`
+	Text        string     `json:"text"`
+	Name        string     `json:"name"`
+	Title       string     `json:"title"`
+	Status      string     `json:"status"`
+	Output      string     `json:"output"`
+	Reason      string     `json:"reason"`
+	Queued      bool       `json:"queued"`
+	Truncated   bool       `json:"truncated"`
+	Boundary    string     `json:"boundary"`
+	At          int64      `json:"at"`
+	EntryID     int64      `json:"entryId"`
+	Origin      string     `json:"origin"`
+	Model       string     `json:"model"`
+	Usage       *chatUsage `json:"usage"`
 	Attachments []struct {
 		Name string `json:"name"`
 	} `json:"attachments"`
@@ -154,10 +189,25 @@ func (item chatItem) visible() bool {
 	}
 }
 
-func (item chatItem) line() chatLine {
-	line := chatLine{ID: item.ID, Role: item.Kind, Text: item.Text}
+func (item chatItem) startsTurn() bool {
 	switch item.Kind {
+	case "user", "boundary", "session_result", "wake", "task_wake":
+		return true
+	default:
+		return false
+	}
+}
+
+func (item chatItem) line() chatLine {
+	line := chatLine{ID: item.ID, Role: item.Kind, Text: item.Text, At: item.At, EntryID: item.EntryID}
+	switch item.Kind {
+	case "assistant":
+		line.Model = item.Model
+		if item.Usage != nil {
+			line.Usage, line.HasUsage = *item.Usage, true
+		}
 	case "user":
+		line.Origin = item.Origin
 		var names []string
 		for _, file := range item.Attachments {
 			if file.Name != "" {
@@ -269,17 +319,24 @@ func readChat(ctx context.Context, stream io.Reader, update func(chatUpdate)) er
 
 		hasContext := chatHasContext(items)
 		started := state.Started || state.Running || len(items) != 0
-		if !visible && state.HasContext == hasContext && state.Started == started {
+		lines := make([]chatLine, 0, len(items))
+		for i, item := range items {
+			if !item.visible() {
+				continue
+			}
+			line := item.line()
+			if item.Kind == "assistant" {
+				last := i == len(items)-1
+				line.Ending = last || items[i+1].startsTurn()
+				line.Live = last && state.Running
+			}
+			lines = append(lines, line)
+		}
+		// A hidden item can change whether the preceding answer is the last item in a turn.
+		if !visible && state.HasContext == hasContext && state.Started == started && slices.Equal(state.Lines, lines) {
 			continue
 		}
-		state.HasContext, state.Started = hasContext, started
-		lines := make([]chatLine, 0, len(items))
-		for _, item := range items {
-			if item.visible() {
-				lines = append(lines, item.line())
-			}
-		}
-		state.Lines = lines
+		state.HasContext, state.Started, state.Lines = hasContext, started, lines
 		update(state)
 	}
 	return ctx.Err()

@@ -34,8 +34,16 @@ func composerInput(_ *core.Scope, draft, placeholder func() string, blocked func
 			behavior = core.SubmitBehaviorNewline
 		}
 		colors := ui.ColorsOf(cx)
+		label := func() string {
+			if placeholder != nil {
+				if text := placeholder(); text != "" {
+					return text
+				}
+			}
+			return "Message"
+		}
 		return ui.Input{
-			Ref: &ref, TestID: "draft", Label: "消息", Value: draft, PlaceholderFunc: placeholder,
+			Ref: &ref, TestID: "draft", LabelFunc: label, Value: draft, PlaceholderFunc: placeholder,
 			Multiline: true, MaxLength: composerInputLimit, SubmitBehavior: behavior, ReadonlyFunc: readOnly,
 			OnChange: func(text string) {
 				if len(text) > composerInputLimit {
@@ -52,7 +60,7 @@ func composerInput(_ *core.Scope, draft, placeholder func() string, blocked func
 				}
 			},
 			Style: core.Style{MinHeight: core.Pt(44), MaxHeight: core.Pt(200), Padding: core.Symmetric(6, 4),
-				BorderWidth: core.Zero, FontSize: 14, LineHeight: 20},
+				BorderWidth: core.Zero, FontSize: 12, LineHeight: 20},
 			StyleFunc: func() core.Style { return core.Style{Background: colors.Surface(), PlaceholderColor: colors.Muted()} },
 		}
 	})

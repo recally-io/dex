@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestUserSeesOnlyCurrentChatText(t *testing.T) {
@@ -20,7 +21,7 @@ data: {"type":"run","running":true}
 
 event: snapshot
 data: {"type":"snapshot",
-data: "items":[{"kind":"user","id":"u","text":"hi"},{"kind":"thinking","id":"a","text":"hidden"},{"kind":"assistant","id":"b","text":"later"}]}
+data: "items":[{"kind":"user","id":"u","text":"hi","at":1792024200123},{"kind":"thinking","id":"a","text":"hidden"},{"kind":"assistant","id":"b","text":"later"}]}
 
 event: item
 data: {"type":"item","item":{"kind":"assistant","id":"a","text":"yes"}}
@@ -45,14 +46,14 @@ data: {"type":"append","id":"a","text":"still hidden"}
 	if !errors.Is(err, io.EOF) {
 		t.Fatalf("stream ended with %v, want EOF", err)
 	}
-	u := chatLine{ID: "u", Role: "user", Text: "hi"}
-	b := chatLine{ID: "b", Role: "assistant", Text: "later"}
+	u := chatLine{ID: "u", Role: "user", Text: "hi", At: 1792024200123}
+	b := chatLine{ID: "b", Role: "assistant", Text: "later", Ending: true}
 	want := [][]chatLine{
 		{u, b},
 		{u, {ID: "a", Role: "assistant", Text: "yes"}, b},
 		{u, {ID: "a", Role: "assistant", Text: "yes!"}, b},
 		{u, b},
-		{{ID: "new", Role: "assistant", Text: long}},
+		{{ID: "new", Role: "assistant", Text: long, Ending: true}},
 	}
 	if !slices.EqualFunc(updates, want, slices.Equal[[]chatLine]) {
 		t.Fatalf("got %d updates, want %d with the expected text and order", len(updates), len(want))
@@ -60,6 +61,72 @@ data: {"type":"append","id":"a","text":"still hidden"}
 	updates[0][0].Text = "changed by the caller"
 	if updates[1][0] != u {
 		t.Fatal("updates share storage")
+	}
+}
+
+func TestUserSeesCommittedTranscriptMetadata(t *testing.T) {
+	t.Parallel()
+
+	// Given a user entry, a streamed answer, and its final metadata from Dex.
+	stream := `event: snapshot
+data: {"type":"snapshot","running":true,"items":[{"kind":"user","id":"u","entryId":5,"origin":"telegram:7","at":1792024200123,"text":"Question"},{"kind":"assistant","id":"draft","model":"faux/echo","text":"Partial"}]}
+
+event: append
+data: {"type":"append","id":"draft","text":" answer"}
+
+event: item
+data: {"type":"item","item":{"kind":"assistant","id":"draft","entryId":7,"model":"faux/echo","usage":{"input":0,"output":1234},"text":"Complete answer"}}
+
+event: run
+data: {"type":"run","running":false}
+
+event: item
+data: {"type":"item","item":{"kind":"user","id":"queued","queued":true,"text":"Next question"}}
+
+`
+	var updates []chatUpdate
+	err := readChat(t.Context(), strings.NewReader(stream), func(update chatUpdate) { updates = append(updates, update) })
+	if !errors.Is(err, io.EOF) || len(updates) != 5 {
+		t.Fatalf("got %d updates ending in %v, want five updates and EOF", len(updates), err)
+	}
+	if user := updates[0].Lines[0]; user.EntryID != 5 || user.Origin != "telegram:7" || user.At != 1792024200123 {
+		t.Fatalf("user entry metadata = %+v", user)
+	}
+	if answer := updates[1].Lines[1]; !answer.Live || !answer.Ending || answer.HasUsage || answer.Text != "Partial answer" {
+		t.Fatalf("streamed answer = %+v", answer)
+	}
+	if answer := updates[3].Lines[1]; answer.Live || !answer.Ending || answer.EntryID != 7 || answer.Model != "faux/echo" || !answer.HasUsage || answer.Usage != (chatUsage{Input: 0, Output: 1234}) {
+		t.Fatalf("committed answer = %+v", answer)
+	}
+	if answer, next := updates[4].Lines[1], updates[4].Lines[2]; !answer.Ending || next.Role != "queued" || next.EntryID != 0 {
+		t.Fatalf("turn followed by queued input = %+v / %+v", answer, next)
+	}
+}
+
+func TestUserSeesLocalMessageTime(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.FixedZone("UTC+08", 8*60*60))
+	for _, tc := range []struct {
+		utc, want string
+	}{
+		{"", ""},
+		{"2026-10-15T16:04:00Z", "00:04"},
+		{"2026-10-15T00:30:00Z", "Thu 15 Oct, 08:30"},
+		{"2026-09-03T00:30:00Z", "Thu 3 Sept, 08:30"},
+		{"2025-10-05T16:04:00Z", "Mon 6 Oct, 00:04"},
+	} {
+		var ms int64
+		if tc.utc != "" {
+			at, err := time.Parse(time.RFC3339, tc.utc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ms = at.UnixMilli()
+		}
+		if got := chatStampAt(ms, now); got != tc.want {
+			t.Errorf("stamp for %q = %q, want %q", tc.utc, got, tc.want)
+		}
 	}
 }
 
