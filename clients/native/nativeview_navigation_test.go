@@ -18,6 +18,24 @@ import (
 
 func TestMain(m *testing.M) { nsgotest.Main(m) }
 
+func TestUserWorkspaceUsesTheExactOrigin(t *testing.T) {
+	t.Parallel()
+	origin, _ := dexParseOrigin("https://dex.example")
+	for candidate, want := range map[string]bool{
+		"https://DEX.example:443/workspace": true,
+		"https://dex.example:8443/":         false,
+		"https://docs.dex.example/":         false,
+		"http://dex.example:443/":           false,
+		"https://guest@dex.example/":        false,
+		"about:blank":                       false,
+	} {
+		got, _ := dexParseOrigin(candidate)
+		if (got == origin) != want {
+			t.Errorf("origin match for %q = %t, want %t", candidate, got == origin, want)
+		}
+	}
+}
+
 func TestUserWorkspaceStaysOnItsOrigin(t *testing.T) {
 	t.Parallel()
 	if nsgotest.Target() == "" {
