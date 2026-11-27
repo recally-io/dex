@@ -71,6 +71,14 @@ For a shell or chat style review, use a fresh disposable preview. In the default
 node experiments/nsgo/sidebar-check.cjs 19489 .local/nsgo-poc/screens 'echo: The release notes are ready for review.'
 ```
 
+For pixel comparison, use the same disposable preview and the same single reply. Add any demo Bots **before** the capture so the roster stays fixed. With the preview on `19489`, run:
+
+```sh
+node experiments/nsgo/pixel-check.cjs 19489 .local/nsgo-poc/pixel
+```
+
+The check uses a fresh browser context for each client, width, navigation state, and theme. It saves the React, NSGo, and difference images with regional metrics in a new run directory. Exit status `1` means the capture failed or a measured region missed its limit. Read `metrics-report.txt` for the reason. The full-screen difference count is diagnostic only: an empty area cannot offset a failed control. The check does not send the draft or change the reference UI. Its phone viewport measures the Web renderer only.
+
 To check the composer in Chrome, run `DEX_NSGO_POC_TEST=1 node experiments/nsgo/composer-check.cjs 19489` against the disposable preview above. The check adds a Bot and sends messages. It does not use a connected service or a real provider.
 
 The macOS and iOS Simulator checks covered navigation from Main to the Board and back, a chat reply after reconnect, and session archive and restore. A separate macOS check covered Bot creation, rename, and retention of a concurrent instruction change. These checks do not verify the full client or a physical iPhone.
