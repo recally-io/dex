@@ -13,7 +13,7 @@ const (
 	dexOrigin = "http://" + dexHost + ":" + dexPort
 )
 
-func main() { nsgo.Run(root) }
+func main() { nsgo.Run(root, nsgo.WindowSize(1280, 800)) }
 
 func root(cx *core.Scope) core.Node {
 	cx.ProvideAccess(dexAccess{})
