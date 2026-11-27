@@ -86,6 +86,7 @@ func (m *botModels) streamWithFallback(
 		}
 	}
 	emitted := false
+	failover := false
 	for event := range primary.Events(ctx) {
 		switch e := event.(type) {
 		case ai.StartEvent:
@@ -95,13 +96,19 @@ func (m *botModels) streamWithFallback(
 			}
 		case ai.ErrorEvent:
 			if shouldFailover(ctx, emitted, e) {
-				forward(ctx, out, m.Models.StreamSimple(ctx, fallbackModel, request, fallbackStreamOptions(fallbackModel, options)...), fallbackModel)
-				return
+				// Leave the primary iteration before reading the fallback. PiG runs each stream
+				// iteration as a turn of one shared continuation executor, so a fallback read
+				// nested in this loop would wait for the turn that this loop holds.
+				failover = true
+				break
 			}
 			flush()
 			_ = out.Push(event)
 			out.End()
 			return
+		}
+		if failover {
+			break
 		}
 		flush()
 		emitted = true
@@ -110,6 +117,10 @@ func (m *botModels) streamWithFallback(
 			out.End()
 			return
 		}
+	}
+	if failover {
+		forward(ctx, out, m.Models.StreamSimple(ctx, fallbackModel, request, fallbackStreamOptions(fallbackModel, options)...), fallbackModel)
+		return
 	}
 	flush()
 	finish(ctx, out, primary, primaryModel)
