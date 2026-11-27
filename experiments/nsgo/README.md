@@ -32,12 +32,14 @@ The first command opens the macOS client. The second opens the iOS Simulator cli
 ## What the client implements
 
 - **Workspace and chat.** Switch Bots, create a Bot with the default settings, and search Bot names and session titles. Open Main and other sessions. Send text or files, read live replies and basic tool or error entries, and reconnect. During a run, steer the current turn, queue a message, or stop the run. Use `/clear` (also `/new`) or `/compact` in a writable session. Open Activity from Main or settings from a separate session. Create, archive, and restore eligible sessions.
-- **Board and automation.** Create a Task, read its details, change its status, add a note, or send a message to the assigned Bot. Open a linked conversation or the assigned Bot's Main chat. Create a paused interval automation, enable or pause it, run it now, and open a session from its run history.
-- **Settings and files.** Edit a Bot's name, primary model, thinking level, fallback model, and instructions. Restore an archived Bot. View shared settings and integrations. View Bot Skills, MCP servers, and channel status. Reload Bot tools, disconnect a channel, and manage Bot secrets. List artifacts and preview supported UTF-8 files up to 64 KiB as plain text.
+- **Bot navigation.** Open Artifacts without leaving the conversation. Continue editing a file in a chat draft. New session opens the project directory picker. Sessions shows activity, filters by kind, and can show archived sessions. Bot settings has separate General, Integrations, Channels, and Secrets pages.
+- **Board and Automations.** Create a Task, filter the Board by Bot, open a Task or result, change Task status, add a note, and follow a linked conversation. Open an Automation to edit its schedule, pause it, run it, or read its run history.
+- **Integrations.** View shared skills and MCP servers. Choose a shared or Bot target when you add an MCP server. Skill installation starts a review in a Bot session. Adding a server, authorizing it, and starting an install can contact external services.
+- **Settings.** General, Providers, Runners, Secrets, Integrations, Archived, and About each have an address. These pages use the Dex API. Settings → Integrations manages event sources; the sidebar Integrations page manages skills and MCP servers.
 
 ## Limits
 
-The client does not load older transcript pages or render Markdown. Use the file picker for attachments. Clipboard images, file drops, and image thumbnails do not have full React parity. On the iPhone software keyboard, Return inserts a new line. Use the Send button to submit. It does not replace the React UI for provider setup, plugin controls, OAuth, channel setup, or other admin work. It does not send push notifications. The trial does not validate remote token login, real provider or channel access, or operation on a physical iPhone.
+The client does not load older transcript pages or render Markdown. Use the file picker for attachments. Clipboard images, file drops, and image thumbnails do not have full React parity. On the iPhone software keyboard, Return inserts a new line. Use the Send button to submit. Use the React UI for per-provider model discovery, channel pairing, 1Password setup, server updates, and native OAuth handoff. The Task detail page does not edit dependencies or PR links. It does not send push notifications. The trial does not validate remote token login, real provider or channel access, or operation on a physical iPhone.
 
 ## Run a native acceptance check
 
@@ -80,6 +82,16 @@ node experiments/nsgo/pixel-check.cjs 19489 .local/nsgo-poc/pixel
 The check uses a fresh browser context for each client, width, navigation state, and theme. It saves the React, NSGo, and difference images with regional metrics in a new run directory. Exit status `1` means the capture failed or a measured region missed its limit. Read `metrics-report.txt` for the reason. The full-screen difference count is diagnostic only: an empty area cannot offset a failed control. The check does not send the draft or change the reference UI. Its phone viewport measures the Web renderer only.
 
 To check the composer in Chrome, run `DEX_NSGO_POC_TEST=1 node experiments/nsgo/composer-check.cjs 19489` against the disposable preview above. The check adds a Bot and sends messages. It does not use a connected service or a real provider.
+
+To compare the eight Bot and workspace entries, start a fresh preview with a fixed sample file, Task, populated session, and disabled Automation. The fixture uses only the temporary Dex and its local echo model:
+
+```sh
+NSGO_PREVIEW_PORT=19545 NSGO_PREVIEW_PAGES_FIXTURE=1 mise run poc:nsgo-preview
+# In another terminal, choose a new output directory for each run.
+mise exec -- node experiments/nsgo/pages-check.cjs 19545 .local/nsgo-poc/pages/review
+```
+
+The [page comparison](screenshots/pages/README.md) has screenshots, measured differences, and separate macOS and iOS Simulator results. The default check reads the fixture without sending messages or installing integrations. Use `--create-session=nsgo` on that disposable pair to test the New session action. A failed check preserves its screenshots and report. Differences above 1 CSS pixel in a measured Web anchor fail the comparison. Passing an anchor does not prove that an entire page matches. The phone browser and iOS Simulator are separate checks.
 
 The macOS and iOS Simulator checks covered navigation from Main to the Board and back, a chat reply after reconnect, and session archive and restore. A separate macOS check covered Bot creation, rename, and retention of a concurrent instruction change. These checks do not verify the full client or a physical iPhone.
 

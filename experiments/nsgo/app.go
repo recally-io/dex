@@ -30,15 +30,12 @@ type chatSubmission struct {
 	options   chatSendOptions
 }
 
-func chatPage(cx *core.Scope, botID string, sessionID int, botName string, drafts map[string]string) core.Node {
+func chatPage(cx *core.Scope, botID string, sessionID int, botName string, draft *core.Signal[string], info *core.Signal[chatSession]) core.Node {
 	lifetime := cx.Context()
 	phase := core.NewSignal(cx, chatOffline)
 	connection := core.NewSignal(cx, "正在连接…")
 	lines := core.NewSignalFunc(cx, []chatLine(nil), slices.Equal)
-	info := core.NewSignal(cx, chatSession{})
 	activity := core.NewSignal(cx, chatRun{})
-	draftKey := botID + ":" + strconv.Itoa(sessionID)
-	draft := core.NewSignal(cx, drafts[draftKey])
 	composing := core.NewSignal(cx, false)
 	sending := core.NewSignal(cx, false)
 	stopping := core.NewSignal(cx, false)
@@ -54,14 +51,7 @@ func chatPage(cx *core.Scope, botID string, sessionID int, botName string, draft
 	var stopStream context.CancelFunc
 	var pending chatSubmission
 
-	setDraft := func(text string) {
-		draft.Set(text)
-		if text == "" {
-			delete(drafts, draftKey)
-		} else if drafts != nil {
-			drafts[draftKey] = text
-		}
-	}
+	setDraft := draft.Set
 
 	controls := newComposerContext(cx, botID, info.Get, started.Get)
 	running := func() bool { return activity.Get().running }

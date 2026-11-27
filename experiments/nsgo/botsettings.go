@@ -1,20 +1,21 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
+	"unicode/utf16"
 
+	"github.com/nsgo-dev/nsgo/base"
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/ui"
 )
 
-type botSettingsModel struct {
-	Provider string
-	ID       string
-}
+type botSettingsModel struct{ Provider, ID string }
 
 type botSettingsValues struct {
 	Name             string `json:"name"`
@@ -40,232 +41,367 @@ type botSettingsCatalogItem struct {
 	ThinkingLevels []string `json:"thinkingLevels"`
 }
 
-var botSettingsThinkingOptions = []ui.Option[string]{
-	{Value: "off", Label: "关闭"}, {Value: "minimal", Label: "极低"}, {Value: "low", Label: "低"},
-	{Value: "medium", Label: "中"}, {Value: "high", Label: "高"}, {Value: "xhigh", Label: "很高"}, {Value: "max", Label: "最高"},
+type botSettingsModelList struct {
+	Models []botSettingsCatalogItem `json:"models"`
 }
 
+type botSettingsRunner struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type botSettingsRunnerList struct {
+	Runners []botSettingsRunner `json:"runners"`
+}
+
+var botSettingsThinkingOptions = []ui.Option[string]{
+	{Value: "off", Label: "Off"}, {Value: "minimal", Label: "Minimal"}, {Value: "low", Label: "Low"},
+	{Value: "medium", Label: "Medium"}, {Value: "high", Label: "High"}, {Value: "xhigh", Label: "Extra high"}, {Value: "max", Label: "Max"},
+}
+
+// Keep the value from the start of an edit even when a different row saves first.
+type botSettingsDraft struct{ original, text string }
+
 func botSettingsPage(cx *core.Scope, id string, onSaved func(name string)) core.Node {
+	return botProfileGeneral(cx, id, nil, onSaved)
+}
+
+func botProfileGeneral(cx *core.Scope, id string, navigate func(string), onSaved func(string)) core.Node {
 	path := botPath(id)
-	base := core.NewSignal(cx, botSettingsValues{})
-	draft := core.NewSignal(cx, botSettingsValues{})
-	ready := core.NewSignal(cx, false)
-	loading := core.NewSignal(cx, false)
+	current := core.NewSignal(cx, botSettingsValues{})
+	name, instructions := core.NewSignal(cx, botSettingsDraft{}), core.NewSignal(cx, botSettingsDraft{})
+	composingName, composingInstructions := core.NewSignal(cx, false), core.NewSignal(cx, false)
 	saving := core.NewSignal(cx, false)
-	composingName := core.NewSignal(cx, false)
-	composingInstructions := core.NewSignal(cx, false)
-	loadError := core.NewSignal(cx, "")
-	status := core.NewSignal(cx, "")
-	catalog := core.NewSignalFunc(cx, []botSettingsCatalogItem(nil), func(_, _ []botSettingsCatalogItem) bool { return false })
-	catalogLoading := core.NewSignal(cx, false)
-	catalogError := core.NewSignal(cx, "")
-
-	change := func(edit func(*botSettingsValues)) {
-		if !saving.Get() && !loading.Get() {
-			value := draft.Get()
-			edit(&value)
-			draft.Set(value)
-			status.Set("")
-		}
-	}
+	savedSettings := toolsNewFeed[botSettingsValues](cx)
+	status, source := core.NewSignal(cx, ""), core.NewSignal(cx, "")
+	setDraft := func(s *core.Signal[botSettingsDraft], value string) { s.Set(botSettingsDraft{value, value}) }
 	load := func() {
-		if loading.Get() || saving.Get() {
-			return
-		}
-		loading.Set(true)
-		loadError.Set("")
-		work(cx, func(ctx context.Context) (botSettingsValues, error) {
-			var value botSettingsValues
-			err := requestJSON(ctx, http.MethodGet, path, nil, &value)
-			return value, err
-		}, func(value botSettingsValues, err error) {
-			loading.Set(false)
-			if err != nil {
-				loadError.Set("读取设置失败：" + err.Error())
-				return
-			}
-			cx.Batch(func() {
-				base.Set(value)
-				draft.Set(value)
-				ready.Set(true)
-				status.Set("")
-			})
-		})
-	}
-	loadCatalog := func() {
-		if catalogLoading.Get() {
-			return
-		}
-		catalogLoading.Set(true)
-		catalogError.Set("")
-		work(cx, func(ctx context.Context) ([]botSettingsCatalogItem, error) {
-			var values struct {
-				Models []botSettingsCatalogItem `json:"models"`
-			}
-			err := requestJSON(ctx, http.MethodGet, "/api/models", nil, &values)
-			return values.Models, err
-		}, func(values []botSettingsCatalogItem, err error) {
-			catalogLoading.Set(false)
-			if err != nil {
-				catalogError.Set("读取模型失败：" + err.Error())
-				return
-			}
-			catalog.Set(values)
-		})
-	}
-	load()
-	loadCatalog()
-
-	normalized := func() botSettingsValues {
-		v := draft.Get()
-		v.Name = strings.TrimSpace(v.Name)
-		return v
-	}
-	canSave := func() bool {
-		v := normalized()
-		return ready.Get() && !loading.Get() && !saving.Get() && !composingName.Get() && !composingInstructions.Get() &&
-			v != base.Get() && botsValidName(v.Name) && (v.ModelID != "" || v.FallbackModelID == "")
-	}
-	save := func() {
-		if !canSave() {
-			return
-		}
-		before, edited := base.Get(), normalized()
-		saving.Set(true)
 		status.Set("")
+		savedSettings.run("Loading settings…", "", "Could not load settings.", func(ctx context.Context) (botSettingsValues, error) {
+			return toolsGet[botSettingsValues](ctx, path)
+		})
+	}
+	cx.Effect(func() {
+		if value := savedSettings.value.Get(); value != nil {
+			current.Set(*value)
+			setDraft(name, value.Name)
+			setDraft(instructions, value.Instructions)
+		}
+	})
+	load()
+	locked := func() bool { return !savedSettings.fresh.Get() || savedSettings.busy.Get() || saving.Get() }
+	edit := func(s *core.Signal[botSettingsDraft], text string) {
+		if locked() {
+			return
+		}
+		d := s.Get()
+		d.text = text
+		s.Set(d)
+	}
+	save := func(field string, change func(before, edited *botSettingsValues)) {
+		if locked() {
+			return
+		}
+		before, edited := current.Get(), current.Get()
+		change(&before, &edited)
+		if before == edited {
+			return
+		}
+		saving.Set(true)
+		source.Set(field)
+		status.Set("Saving…")
 		work(cx, func(ctx context.Context) (botSettingsValues, error) {
 			return botSettingsSave(ctx, path, before, edited)
 		}, func(saved botSettingsValues, err error) {
 			saving.Set(false)
 			if err != nil {
-				status.Set("保存失败：" + err.Error())
+				status.Set("Could not save " + field + ". " + err.Error())
 				return
 			}
 			cx.Batch(func() {
-				base.Set(saved)
-				draft.Set(saved)
-				status.Set("设置已保存")
+				current.Set(saved)
+				if field == "name" || name.Get().text == name.Get().original {
+					setDraft(name, saved.Name)
+				}
+				if field == "instructions" || instructions.Get().text == instructions.Get().original {
+					setDraft(instructions, saved.Instructions)
+				}
+				status.Set("Settings saved.")
 			})
-			onSaved(saved.Name)
+			if onSaved != nil && saved.Name != before.Name {
+				onSaved(saved.Name)
+			}
 		})
 	}
-
-	fieldWidth := core.Style{Width: core.Pct(100)}
-	locked := func() bool { return saving.Get() || loading.Get() }
-	colors := ui.ColorsOf(cx)
-	section := func(title string, nodes ...core.Node) core.Node {
-		return core.View{Style: core.Style{Gap: 8, Padding: core.All(12), BorderWidth: 1, CornerRadius: 10},
-			StyleFunc: func() core.Style { return core.Style{BorderColor: colors.Border()} },
-			Children:  append([]core.Node{core.Text{Content: title, Role: core.RoleHeader, Style: core.Style{FontSize: 16, FontWeight: core.FontWeightSemibold}}}, nodes...)}
+	models := toolsNewFeed[botSettingsModelList](cx)
+	loadModels := func() {
+		models.run("Loading models…", "", "Could not load models.", func(ctx context.Context) (botSettingsModelList, error) {
+			return toolsGet[botSettingsModelList](ctx, "/api/models")
+		})
 	}
-	modelPicker := func(label, testID, none string, pick func(botSettingsValues) botSettingsModel, update func(*botSettingsValues, botSettingsModel)) core.Node {
-		value := func() botSettingsModel { return pick(draft.Get()) }
-		return core.View{Style: core.Style{Gap: 4}, Children: []core.Node{
-			core.Text{Content: label},
-			ui.Select[botSettingsModel]{Label: label, TestID: testID, Style: fieldWidth, Searchable: true,
-				SearchPlaceholder: "搜索模型", Empty: "没有匹配的模型", Value: value, Disabled: locked,
-				OnChange: func(model botSettingsModel) { change(func(v *botSettingsValues) { update(v, model) }) },
-				OptionsFunc: func() []ui.Option[botSettingsModel] {
-					options := []ui.Option[botSettingsModel]{{Label: none}}
-					selected := value()
-					found := selected.ID == ""
-					for _, model := range catalog.Get() {
-						key := botSettingsModel{model.Provider, model.ID}
-						found = found || key == selected
-						name := botModelLabel(model.Provider, model.ID)
-						if model.Name != "" && model.Name != model.ID {
-							name = model.Name + " · " + name
+	runners := toolsNewFeed[botSettingsRunnerList](cx)
+	loadRunners := func() {
+		runners.run("Loading Runners…", "", "Could not load Runners.", func(ctx context.Context) (botSettingsRunnerList, error) {
+			return toolsGet[botSettingsRunnerList](ctx, "/api/settings/runners")
+		})
+	}
+	loadModels()
+	loadRunners()
+	noProviders := core.NewSignal(cx, false)
+	work(cx, func(ctx context.Context) (bool, error) {
+		var settings struct {
+			Providers []struct{} `json:"providers"`
+		}
+		err := requestJSON(ctx, http.MethodGet, "/api/settings", nil, &settings)
+		return len(settings.Providers) == 0, err
+	}, func(empty bool, err error) {
+		noProviders.Set(err == nil && empty)
+	})
+	catalog := func() []botSettingsCatalogItem {
+		if list := models.value.Get(); list != nil {
+			return list.Models
+		}
+		return nil
+	}
+	modelItem := func(v botSettingsModel) botSettingsCatalogItem {
+		list := catalog()
+		if i := slices.IndexFunc(list, func(m botSettingsCatalogItem) bool { return m.Provider == v.Provider && m.ID == v.ID }); i >= 0 {
+			return list[i]
+		}
+		return botSettingsCatalogItem{}
+	}
+	modelLabel := func(v botSettingsModel) string {
+		return cmp.Or(modelItem(v).Name, v.ID)
+	}
+	modelPicker := func(fallback bool) core.Node {
+		pick, id, name, choose, change := botSettingsValues.model, "bot-settings-model", "models", "Choose model", "Change model"
+		if fallback {
+			pick, id, name, choose, change = botSettingsValues.fallback, "bot-settings-fallback", "fallback models", "Choose fallback", "Change fallback"
+		}
+		caption := func() string {
+			if pick(current.Get()).ID == "" {
+				return choose
+			}
+			return change
+		}
+		return botProfilePicker(cx, id, name, caption, func() core.Points {
+			if fallback {
+				return 143
+			}
+			return 133.2
+		}, func() bool { return locked() || !models.fresh.Get() || (fallback && current.Get().ModelID == "") }, func() []base.CommandItem {
+			selected := pick(current.Get())
+			var items []base.CommandItem
+			if fallback {
+				items = append(items, base.CommandItem{ID: "none", Label: "No fallback model", Checked: selected.ID == ""})
+			}
+			for _, m := range catalog() {
+				label, detail := cmp.Or(m.Name, m.ID), m.ID
+				if label == detail {
+					detail = ""
+				}
+				items = append(items, base.CommandItem{ID: m.Provider + "/" + m.ID, Label: label,
+					Description: detail, Keywords: []string{m.ID, m.Provider}, Group: m.Provider, Checked: selected == (botSettingsModel{m.Provider, m.ID})})
+			}
+			return items
+		}, func(key string) {
+			var m botSettingsModel
+			if fallback && key == "none" {
+				m = botSettingsModel{}
+			} else if provider, id, ok := strings.Cut(key, "/"); ok {
+				m = botSettingsModel{provider, id}
+			} else {
+				return
+			}
+			if fallback {
+				save("fallback model", func(_, v *botSettingsValues) { v.FallbackProvider, v.FallbackModelID = m.Provider, m.ID })
+			} else {
+				save("model", func(_, v *botSettingsValues) { v.Provider, v.ModelID = m.Provider, m.ID })
+			}
+		})
+	}
+	thinking := func() string { return cmp.Or(current.Get().ThinkingLevel, "off") }
+	thinkingName := func() string {
+		for _, option := range botSettingsThinkingOptions {
+			if option.Value == thinking() {
+				return option.Label
+			}
+		}
+		return thinking()
+	}
+	nameValid := func() bool { return botsValidName(strings.TrimSpace(name.Get().text)) }
+	canSaveName := func() bool {
+		d := name.Get()
+		return !locked() && !composingName.Get() && nameValid() && strings.TrimSpace(d.text) != d.original
+	}
+	saveName := func() {
+		if d := name.Get(); canSaveName() {
+			save("name", func(before, v *botSettingsValues) { before.Name, v.Name = d.original, strings.TrimSpace(d.text) })
+		}
+	}
+	profile := botProfileSection(cx, "Profile", "A change applies from the next message.",
+		botProfilePanel(cx,
+			botProfileRow(cx, true, botProfileCopy("Name"), botProfileCopy("Shown in the sidebar and the composer."),
+				core.View{Style: core.Style{MaxWidth: core.Pct(100), Gap: 6}, StyleFunc: func() core.Style { return botProfileFieldWidth(cx) }, Children: []core.Node{
+					ui.Input{TestID: "bot-settings-name", Label: "Name", Style: core.Style{Height: core.Pt(38)},
+						Value: func() string { return name.Get().text }, ReadonlyFunc: locked,
+						OnChange:            func(text string) { edit(name, text) },
+						OnSubmit:            func(string) { saveName() },
+						OnCompositionChange: func(c core.Composition) { composingName.Set(c.Composing) }},
+					core.Show{When: func() bool { return name.Get().text != name.Get().original }, Then: func(cx *core.Scope) core.Node {
+						return core.View{Style: core.Style{Gap: 6, AlignItems: core.AlignEnd}, Children: []core.Node{
+							core.Show{When: func() bool { return !nameValid() }, Then: func(cx *core.Scope) core.Node {
+								return toolsCaption(cx, "Use 1 to 40 characters.")
+							}},
+							toolsButton("bot-settings-save", "Save name", ui.ButtonSecondary, func() bool { return !canSaveName() }, saveName),
+						}}
+					}},
+				}}),
+			botProfileRow(cx, false, func() string { return cmp.Or(modelLabel(current.Get().model()), "No model chosen") }, func() string {
+				v := current.Get().model()
+				if v.ID == "" {
+					return "dex cannot answer until you choose one."
+				}
+				if models.fresh.Get() && modelItem(v).ID == "" {
+					return v.Provider + "/" + v.ID + " (unavailable)"
+				}
+				return v.Provider + "/" + v.ID
+			}, modelPicker(false)),
+			core.Group{botProfileRow(cx, false, func() string { return "Thinking: " + thinkingName() }, func() string {
+				m := modelItem(current.Get().model())
+				switch {
+				case m.ID == "":
+					return "Choose an available model to set the thinking level."
+				case m.Reasoning:
+					return "The provider uses the nearest level that the model supports."
+				default:
+					return cmp.Or(m.Name, m.ID) + " does not support thinking."
+				}
+			}, botProfilePicker(cx, "bot-settings-thinking", "thinking levels", botProfileCopy("Change thinking"), func() core.Points { return 123 },
+				func() bool { return locked() || !models.fresh.Get() || !modelItem(current.Get().model()).Reasoning }, func() []base.CommandItem {
+					levels := modelItem(current.Get().model()).ThinkingLevels
+					var items []base.CommandItem
+					for _, o := range botSettingsThinkingOptions {
+						if o.Value == "off" || slices.Contains(levels, o.Value) {
+							items = append(items, base.CommandItem{ID: o.Value, Label: o.Label, Checked: o.Value == thinking()})
 						}
-						options = append(options, ui.Option[botSettingsModel]{Value: key, Label: name})
 					}
-					if !found {
-						options = append(options, ui.Option[botSettingsModel]{Value: selected, Label: botModelLabel(selected.Provider, selected.ID) + " · 不在目录"})
+					return items
+				}, func(level string) {
+					save("thinking level", func(_, v *botSettingsValues) { v.ThinkingLevel = level })
+				})),
+				core.Show{When: noProviders.Get, Then: func(cx *core.Scope) core.Node {
+					colors := ui.ColorsOf(cx)
+					return core.Group{botProfileDivider(cx), core.View{Style: core.Style{Padding: core.Symmetric(11, 15)}, Children: []core.Node{
+						core.View{Style: core.Style{JustifyContent: core.JustifyCenter, Padding: core.Symmetric(0, 14), MinHeight: core.Pt(42), CornerRadius: 8, BorderWidth: 1},
+							StyleFunc: func() core.Style { return core.Style{Background: colors.Hover(), BorderColor: colors.Border()} },
+							Children:  []core.Node{toolsCaption(cx, "Add a provider first.")}},
+					}}}
+				}},
+			},
+			botProfileRow(cx, false, func() string {
+				if v := current.Get().fallback(); v.ID != "" {
+					return "Fallback: " + modelLabel(v)
+				}
+				return "No fallback model"
+			}, func() string {
+				if v := current.Get().fallback(); v.ID != "" {
+					return v.Provider + "/" + v.ID
+				}
+				return "Used automatically when the primary model is unavailable or fails before answering."
+			}, modelPicker(true)),
+			botProfileRow(cx, true, botProfileCopy("Default Runner"), func() string {
+				if id := current.Get().RunnerID; id != "" {
+					if list := runners.value.Get(); list != nil && !slices.ContainsFunc(list.Runners, func(r botSettingsRunner) bool { return r.ID == id }) {
+						return "Configured Runner (" + id + ") is missing."
+					}
+					return "Runs tools and workspaces on the selected Runner."
+				}
+				return "Runs tools and workspaces on this computer."
+			}, core.View{StyleFunc: func() core.Style { return botProfileFieldWidth(cx) }, Children: []core.Node{ui.Select[string]{Label: "Default Runner", TestID: "bot-settings-runner", Style: core.Style{Width: core.Pct(100), Height: core.Pt(38)},
+				Value: func() string { return current.Get().RunnerID }, Disabled: func() bool { return locked() || !runners.fresh.Get() },
+				OptionsFunc: func() []ui.Option[string] {
+					options := []ui.Option[string]{{Label: "Local"}}
+					if list := runners.value.Get(); list != nil {
+						for _, r := range list.Runners {
+							options = append(options, ui.Option[string]{Value: r.ID, Label: r.Name})
+						}
+					}
+					if id := current.Get().RunnerID; id != "" && !slices.ContainsFunc(options, func(o ui.Option[string]) bool { return o.Value == id }) {
+						options = append(options, ui.Option[string]{Value: id, Label: "Missing (" + id + ")"})
 					}
 					return options
-				}},
-		}}
-	}
-
-	return core.Scroll{TestID: "bot-settings-page", Style: core.Style{FlexGrow: 1, MinHeight: core.Pt(0), Gap: 14, Padding: core.All(16)}, Children: []core.Node{
-		core.Text{Content: "Bot 设置", Role: core.RoleHeader, Style: core.Style{FontSize: 22, FontWeight: core.FontWeightSemibold}},
-		core.Text{Role: core.RoleStatus, ContentFunc: func() string {
-			if loading.Get() {
-				return "正在读取设置…"
-			}
-			if loadError.Get() != "" {
-				return loadError.Get()
-			}
-			return "改动从下一条消息起生效。"
+				}, OnChange: func(id string) { save("Runner", func(_, v *botSettingsValues) { v.RunnerID = id }) }}}}),
+		),
+		botProfileRetry(models, "bot-settings-models-reload", loadModels),
+		botProfileRetry(runners, "bot-settings-runners-reload", loadRunners),
+		core.Show{When: func() bool { return source.Get() != "instructions" && status.Get() != "" }, Then: func(*core.Scope) core.Node {
+			return core.Text{TestID: "bot-settings-status", Role: core.RoleStatus, ContentFunc: status.Get}
 		}},
-		ui.Button{TextFunc: func() string {
-			if normalized() != base.Get() {
-				return "重新读取（放弃草稿）"
-			}
-			return "重新读取设置"
-		}, TestID: "bot-settings-reload", Variant: ui.ButtonSecondary, Busy: loading.Get, Disabled: saving.Get, OnPress: load},
-		core.Show{When: ready.Get, Then: func(*core.Scope) core.Node {
-			return core.View{Style: core.Style{Gap: 12}, Children: []core.Node{
-				section("资料", ui.Input{TestID: "bot-settings-name", Label: "Bot 名称", Value: func() string { return draft.Get().Name }, ReadonlyFunc: locked,
-					OnChange:            func(name string) { change(func(v *botSettingsValues) { v.Name = name }) },
-					OnCompositionChange: func(c core.Composition) { composingName.Set(c.Composing) }},
-					core.Show{When: func() bool { return !botsValidName(normalized().Name) }, Then: func(*core.Scope) core.Node {
-						return core.Text{Content: "名称须为 1 至 40 个字符。"}
-					}}),
-				section("回复模型",
-					modelPicker("主模型", "bot-settings-model", "未选择主模型", botSettingsValues.model,
-						func(v *botSettingsValues, m botSettingsModel) { v.Provider, v.ModelID = m.Provider, m.ID }),
-					core.Text{Content: "思考级别"},
-					ui.Select[string]{Label: "思考级别", TestID: "bot-settings-thinking", Style: fieldWidth, Disabled: locked,
-						Value:    func() string { return draft.Get().ThinkingLevel },
-						OnChange: func(level string) { change(func(v *botSettingsValues) { v.ThinkingLevel = level }) },
-						OptionsFunc: func() []ui.Option[string] {
-							v := draft.Get()
-							models := catalog.Get()
-							i := slices.IndexFunc(models, func(m botSettingsCatalogItem) bool { return m.Provider == v.Provider && m.ID == v.ModelID })
-							var supported []string
-							if i >= 0 && models[i].Reasoning {
-								supported = models[i].ThinkingLevels
-							}
-							var options []ui.Option[string]
-							for _, option := range botSettingsThinkingOptions {
-								if option.Value == "off" || slices.Contains(supported, option.Value) {
-									options = append(options, option)
-								} else if option.Value == v.ThinkingLevel {
-									option.Label += "（当前设置）"
-									options = append(options, option)
-								}
-							}
-							return options
-						}},
-					modelPicker("备用模型", "bot-settings-fallback", "不使用备用模型", botSettingsValues.fallback,
-						func(v *botSettingsValues, m botSettingsModel) {
-							v.FallbackProvider, v.FallbackModelID = m.Provider, m.ID
-						}),
-					core.Text{Role: core.RoleStatus, ContentFunc: func() string {
-						v := draft.Get()
-						switch {
-						case v.ModelID == "" && v.FallbackModelID != "":
-							return "请先选择主模型，或取消备用模型。"
-						case catalogLoading.Get():
-							return "正在读取可用模型…"
-						case catalogError.Get() != "":
-							return catalogError.Get()
-						case len(catalog.Get()) == 0:
-							return "没有可用模型。请配置供应商后刷新。"
-						default:
-							return "主模型不可用时，Dex 可使用备用模型。"
+	)
+	const instructionsLimit = 32000
+	instructionsLength := func() int {
+		n := 0
+		for _, r := range instructions.Get().text {
+			n += utf16.RuneLen(r)
+		}
+		return n
+	}
+	instructionsDirty := func() bool { d := instructions.Get(); return d.text != d.original }
+	canSaveInstructions := func() bool {
+		return !locked() && !composingInstructions.Get() && instructionsDirty() && instructionsLength() <= instructionsLimit
+	}
+	instructionEditor := botProfileSection(cx, "Instructions", "Adds to this bot's system prompt. Changes apply from the next message.",
+		botProfilePanel(cx, ui.Input{TestID: "bot-settings-instructions", Label: "Bot instructions", Multiline: true,
+			SubmitBehavior: core.SubmitBehaviorNewline, Placeholder: "For example: Reply in the language I write in.",
+			Style: core.Style{Height: core.Pt(356), Padding: core.All(16), BorderWidth: 0, CornerRadius: 8}, ReadonlyFunc: locked,
+			Value: func() string { return instructions.Get().text }, OnChange: func(text string) { edit(instructions, text) },
+			OnCompositionChange: func(c core.Composition) { composingInstructions.Set(c.Composing) }},
+			core.View{Style: core.Style{Direction: core.Row, Wrap: core.Wrap, AlignItems: core.AlignCenter, Gap: 8, Padding: core.Symmetric(8, 12)}, Children: []core.Node{
+				core.Text{ContentFunc: func() string { return fmt.Sprintf("%d / 32,000", instructionsLength()) }, StyleFunc: func() core.Style {
+					return core.Style{FontSize: 11, Color: ui.ColorsOf(cx).Muted(), FlexGrow: 1}
+				}},
+				ui.Button{TestID: "bot-settings-instructions-discard", Text: "Discard", Label: "Discard draft", Variant: ui.ButtonGhost,
+					Disabled: func() bool { return locked() || !instructionsDirty() }, OnPress: func() { setDraft(instructions, current.Get().Instructions) }},
+				ui.Button{TestID: "bot-settings-instructions-save", Text: "Save", Label: "Save instructions", Size: ui.SizeSmall,
+					Disabled: func() bool { return !canSaveInstructions() }, OnPress: func() {
+						if d := instructions.Get(); canSaveInstructions() {
+							save("instructions", func(before, v *botSettingsValues) { before.Instructions, v.Instructions = d.original, d.text })
 						}
 					}},
-					ui.Button{Text: "刷新模型", TestID: "bot-settings-models-reload", Variant: ui.ButtonGhost, Busy: catalogLoading.Get, Disabled: locked, OnPress: loadCatalog}),
-				section("指令", core.Text{Content: "为此 Bot 设置行为和回复要求。"},
-					ui.Input{TestID: "bot-settings-instructions", Label: "Bot 指令", Multiline: true, SubmitBehavior: core.SubmitBehaviorNewline,
-						Style: core.Style{Height: core.Pt(120)}, ReadonlyFunc: locked, Value: func() string { return draft.Get().Instructions },
-						OnChange:            func(text string) { change(func(v *botSettingsValues) { v.Instructions = text }) },
-						OnCompositionChange: func(c core.Composition) { composingInstructions.Set(c.Composing) }}),
-				ui.Button{Text: "保存设置", TestID: "bot-settings-save", Busy: saving.Get, Disabled: func() bool { return !canSave() }, OnPress: save},
-				core.Text{TestID: "bot-settings-status", Role: core.RoleStatus, ContentFunc: status.Get},
-			}}
+			}},
+		),
+		core.Show{When: instructionsDirty, Then: func(cx *core.Scope) core.Node {
+			return toolsCaption(cx, "Unsaved draft. Runs use the saved instructions until you save.")
 		}},
+		core.Show{When: func() bool { return source.Get() == "instructions" && status.Get() != "" }, Then: func(*core.Scope) core.Node {
+			return core.Text{TestID: "bot-settings-instructions-status", Role: core.RoleStatus, ContentFunc: status.Get}
+		}},
+	)
+	archive := "The default bot cannot be archived."
+	if id != "default" {
+		archive = "To archive this bot, ask in Main and approve its confirmation question."
+	}
+	return botProfileFrame(cx, "bot", "General", func() string {
+		return "The name and the model of " + cmp.Or(current.Get().Name, "dex") + ". The timeline, its channels and its automations use them."
+	}, navigate, savedSettings.status("bot-settings-load-status"),
+		core.Show{When: func() bool { return savedSettings.value.Get() != nil }, Then: func(cx *core.Scope) core.Node {
+			return core.View{Style: core.Style{Gap: 28}, Children: []core.Node{profile, instructionEditor,
+				botProfileSection(cx, "Archive", "Archived bots keep their sessions and settings.", toolsCaption(cx, archive))}}
+		}},
+		core.Show{When: func() bool { return !savedSettings.busy.Get() && (!savedSettings.fresh.Get() || status.Get() != "") }, Then: func(*core.Scope) core.Node {
+			return toolsButton("bot-settings-reload", "Reload settings", ui.ButtonOutline, saving.Get, load)
+		}},
+	)
+}
+
+func botProfileRetry[T any](feed toolsFeed[T], id string, load func()) core.Node {
+	return core.Show{When: func() bool { return !feed.fresh.Get() }, Then: func(*core.Scope) core.Node {
+		return core.View{Style: core.Style{Gap: 6}, Children: []core.Node{feed.status(id + "-status"),
+			core.Show{When: func() bool { return !feed.busy.Get() }, Then: func(*core.Scope) core.Node {
+				return toolsButton(id, "Try again", ui.ButtonOutline, nil, load)
+			}},
+		}}
 	}}
 }
 
@@ -280,12 +416,16 @@ func botSettingsSave(ctx context.Context, path string, before, edited botSetting
 	next := latest
 	next.Provider, next.ModelID = model.Provider, model.ID
 	next.FallbackProvider, next.FallbackModelID = fallback.Provider, fallback.ID
-	var okName, okThinking, okInstructions bool
+	var okName, okThinking, okInstructions, okRunner bool
 	next.Name, okName = botSettingsMerge(before.Name, edited.Name, latest.Name)
 	next.ThinkingLevel, okThinking = botSettingsMerge(before.ThinkingLevel, edited.ThinkingLevel, latest.ThinkingLevel)
 	next.Instructions, okInstructions = botSettingsMerge(before.Instructions, edited.Instructions, latest.Instructions)
-	if !okName || !okModel || !okFallback || !okThinking || !okInstructions {
-		return latest, errors.New("其他客户端已修改相同的字段。请重新读取设置后再编辑。")
+	next.RunnerID, okRunner = botSettingsMerge(before.RunnerID, edited.RunnerID, latest.RunnerID)
+	if !okName || !okModel || !okFallback || !okThinking || !okInstructions || !okRunner {
+		return latest, errors.New("Another client changed the same field. Reload settings before you edit again.")
+	}
+	if next.ModelID == "" && next.FallbackModelID != "" {
+		return latest, errors.New("Choose a primary model or clear the fallback model.")
 	}
 	if next == latest {
 		return latest, nil

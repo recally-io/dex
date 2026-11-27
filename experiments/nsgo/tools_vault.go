@@ -49,7 +49,7 @@ func toolsVaultSection(cx *core.Scope, path string) core.Node {
 	}
 	refresh := func() {
 		closeForm()
-		feed.run("正在读取密钥…", "", "读取密钥失败。请刷新密钥。", get)
+		feed.run("Loading secrets…", "", "Could not load secrets.", get)
 	}
 	canEdit := func() bool { return feed.fresh.Get() && !feed.busy.Get() }
 	edit := func(form toolsVaultAction, name, value string) {
@@ -58,16 +58,16 @@ func toolsVaultSection(cx *core.Scope, path string) core.Node {
 		}
 		closeForm()
 		method, endpoint := http.MethodPut, path
-		verb := "保存"
+		pending, success, failure := "Saving secret…", "Secret saved. The change applies when the bot is idle.", "Could not confirm the save. Reload secrets before you try again."
 		var body *toolsVaultWrite
 		if form.kind == "delete" {
 			method = http.MethodDelete
 			endpoint += "?" + url.Values{"scope": {toolsVaultScope}, "name": {name}}.Encode()
-			verb = "删除"
+			pending, success, failure = "Deleting secret…", "Secret deleted.", "Could not confirm the deletion. Reload secrets before you try again."
 		} else {
 			body = new(toolsVaultWrite{toolsVaultScope, name, value})
 		}
-		feed.run("正在"+verb+"密钥…", "密钥已"+verb+"。", "未能确认"+verb+"结果。请刷新密钥后再试。", func(ctx context.Context) ([]toolsVaultEntry, error) {
+		feed.run(pending, success, failure, func(ctx context.Context) ([]toolsVaultEntry, error) {
 			var requestBody any
 			if body != nil {
 				requestBody = body
@@ -84,32 +84,34 @@ func toolsVaultSection(cx *core.Scope, path string) core.Node {
 	}
 	refresh()
 	create := toolsVaultAction{kind: "create"}
-	return toolsSection(cx, "Bot 专属密钥",
-		toolsCaption(cx, "只显示名称和更新时间。工具可用 vault:名称 引用密钥。"),
-		toolsButton("tools-vault-refresh", "刷新密钥", ui.ButtonOutline, feed.busy.Get, refresh),
+	active.Set(create)
+	return botProfileSection(cx, "Secret vault", "These secrets are for this bot. A bot secret overrides a shared secret with the same name.",
 		feed.status("tools-vault-status"),
+		core.Show{When: func() bool { return !feed.busy.Get() && !feed.fresh.Get() }, Then: func(*core.Scope) core.Node {
+			return toolsButton("tools-vault-refresh", "Try again", ui.ButtonOutline, nil, refresh)
+		}},
 		core.Dynamic(func(cx *core.Scope) core.Node {
 			entries := feed.value.Get()
 			if entries == nil {
 				return core.Group{}
 			}
 			rows := core.Group{}
-			if len(*entries) == 0 {
-				rows = append(rows, toolsCaption(cx, "暂无 Bot 专属密钥。"))
-			}
 			rows = append(rows, core.Show{When: func() bool { return active.Get() == create },
 				Then: func(cx *core.Scope) core.Node {
 					return toolsVaultForm(cx, create, *entries, canEdit, closeForm, edit)
 				}, Else: func(*core.Scope) core.Node {
-					return toolsButton("tools-vault-add", "新增密钥", ui.ButtonSecondary,
-						func() bool { return !canEdit() }, func() { active.Set(create) })
+					return toolsRow(toolsButton("tools-vault-add", "Add secret", ui.ButtonSecondary,
+						func() bool { return !canEdit() }, func() { active.Set(create) }))
 				}})
+			if len(*entries) == 0 {
+				rows = append(rows, toolsRow(toolsCaption(cx, "No secrets at this level.")))
+			}
 			for _, entry := range *entries {
 				replace := toolsVaultAction{"replace", entry.Name}
 				remove := toolsVaultAction{"delete", entry.Name}
-				stamp := toolsCaption(cx, "更新于 "+entry.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
+				stamp := toolsCaption(cx, entry.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
 				stamp.TestID = "tools-vault-updated-" + entry.Name
-				rows = append(rows, toolsRow(toolsLabel(entry.Name), stamp,
+				rows = append(rows, toolsRow(toolsLabel("vault:"+entry.Name), stamp,
 					core.Show{When: func() bool { return active.Get() == replace || active.Get() == remove },
 						Then: func(*core.Scope) core.Node {
 							return core.Dynamic(func(cx *core.Scope) core.Node {
@@ -120,22 +122,22 @@ func toolsVaultSection(cx *core.Scope, path string) core.Node {
 								if action != remove {
 									return core.Group{}
 								}
-								return toolsRow(toolsCaption(cx, "删除后，工具将无法使用此 Bot 的密钥值。"),
-									toolsButton("tools-vault-delete-confirm", "确认删除密钥", ui.ButtonDanger,
+								return toolsRow(toolsCaption(cx, "After deletion, this Bot's tools cannot use this secret value."),
+									toolsButton("tools-vault-delete-confirm", "Delete secret", ui.ButtonDanger,
 										func() bool { return !canEdit() }, func() { edit(remove, entry.Name, "") }),
-									toolsButton("tools-vault-cancel", "取消", ui.ButtonGhost, nil, closeForm))
+									toolsButton("tools-vault-cancel", "Cancel", ui.ButtonGhost, nil, closeForm))
 							})
 						}, Else: func(*core.Scope) core.Node {
-							replaceButton := toolsButton("tools-vault-replace-"+entry.Name, "替换", ui.ButtonSecondary,
+							replaceButton := toolsButton("tools-vault-replace-"+entry.Name, "Replace", ui.ButtonSecondary,
 								func() bool { return !canEdit() }, func() { active.Set(replace) })
-							replaceButton.Label = "替换密钥 " + entry.Name
-							deleteButton := toolsButton("tools-vault-delete-"+entry.Name, "删除", ui.ButtonDanger,
+							replaceButton.Label = "Replace " + entry.Name
+							deleteButton := toolsButton("tools-vault-delete-"+entry.Name, "Delete", ui.ButtonOutline,
 								func() bool { return !canEdit() }, func() { active.Set(remove) })
-							deleteButton.Label = "删除密钥 " + entry.Name
+							deleteButton.Label = "Delete " + entry.Name
 							return core.View{Class: "flex-row gap-2", Children: []core.Node{replaceButton, deleteButton}}
 						}}))
 			}
-			return rows
+			return botProfilePanel(cx, rows...)
 		}),
 	)
 }
@@ -153,11 +155,11 @@ func toolsVaultForm(cx *core.Scope, form toolsVaultAction, entries []toolsVaultE
 			return ""
 		}
 		if !toolsVaultName.MatchString(key) {
-			return "名称必须以字母或下划线开头，只能包含英文字母、数字和下划线。"
+			return "Use letters, numbers, and underscores. Start with a letter or underscore."
 		}
 		for _, entry := range entries {
 			if entry.Name == key {
-				return "同名密钥已存在。请取消并选择替换。"
+				return "A secret with this name exists. Choose Replace to change its value."
 			}
 		}
 		return ""
@@ -167,21 +169,21 @@ func toolsVaultForm(cx *core.Scope, form toolsVaultAction, entries []toolsVaultE
 	}
 	rows := []core.Node{}
 	if form.kind == "create" {
-		rows = append(rows, toolsLabel("密钥名称"),
-			ui.Input{TestID: "tools-vault-name", Label: "密钥名称", Value: name.Get, OnChange: name.Set,
+		rows = append(rows, toolsLabel("Secret name"), toolsCaption(cx, "Use letters, numbers, and underscores. Start with a letter or underscore."),
+			ui.Input{TestID: "tools-vault-name", Label: "Secret name", Value: name.Get, OnChange: name.Set,
 				NoAutoCorrect: true, AutoCapitalize: core.AutoCapitalizeNone, AutoComplete: core.AutoCompleteOff},
 			core.Show{When: func() bool { return nameError() != "" }, Then: func(*core.Scope) core.Node {
 				return core.Text{TestID: "tools-vault-name-error", Role: core.RoleStatus, ContentFunc: nameError}
 			}})
 	}
-	return toolsRow(append(rows, toolsLabel("密钥值"),
-		ui.Input{TestID: "tools-vault-value", Label: "密钥值", Masked: true, NoAutoCorrect: true,
+	return toolsRow(append(rows, toolsLabel("Secret value"), toolsCaption(cx, "Dex encrypts the value. You cannot read a saved value here."),
+		ui.Input{TestID: "tools-vault-value", Label: "Secret value", Masked: true, NoAutoCorrect: true,
 			AutoCapitalize: core.AutoCapitalizeNone, AutoComplete: core.AutoCompleteOff,
 			OnChange: func(text string) {
 				value = text
 				hasValue.Set(value != "")
 			}},
-		toolsButton("tools-vault-save", "保存密钥", ui.ButtonPrimary, disabled, func() {
+		toolsButton("tools-vault-save", "Save secret", ui.ButtonPrimary, disabled, func() {
 			if disabled() {
 				return
 			}
@@ -190,5 +192,5 @@ func toolsVaultForm(cx *core.Scope, form toolsVaultAction, entries []toolsVaultE
 			hasValue.Set(false)
 			edit(form, strings.TrimSpace(name.Get()), submitted)
 		}),
-		toolsButton("tools-vault-cancel", "取消", ui.ButtonGhost, nil, closeForm))...)
+		toolsButton("tools-vault-cancel", "Cancel", ui.ButtonGhost, nil, closeForm))...)
 }

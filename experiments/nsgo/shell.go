@@ -73,22 +73,39 @@ func workspaceLogin(cx *core.Scope, connected func()) core.Node {
 }
 
 type destination struct {
-	page, bot, key string
-	session        int
+	page, bot, key, query string
+	session               int
 }
-
-var globalPaths = map[string]string{"board": "/board", "integrations": "/integrations", "global-settings": "/settings/general", "archived": "/settings/archived"}
 
 func (d destination) botScoped() bool {
-	_, global := globalPaths[d.page]
-	return !global && d.page != "task" && d.page != "missing"
-}
-func (d destination) address() string {
-	if path, ok := globalPaths[d.page]; ok {
-		return path
+	switch d.page {
+	case "board", "task", "board-result", "global-settings", "integrations", "missing":
+		return false
 	}
-	if d.page == "task" {
+	return true
+}
+
+func (d destination) address() string {
+	path := d.path()
+	if d.query != "" {
+		return path + "?" + d.query
+	}
+	return path
+}
+
+func (d destination) path() string {
+	switch d.page {
+	case "board", "integrations":
+		return "/" + d.page
+	case "global-settings":
+		if d.key == "" {
+			return "/settings/general"
+		}
+		return "/settings/" + d.key
+	case "task":
 		return "/board/" + url.PathEscape(d.key)
+	case "board-result":
+		return "/board/results/" + url.PathEscape(d.key)
 	}
 	base := "/b/" + url.PathEscape(d.bot)
 	switch d.page {
@@ -100,6 +117,12 @@ func (d destination) address() string {
 		return base + "/bot"
 	case "tools":
 		return base + "/integrations"
+	case "automation":
+		return base + "/automations/" + url.PathEscape(d.key)
+	case "channels":
+		if d.key != "" {
+			return base + "/channels/" + url.PathEscape(d.key)
+		}
 	}
 	return base + "/" + d.page
 }
@@ -113,14 +136,21 @@ func workspaceLink(raw string) destination {
 		d.page = "main"
 		return d
 	}
-	for page, path := range globalPaths {
-		if path == u.Path {
-			d.page = page
-			return d
-		}
-	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	switch {
+	case u.Path == "/board" || u.Path == "/integrations":
+		d.page, d.query = parts[0], u.RawQuery
+	case u.Path == "/settings" || u.Path == "/settings/general":
+		d.page = "global-settings"
+	case len(parts) == 2 && parts[0] == "settings":
+		for _, tab := range settingsSections {
+			if tab.key == parts[1] {
+				d.page, d.key = "global-settings", tab.key
+				break
+			}
+		}
+	case len(parts) == 3 && parts[0] == "board" && parts[1] == "results":
+		d.page, d.key = "board-result", parts[2]
 	case len(parts) == 2 && parts[0] == "board":
 		d.page, d.key = "task", parts[1]
 	case len(parts) >= 2 && parts[0] == "b" && parts[1] != "":
@@ -130,13 +160,19 @@ func workspaceLink(raw string) destination {
 			d.page = "main"
 		case len(parts) == 3:
 			switch parts[2] {
-			case "sessions", "automations", "artifacts":
+			case "sessions", "automations", "artifacts", "channels", "secrets":
 				d.page = parts[2]
 			case "bot":
 				d.page = "settings"
 			case "integrations":
-				d.page = "tools"
+				d.page, d.query = "tools", u.RawQuery
+			case "skills":
+				d.page, d.query = "tools", "section=skills"
 			}
+		case len(parts) == 4 && parts[2] == "automations":
+			d.page, d.key = "automation", parts[3]
+		case len(parts) == 4 && parts[2] == "channels" && slices.Contains([]string{"telegram", "wechat", "feishu"}, parts[3]):
+			d.page, d.key = "channels", parts[3]
 		case len(parts) == 4 && parts[2] == "s":
 			if id, err := strconv.Atoi(parts[3]); err == nil && id > 0 {
 				d.page, d.session = "session", id
@@ -154,6 +190,7 @@ type workspaceView struct {
 	collapsed, parent  *core.Signal[bool]
 	goTo               func(destination, bool)
 	back, reload       func()
+	newSession         *core.Signal[chatSession]
 }
 
 func (w *workspaceView) compact(cx *core.Scope) bool { return cx.Env().Window().Width < 1024 }
@@ -173,12 +210,12 @@ func (w *workspaceView) visit(page string) {
 func workspace(cx *core.Scope, reconnect func()) core.Node {
 	urlAtStart := cx.AppURL()
 	start := workspaceLink(urlAtStart)
-	if urlAtStart == "" || urlAtStart == "/" {
+	if start.page != "missing" && (urlAtStart == "" || urlAtStart == "/" || urlAtStart == "/settings" || strings.HasSuffix(urlAtStart, "/skills")) {
 		_ = cx.SetAppURL(start.address())
 	}
 	stored, _ := cx.Storage().GetItem("dex-sidebar")
 	w := workspaceView{
-		route: core.NewSignal(cx, start), bots: core.NewSignalFunc(cx, []botListItem(nil), slices.Equal),
+		newSession: core.NewSignal(cx, chatSession{}), route: core.NewSignal(cx, start), bots: core.NewSignalFunc(cx, []botListItem(nil), slices.Equal),
 		marks: core.NewSignalFunc(cx, workspaceMarks{}, nil), listError: core.NewSignal(cx, ""),
 		overlay: core.NewSignal(cx, ""), collapsed: core.NewSignal(cx, stored == "collapsed"), parent: core.NewSignal(cx, false),
 	}
@@ -259,38 +296,73 @@ func workspace(cx *core.Scope, reconnect func()) core.Node {
 		w.goTo(d, true)
 	}
 	cx.OnKeyWith("mod+k", core.KeyOptions{When: core.KeyAlways}, func() { w.overlay.Set("search") })
-	drafts := map[string]string{}
+	type draftKey struct {
+		bot string
+		id  int
+	}
+	drafts := map[draftKey]*core.Signal[string]{}
+	draftFor := func(k draftKey) *core.Signal[string] {
+		if drafts[k] == nil {
+			drafts[k] = core.NewSignal(cx, "")
+		}
+		return drafts[k]
+	}
 	page := core.Dynamic(func(cx *core.Scope) core.Node {
 		d := w.route.Get()
 		return core.Untracked(cx, func() core.Node {
 			var content core.Node
+			backToBoard := func() {
+				if w.parent.Get() {
+					w.back()
+				} else {
+					w.visit("board")
+				}
+			}
 			switch d.page {
 			case "main", "session":
-				content = chatPage(cx, d.bot, d.session, w.name(), drafts)
-			case "sessions":
-				content = sessionsPage(cx, d.bot, func(id int, title string) { openChat(d.bot, id, title) })
-			case "board":
-				content = boardPage(cx, d.bot, func(key string) { w.goTo(destination{page: "task", bot: d.bot, key: key}, true) })
-			case "task":
-				content = taskPage(cx, d.bot, d.key, openChat)
-			case "settings", "tools":
-				var form core.Node
-				if d.page == "tools" {
-					form = toolsPage(cx, d.bot)
-				} else {
-					form = botSettingsPage(cx, d.bot, func(string) { w.reload() })
+				key := draftKey{d.bot, d.session}
+				draft := draftFor(key)
+				cx.Cleanup(func() {
+					if drafts[key] == draft && draft.Get() == "" {
+						delete(drafts, key)
+					}
+				})
+				info := core.NewSignal(cx, chatSession{})
+				closeProject := func() { w.overlay.Set("") }
+				content = core.Group{chatPage(cx, d.bot, d.session, w.name(), draft, info),
+					// Mount the modal after the session loads. If it shares the route push, closing it pops the session URL on Web.
+					core.Show{When: func() bool { return w.overlay.Get() == "project" && info.Get().ID == d.session }, Then: func(cx *core.Scope) core.Node {
+						return newSessionProject(cx, d.bot, w.newSession.Get(), closeProject, info.Set)
+					}},
 				}
-				content = core.View{Style: ui.FillRest, Children: []core.Node{core.View{Style: core.Style{Direction: core.Row, Padding: core.Symmetric(4, 12), Gap: 4}, Children: []core.Node{ui.Button{Text: "Bot", Variant: ui.ButtonGhost, OnPress: func() { w.visit("settings") }}, ui.Button{Text: "Integrations", TestID: "bot-tools", Variant: ui.ButtonGhost, OnPress: func() { w.visit("tools") }}}}, form}}
+			case "sessions":
+				content = sessionsPage(cx, d.bot, openChat)
+			case "board":
+				filter, _ := url.ParseQuery(d.query)
+				content = boardPage(cx, d.bot, func(key string) { w.goTo(destination{page: "task", bot: d.bot, key: key}, true) }, boardNavigation{
+					FilterBot: filter.Get("bot"), ClearFilter: func() { w.visit("board") }, OpenChat: openChat,
+					OpenBotSettings: func(bot string) { w.goTo(destination{page: "settings", bot: bot}, true) },
+					OpenResult:      func(key string) { w.goTo(destination{page: "board-result", bot: d.bot, key: key}, true) },
+				})
+			case "task":
+				content = taskPage(cx, d.bot, d.key, openChat, backToBoard)
+			case "board-result":
+				content = boardResultPage(cx, d.key, backToBoard, openChat)
+			case "settings", "tools", "channels", "secrets":
+				tab := strings.TrimPrefix(d.address(), "/b/"+url.PathEscape(d.bot)+"/")
+				content = botProfileScreen(cx, d.bot, tab, func(next string) {
+					w.goTo(workspaceLink("/b/"+url.PathEscape(d.bot)+"/"+next), false)
+				}, func(string) { w.reload() })
 			case "automations":
-				content = automationsPage(cx, d.bot, func(id int, title string) { openChat(d.bot, id, title) })
+				content = automationsPage(cx, d.bot, func(id int, title string) { openChat(d.bot, id, title) }, func(key string) { w.goTo(destination{page: "automation", bot: d.bot, key: key}, true) })
+			case "automation":
+				content = automationDetailPage(cx, d.bot, d.key, func(id int, title string) { openChat(d.bot, id, title) }, func() { w.visit("automations") })
 			case "artifacts":
 				content = artifactsPage(cx, d.bot)
 			case "integrations":
-				content = globalIntegrationsPage(cx)
+				content = integrationsScreen(cx, d.query, func(query string) { next := d; next.query = query; w.goTo(next, false) }, openChat)
 			case "global-settings":
-				content = globalSettingsPage(cx, func() { w.visit("archived") })
-			case "archived":
-				content = botsPage(cx, d.bot, func(id, name string) { w.reload(); openChat(id, 0, name) }, true)
+				content = globalSettingsScreen(cx, d.key, func(tab string) { next := workspaceLink("/settings/" + tab); next.bot = d.bot; w.goTo(next, false) }, func(bot string) { w.reload(); openChat(bot, 0, "") })
 			default:
 				content = ui.Button{Text: "Open Dex", OnPress: func() { w.goTo(destination{page: "main", bot: "default"}, false) }}
 			}
@@ -307,6 +379,16 @@ func workspace(cx *core.Scope, reconnect func()) core.Node {
 		core.Show{When: func() bool { return !w.compact(cx) && !w.collapsed.Get() }, Then: func(cx *core.Scope) core.Node { return w.sidebar(cx, false) }}, page,
 		core.Show{When: func() bool { return w.compact(cx) && w.overlay.Get() == "drawer" }, Then: func(cx *core.Scope) core.Node {
 			return w.drawer(cx, closeOverlay)
+		}},
+		core.Show{When: func() bool { return w.overlay.Get() == "artifacts" }, Then: func(cx *core.Scope) core.Node {
+			d := w.route.Get()
+			return artifactsPanel(cx, d.bot, d.session, closeOverlay, func(id int, text string) {
+				draftFor(draftKey{d.bot, id}).Set(text)
+				closeOverlay()
+				if id != d.session {
+					openChat(d.bot, id, "")
+				}
+			})
 		}},
 		core.Show{When: func() bool { return w.overlay.Get() == "search" }, Then: func(cx *core.Scope) core.Node { return workspaceSearch(cx, w.bots.Get, closeOverlay, openChat) }}, core.Show{When: func() bool { return w.overlay.Get() == "create" }, Then: func(cx *core.Scope) core.Node {
 			return botCreateDialog(cx, closeOverlay, func(id, name string) { w.reload(); openChat(id, 0, name) })

@@ -1,16 +1,15 @@
 package main
 
 import (
+	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/ui"
@@ -24,23 +23,29 @@ type automationsSchedule struct {
 	At      int64  `json:"at,omitzero"`
 }
 
-// Omit notification: Dex keeps the existing route on update.
+type automationsNotification struct {
+	Mode     string `json:"mode"`
+	TargetID string `json:"targetId,omitempty"`
+}
+
 type automationsInput struct {
-	Name            string              `json:"name"`
-	Prompt          string              `json:"prompt"`
-	Cwd             string              `json:"cwd"`
-	Schedule        automationsSchedule `json:"schedule"`
-	TimeZone        string              `json:"timeZone"`
-	Session         string              `json:"session"`
-	TargetSessionID int64               `json:"targetSessionId,omitzero"`
-	Enabled         bool                `json:"enabled"`
-	RunnerID        string              `json:"runnerId"`
+	Name            string                   `json:"name"`
+	Prompt          string                   `json:"prompt"`
+	Cwd             string                   `json:"cwd"`
+	Schedule        automationsSchedule      `json:"schedule"`
+	TimeZone        string                   `json:"timeZone"`
+	Session         string                   `json:"session"`
+	TargetSessionID int64                    `json:"targetSessionId,omitzero"`
+	Enabled         bool                     `json:"enabled"`
+	RunnerID        string                   `json:"runnerId"`
+	Notification    *automationsNotification `json:"notification,omitempty"`
 }
 
 type automationsEntry struct {
 	automationsInput
-	ID       string  `json:"id"`
-	NextRuns []int64 `json:"nextRuns"`
+	ID       string          `json:"id"`
+	NextRuns []int64         `json:"nextRuns"`
+	LastRun  *automationsRun `json:"lastRun"`
 }
 
 type automationsRun struct {
@@ -51,351 +56,366 @@ type automationsRun struct {
 	Reason           string `json:"reason"`
 	NotificationNote string `json:"notificationNote"`
 	CreatedAt        int64  `json:"createdAt"`
+	DueAt            int64  `json:"dueAt"`
+	AdmittedAt       *int64 `json:"admittedAt"`
+	SettledAt        *int64 `json:"settledAt"`
 	SessionID        int    `json:"sessionId"`
+	Duplicate        bool   `json:"duplicate"`
 }
 
-type automationsRunView struct {
-	ID, Name string
-	Initial  []automationsRun
+type automationsBot struct {
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	ModelID  string `json:"modelId"`
 }
 
-func automationsNewInput(name, prompt, interval string) (automationsInput, error) {
-	name, prompt = strings.TrimSpace(name), strings.TrimSpace(prompt)
-	if n := utf8.RuneCountInString(name); n < 1 || n > 100 {
-		return automationsInput{}, errors.New("名称必须为 1 至 100 个字符")
+func automationsPath(bot, key string) string {
+	path := botPath(bot) + "/automations"
+	if key != "" {
+		path += "/" + url.PathEscape(key)
 	}
-	if n := utf8.RuneCountInString(prompt); n < 1 || n > 32000 {
-		return automationsInput{}, errors.New("任务指令必须为 1 至 32000 个字符")
-	}
-	minutes, err := strconv.Atoi(strings.TrimSpace(interval))
-	if err != nil || minutes < 5 || minutes > 10080 {
-		return automationsInput{}, errors.New("运行间隔必须为 5 至 10080 的整数分钟")
-	}
-	return automationsInput{Name: name, Prompt: prompt, Schedule: automationsSchedule{Kind: "every", Minutes: minutes},
-		TimeZone: "UTC", Session: "new", Enabled: false}, nil
+	return path
 }
 
-func automationsPage(cx *core.Scope, botID string, onChat func(id int, title string)) core.Node {
-	endpoint := botPath(botID) + "/automations"
-	entries := core.NewSignalFunc(cx, []automationsEntry(nil), nil)
+// A menu can close during its event. Start work under the page or form scope.
+func automationsWork[T any](cx *core.Scope, run func(context.Context) (T, error), done func(T, error)) {
+	cx.Post(func() { work(cx, run, done) })
+}
+
+func automationsPoll(cx *core.Scope, load func()) {
+	var next func()
+	next = func() {
+		load()
+		cx.AfterFunc(10*time.Second, next)
+	}
+	cx.Post(next)
+}
+
+func automationsUpdate(ctx context.Context, path string, patch func(*automationsInput)) (automationsEntry, error) {
+	var current automationsEntry
+	if err := requestJSON(ctx, http.MethodGet, path, nil, &current); err != nil {
+		return current, err
+	}
+	input := current.automationsInput
+	patch(&input)
+	// Dex retains the existing notification when this field is not sent.
+	input.Notification = nil
+	var saved automationsEntry
+	err := requestJSON(ctx, http.MethodPut, path, input, &saved)
+	return saved, err
+}
+
+func automationsPage(cx *core.Scope, botID string, onChat func(int, string), openDetail ...func(string)) core.Node {
+	if len(openDetail) > 0 && openDetail[0] != nil {
+		return automationsListPage(cx, botID, openDetail[0])
+	}
+	selected := core.NewSignal(cx, "")
+	return core.Dynamic(func(page *core.Scope) core.Node {
+		if key := selected.Get(); key != "" {
+			return core.Untracked(page, func() core.Node {
+				return automationDetailPage(page, botID, key, onChat, func() { selected.Set("") })
+			})
+		}
+		return core.Untracked(page, func() core.Node { return automationsListPage(page, botID, selected.Set) })
+	})
+}
+
+func automationsListPage(cx *core.Scope, botID string, open func(string)) core.Node {
+	type snapshot struct {
+		rows            []automationsEntry
+		bot             automationsBot
+		listErr, botErr error
+	}
+	state := core.NewSignal(cx, (*snapshot)(nil))
 	loading := core.NewSignal(cx, false)
-	writing := core.NewSignal(cx, false)
+	writing := core.NewSignal(cx, "")
 	creating := core.NewSignal(cx, false)
-	selected := core.NewSignal(cx, (*automationsRunView)(nil))
-	listStatus := core.NewSignal(cx, "正在加载自动化…")
-	writeTarget := core.NewSignal(cx, "")
-	writeStatus := core.NewSignal(cx, "")
-	busy := func() bool { return loading.Get() || writing.Get() }
+	writeError := core.NewSignal(cx, "")
+	var revision int
 	load := func() {
-		if busy() {
+		if loading.Get() || writing.Get() != "" {
 			return
 		}
 		loading.Set(true)
-		listStatus.Set("正在加载自动化…")
-		work(cx, func(ctx context.Context) ([]automationsEntry, error) {
-			var result struct {
+		startedAt := revision
+		automationsWork(cx, func(ctx context.Context) (snapshot, error) {
+			var result snapshot
+			var list struct {
 				Automations []automationsEntry `json:"automations"`
 			}
-			err := requestJSON(ctx, http.MethodGet, endpoint, nil, &result)
-			return result.Automations, err
-		}, func(result []automationsEntry, err error) {
+			var requests sync.WaitGroup
+			requests.Go(func() { result.listErr = requestJSON(ctx, http.MethodGet, automationsPath(botID, ""), nil, &list) })
+			requests.Go(func() { result.botErr = requestJSON(ctx, http.MethodGet, botPath(botID), nil, &result.bot) })
+			requests.Wait()
+			result.rows = list.Automations
+			return result, nil
+		}, func(result snapshot, _ error) {
 			loading.Set(false)
-			if err != nil {
-				listStatus.Set("加载自动化失败，可刷新重试：" + err.Error())
-				return
-			}
-			entries.Set(result)
-			if len(result) == 0 {
-				listStatus.Set("暂无自动化。可新建一个定时任务。")
-			} else {
-				listStatus.Set("")
+			if startedAt == revision {
+				state.Set(new(result))
 			}
 		})
 	}
-	cx.Post(load)
-
-	toggle := func(item automationsEntry) {
-		if busy() {
+	automationsPoll(cx, load)
+	rows := func() []automationsEntry {
+		if s := state.Get(); s != nil {
+			return s.rows
+		}
+		return nil
+	}
+	canCreate := func() bool {
+		s := state.Get()
+		return s != nil && s.botErr == nil && s.bot.ModelID != "" && writing.Get() == ""
+	}
+	change := func(id string, enabled bool) {
+		if writing.Get() != "" {
 			return
 		}
-		writing.Set(true)
-		writeTarget.Set(item.ID)
-		writeStatus.Set("正在更新计划…")
-		work(cx, func(ctx context.Context) (automationsEntry, error) {
-			path := endpoint + "/" + url.PathEscape(item.ID)
-			var current automationsEntry
-			// PUT replaces the settings. Read the current task before changing one field.
-			if err := requestJSON(ctx, http.MethodGet, path, nil, &current); err != nil {
-				return automationsEntry{}, err
-			}
-			want := !item.Enabled
-			if current.Enabled == want {
-				return current, nil
-			}
-			current.Enabled = want
-			var saved automationsEntry
-			err := requestJSON(ctx, http.MethodPut, path, current.automationsInput, &saved)
-			return saved, err
+		revision++
+		writing.Set(id)
+		writeError.Set("")
+		automationsWork(cx, func(ctx context.Context) (automationsEntry, error) {
+			return automationsUpdate(ctx, automationsPath(botID, id), func(input *automationsInput) { input.Enabled = enabled })
 		}, func(saved automationsEntry, err error) {
-			writing.Set(false)
+			writing.Set("")
 			if err != nil {
-				writeStatus.Set("无法确认更新结果。请先刷新自动化：" + err.Error())
+				writeError.Set("Could not change automation: " + err.Error())
 				return
 			}
-			rows := slices.Clone(entries.Get())
-			if i := slices.IndexFunc(rows, func(row automationsEntry) bool { return row.ID == item.ID }); i >= 0 {
-				rows[i] = saved
-				entries.Set(rows)
-			}
-			if saved.Enabled {
-				writeStatus.Set("计划已启用。")
-			} else {
-				writeStatus.Set("计划已暂停。")
+			if prior := state.Get(); prior != nil {
+				next := *prior
+				next.rows = slices.Clone(prior.rows)
+				if i := slices.IndexFunc(next.rows, func(a automationsEntry) bool { return a.ID == saved.ID }); i >= 0 {
+					next.rows[i] = saved
+				}
+				state.Set(new(next))
 			}
 		})
 	}
-	run := func(item automationsEntry) {
-		if busy() {
-			return
-		}
-		writing.Set(true)
-		writeTarget.Set(item.ID)
-		writeStatus.Set("正在请求运行…")
-		work(cx, func(ctx context.Context) (automationsRun, error) {
-			var result automationsRun
-			err := requestJSON(ctx, http.MethodPost, endpoint+"/"+url.PathEscape(item.ID)+"/run", nil, &result)
-			return result, err
-		}, func(result automationsRun, err error) {
-			writing.Set(false)
-			if err != nil {
-				writeStatus.Set("无法确认运行结果。请先查看运行记录：" + err.Error())
-				return
-			}
-			writeStatus.Set("")
-			selected.Set(&automationsRunView{item.ID, item.Name, []automationsRun{result}})
-		})
-	}
-
 	colors := ui.ColorsOf(cx)
 	return core.View{Style: ui.FillRest, Children: []core.Node{
-		core.Show{When: func() bool { return !creating.Get() && selected.Get() == nil }, Then: func(*core.Scope) core.Node {
-			return core.Scroll{TestID: "automations-list", Style: automationsScrollStyle(), Children: []core.Node{
-				automationsHeading("自动化"),
-				ui.Button{Text: "新建自动化", TestID: "automations-new", Disabled: busy, OnPress: func() { creating.Set(true) }},
-				ui.Button{Text: "刷新自动化", TestID: "automations-refresh", Variant: ui.ButtonSecondary,
-					Busy: loading.Get, Disabled: writing.Get, OnPress: func() { writeStatus.Set(""); load() }},
-				automationsStatus("automations-status", listStatus.Get),
-				automationsStatus("automations-write-status", func() string {
-					if writeTarget.Get() == "" {
-						return writeStatus.Get()
+		automationsPageFrame("automations-list", false,
+			core.View{Style: core.Style{Gap: 6}, Children: []core.Node{
+				automationsHeading("Automations"), automationsQuiet(colors, "Prompts that the bot runs on a schedule. Each run has its own record."),
+			}},
+			core.View{Style: core.Style{Gap: 12}, Children: []core.Node{
+				core.View{Style: core.Style{Direction: core.Row, Wrap: core.Wrap, AlignItems: core.AlignCenter, JustifyContent: core.JustifySpaceBetween, Gap: 12}, StyleFunc: func() core.Style {
+					if cx.Env().Window().Width < 560 {
+						return core.Style{Gap: 2}
 					}
-					return ""
-				}),
-				core.Each(entries.Get, func(item automationsEntry) string { return item.ID }, func(_ *core.Scope, item func() automationsEntry, _ func() int) core.Node {
-					id := item().ID
-					return core.View{Style: core.Style{Gap: 6, Padding: core.All(10), BorderWidth: 1, CornerRadius: 8},
-						StyleFunc: func() core.Style { return core.Style{BorderColor: colors.Border()} }, Children: []core.Node{
-							core.Text{ContentFunc: func() string { return item().Name }, Role: core.RoleHeader, Style: core.Style{FontWeight: core.FontWeightSemibold}},
-							core.Text{TestID: "automations-state-" + id, ContentFunc: func() string {
-								if item().Enabled {
-									return "已启用"
+					return core.Style{}
+				}, Children: []core.Node{
+					core.View{Style: core.Style{Gap: 4, MinWidth: core.Pt(244)}, Children: []core.Node{
+						core.Text{Content: "All automations", Role: core.RoleHeader, Style: core.Style{FontSize: 15, FontWeight: core.FontWeightSemibold}},
+						core.Text{ContentFunc: func() string {
+							list := rows()
+							on := 0
+							for _, a := range list {
+								if a.Enabled {
+									on++
 								}
-								return "已暂停"
-							}},
-							core.Text{ContentFunc: func() string { return automationsScheduleText(item()) }, StyleFunc: func() core.Style { return core.Style{Color: colors.Muted()} }},
-							ui.Button{TestID: "automations-toggle-" + id, TextFunc: func() string {
-								if item().Enabled {
-									return "暂停计划"
+							}
+							return fmt.Sprintf("%d of %d on. Open one to see its runs.", on, len(list))
+						}, Style: core.Style{FontSize: 12}, StyleFunc: ui.Colored(colors.Muted)},
+					}},
+					ui.Button{Text: "New automation", TestID: "automations-new", Style: core.Style{Width: core.Pt(123), Height: core.Pt(32)}, Disabled: func() bool { return !canCreate() }, OnPress: func() {
+						if canCreate() {
+							creating.Set(true)
+						}
+					}},
+				}},
+				core.Show{When: func() bool { v := state.Get(); return v != nil && v.botErr != nil }, Then: func(*core.Scope) core.Node {
+					return automationsFailure("Could not check bot model", func() error { return state.Get().botErr }, load)
+				}},
+				automationsStatus("automations-write-status", writeError.Get),
+				core.Show{When: func() bool { return state.Get() == nil }, Then: func(*core.Scope) core.Node { return automationsQuiet(colors, "Loading…") }},
+				core.Show{When: func() bool { v := state.Get(); return v != nil && v.listErr != nil }, Then: func(*core.Scope) core.Node {
+					return automationsFailure("Could not load automations", func() error { return state.Get().listErr }, load)
+				}},
+				core.Show{When: func() bool { v := state.Get(); return v != nil && v.listErr == nil && len(v.rows) == 0 }, Then: func(*core.Scope) core.Node {
+					return core.View{Style: core.Style{AlignItems: core.AlignCenter, Gap: 6, Padding: core.All(24), BorderWidth: 1, CornerRadius: 8}, StyleFunc: func() core.Style { return core.Style{BorderColor: colors.Border()} }, Children: []core.Node{
+						core.Text{Content: "No automations yet", Role: core.RoleHeader, Style: core.Style{FontWeight: core.FontWeightSemibold}},
+						core.Text{ContentFunc: func() string {
+							if s := state.Get(); s != nil && s.botErr == nil && s.bot.ModelID == "" {
+								return "Choose a bot model first. Automations use the same model as every session."
+							}
+							return "Create one to run a prompt every few minutes, every day, on some weekdays, or once."
+						}, Style: core.Style{TextAlign: core.TextAlignCenter, FontSize: 13}, StyleFunc: ui.Colored(colors.Muted)},
+					}}
+				}},
+				core.Show{When: func() bool { return len(rows()) > 0 }, Then: func(*core.Scope) core.Node {
+					return core.View{Style: core.Style{BorderWidth: 1, CornerRadius: 8}, StyleFunc: func() core.Style { return core.Style{BorderColor: colors.Border()} }, Children: []core.Node{
+						core.Each(rows, func(a automationsEntry) string { return a.ID }, func(_ *core.Scope, row func() automationsEntry, i func() int) core.Node {
+							id := row().ID
+							return core.View{Style: core.Style{Direction: core.Row, Gap: 12, AlignItems: core.AlignStart, Padding: core.Symmetric(12, 16)}, StyleFunc: func() core.Style {
+								s := core.Style{BorderColor: colors.Border()}
+								if i() > 0 {
+									s.Borders.Top = 1
 								}
-								return "启用计划"
-							}, Variant: ui.ButtonSecondary, Disabled: busy, OnPress: func() { toggle(item()) }},
-							ui.Button{Text: "立即运行", TestID: "automations-run-" + id, Variant: ui.ButtonSecondary, Disabled: busy, OnPress: func() { run(item()) }},
-							ui.Button{Text: "运行记录", TestID: "automations-history-" + id, Variant: ui.ButtonSecondary, Disabled: busy,
-								OnPress: func() { selected.Set(&automationsRunView{ID: id, Name: item().Name}) }},
-							automationsStatus("automations-write-status-"+id, func() string {
-								if writeTarget.Get() == id {
-									return writeStatus.Get()
-								}
-								return ""
-							}),
-						}}
-				}),
-			}}
-		}},
+								return s
+							}, Children: []core.Node{
+								core.View{Role: core.RoleLink, TestID: "automations-open-" + id, LabelFunc: func() string { return row().Name },
+									Web:   core.WebViewProps{Href: "/b/" + url.PathEscape(botID) + "/automations/" + url.PathEscape(id)},
+									Style: core.Style{FlexGrow: 1, FlexShrink: 1, MinWidth: core.Pt(0), Gap: 3}, OnPress: func(core.PressEvent) { open(id) }, Children: []core.Node{
+										core.View{Style: core.Style{Direction: core.Row, Wrap: core.Wrap, Gap: 8, AlignItems: core.AlignCenter}, Children: []core.Node{
+											core.Text{ContentFunc: func() string { return row().Name }, Style: core.Style{FontSize: 13.5, FontWeight: core.FontWeightMedium, MinWidth: core.Pt(0), FlexShrink: 1}},
+											core.Show{When: func() bool { r := row().LastRun; return r != nil && r.Status != "done" }, Then: func(*core.Scope) core.Node {
+												return automationsBadge(colors, func() string {
+													r := row().LastRun
+													if r == nil {
+														return ""
+													}
+													return "Last run " + strings.ToLower(automationsRunLabel(*r))
+												})
+											}},
+										}},
+										core.Text{ContentFunc: func() string {
+											a := row()
+											return automationsScheduleText(a) + "   " + automationsSessionText(a.Session) + "   " + automationsNextText(a)
+										}, Style: core.Style{FontSize: 12}, StyleFunc: ui.Colored(colors.Muted)},
+									}},
+								ui.Switch{TestID: "automations-toggle-" + id, LabelFunc: func() string { return "Enable " + row().Name }, Size: ui.SizeSmall, Checked: func() bool { return row().Enabled }, Disabled: func() bool { return writing.Get() != "" }, OnChange: func(enabled bool) { change(id, enabled) }},
+							}}
+						}),
+					}}
+				}},
+			}},
+		),
 		core.Show{When: creating.Get, Then: func(form *core.Scope) core.Node {
-			return automationsCreate(form, endpoint, func() { creating.Set(false) }, func(saved automationsEntry) {
-				entries.Set(append(slices.Clone(entries.Get()), saved))
-				listStatus.Set("")
-				writeTarget.Set("")
-				writeStatus.Set("已创建。计划已暂停，可先手动运行。")
+			return automationsForm(form, botID, nil, func() { creating.Set(false) }, func(saved automationsEntry) {
+				revision++
+				if prior := state.Get(); prior != nil {
+					next := *prior
+					if !slices.ContainsFunc(next.rows, func(row automationsEntry) bool { return row.ID == saved.ID }) {
+						next.rows = append(slices.Clone(next.rows), saved)
+						state.Set(new(next))
+					}
+				}
 				creating.Set(false)
+				load()
 			})
 		}},
-		core.Show{When: func() bool { return selected.Get() != nil }, Then: func(detail *core.Scope) core.Node {
-			return automationsHistory(detail, endpoint, *selected.Get(), func() { selected.Set(nil) }, onChat)
-		}},
 	}}
 }
 
-func automationsCreate(cx *core.Scope, endpoint string, back func(), created func(automationsEntry)) core.Node {
-	name := core.NewSignal(cx, "")
-	prompt := core.NewSignal(cx, "")
-	interval := core.NewSignal(cx, "60")
-	composing := core.NewSignal(cx, false)
-	saving := core.NewSignal(cx, false)
-	status := core.NewSignal(cx, "")
-	composition := func(value core.Composition) { composing.Set(value.Composing) }
-	submit := func() {
-		if saving.Get() || composing.Get() {
-			return
-		}
-		input, err := automationsNewInput(name.Get(), prompt.Get(), interval.Get())
-		if err != nil {
-			status.Set(err.Error())
-			return
-		}
-		saving.Set(true)
-		status.Set("正在创建…")
-		work(cx, func(ctx context.Context) (automationsEntry, error) {
-			var result automationsEntry
-			err := requestJSON(ctx, http.MethodPost, endpoint, input, &result)
-			return result, err
-		}, func(result automationsEntry, err error) {
-			saving.Set(false)
-			if err != nil {
-				status.Set("无法确认创建结果。可返回并刷新列表确认：" + err.Error())
-				return
-			}
-			created(result)
-		})
+func automationsPageFrame(id string, wide bool, children ...core.Node) core.Node {
+	width := core.Points(816)
+	if wide {
+		width = 1120
 	}
-	return core.Scroll{TestID: "automations-form", Style: automationsScrollStyle(), Children: []core.Node{
-		ui.Button{Text: "返回自动化列表", TestID: "automations-create-back", Variant: ui.ButtonSecondary, Disabled: saving.Get, OnPress: back},
-		automationsHeading("新建自动化"),
-		core.Text{Content: "每次运行会打开新会话。创建后计划保持暂停，直到手动启用。"},
-		core.Text{Content: "名称"},
-		ui.Input{Label: "名称", TestID: "automations-name", Value: name.Get, OnChange: name.Set, OnCompositionChange: composition, ReadonlyFunc: saving.Get},
-		core.Text{Content: "任务指令"},
-		ui.Input{Label: "任务指令", TestID: "automations-prompt", Value: prompt.Get, OnChange: prompt.Set, OnCompositionChange: composition,
-			ReadonlyFunc: saving.Get, Multiline: true, SubmitBehavior: core.SubmitBehaviorNewline, Style: core.Style{Height: core.Pt(96)}},
-		core.Text{Content: "运行间隔（分钟，5 至 10080）"},
-		ui.Input{Label: "运行间隔（分钟）", TestID: "automations-interval", Value: interval.Get, OnChange: interval.Set,
-			KeyboardType: core.KeyboardNumber, OnCompositionChange: composition, ReadonlyFunc: saving.Get},
-		ui.Button{Text: "创建自动化", TestID: "automations-submit", Busy: saving.Get, Disabled: composing.Get, OnPress: submit},
-		automationsStatus("automations-form-status", status.Get),
+	return core.Scroll{TestID: id, Style: ui.FillRest, Children: []core.Node{
+		core.View{Style: core.Style{Width: core.Pct(100), MaxWidth: core.Pt(width), Padding: core.Edges{Top: 24, Bottom: 40, Left: 24, Right: 24}, Gap: 24}, Children: children},
 	}}
 }
 
-func automationsHistory(cx *core.Scope, endpoint string, view automationsRunView, back func(), onChat func(int, string)) core.Node {
-	runs := core.NewSignalFunc(cx, view.Initial, slices.Equal)
-	loading := core.NewSignal(cx, false)
-	status := core.NewSignal(cx, "正在加载运行记录…")
-	load := func() {
-		if loading.Get() {
-			return
+func automationsHeading(title string) core.Text {
+	return core.Text{Content: title, Role: core.RoleHeader, Style: core.Style{FontSize: 18, FontWeight: core.FontWeightSemibold, MinWidth: core.Pt(0)}}
+}
+
+func automationsQuiet(colors ui.Colors, text string) core.Text {
+	return core.Text{Content: text, Style: core.Style{FontSize: 13, MinWidth: core.Pt(0)}, StyleFunc: ui.Colored(colors.Muted)}
+}
+
+func automationsBadge(colors ui.Colors, value func() string) core.Node {
+	return core.Text{ContentFunc: value, Style: core.Style{FontSize: 11.5, CornerRadius: 10, Padding: core.Symmetric(2, 8)}, StyleFunc: func() core.Style { return core.Style{Background: colors.Inset(), Color: colors.Muted()} }}
+}
+
+func automationsStatus(id string, value func() string) core.Node {
+	return core.Show{When: func() bool { return value() != "" }, Then: func(*core.Scope) core.Node { return core.Text{TestID: id, ContentFunc: value, Role: core.RoleStatus} }}
+}
+
+func automationsFailure(title string, err func() error, retry func()) core.Node {
+	nodes := []core.Node{core.Text{ContentFunc: func() string {
+		if cause := err(); cause != nil {
+			return title + ": " + cause.Error()
 		}
-		loading.Set(true)
-		status.Set("正在加载运行记录…")
-		work(cx, func(ctx context.Context) ([]automationsRun, error) {
-			var result struct {
-				Runs []automationsRun `json:"runs"`
-			}
-			err := requestJSON(ctx, http.MethodGet, endpoint+"/"+url.PathEscape(view.ID)+"/runs", nil, &result)
-			return result.Runs, err
-		}, func(result []automationsRun, err error) {
-			loading.Set(false)
-			if err != nil {
-				status.Set("加载运行记录失败，可刷新重试：" + err.Error())
-				return
-			}
-			runs.Set(result)
-			if len(result) == 0 {
-				status.Set("暂无运行记录。可返回列表手动运行。")
-			} else {
-				status.Set("")
-			}
-		})
+		return title
+	}, Role: core.RoleStatus}}
+	if retry != nil {
+		nodes = append(nodes, ui.Button{Text: "Try again", Variant: ui.ButtonOutline, Size: ui.SizeSmall, OnPress: retry})
 	}
-	cx.Post(load)
-	colors := ui.ColorsOf(cx)
-	return core.Scroll{TestID: "automations-runs", Style: automationsScrollStyle(), Children: []core.Node{
-		ui.Button{Text: "返回自动化列表", TestID: "automations-runs-back", Variant: ui.ButtonSecondary, OnPress: back},
-		automationsHeading("运行记录"),
-		core.Text{Content: view.Name},
-		ui.Button{Text: "刷新记录", TestID: "automations-runs-refresh", Variant: ui.ButtonSecondary, Busy: loading.Get, OnPress: load},
-		automationsStatus("automations-runs-status", status.Get),
-		core.Each(runs.Get, func(item automationsRun) string { return item.ID }, func(_ *core.Scope, item func() automationsRun, _ func() int) core.Node {
-			return core.View{TestID: "automations-record-" + item().ID, Style: core.Style{Gap: 6, Padding: core.All(10), BorderWidth: 1, CornerRadius: 8},
-				StyleFunc: func() core.Style { return core.Style{BorderColor: colors.Border()} }, Children: []core.Node{
-					core.Text{ContentFunc: func() string { return automationsRunLabel(item()) }, Role: core.RoleHeader, Style: core.Style{FontWeight: core.FontWeightSemibold}},
-					core.Text{ContentFunc: func() string { return automationsTime(item().CreatedAt) }},
-					automationsStatus("automations-summary-"+item().ID, func() string { return item().Summary }),
-					automationsStatus("automations-reason-"+item().ID, func() string { return item().Reason }),
-					automationsStatus("automations-notification-"+item().ID, func() string { return item().NotificationNote }),
-					core.Show{When: func() bool { return onChat != nil && item().SessionID > 0 }, Then: func(*core.Scope) core.Node {
-						return ui.Button{Text: "查看会话", TestID: "automations-chat-" + item().ID, Variant: ui.ButtonSecondary,
-							OnPress: func() { onChat(item().SessionID, view.Name) }}
-					}},
-				}}
-		}),
-	}}
+	return core.View{Style: core.Style{Gap: 6, AlignItems: core.AlignStart}, Children: nodes}
 }
 
-func automationsScrollStyle() core.Style {
-	return ui.FillRest.Merge(core.Style{Padding: core.All(12), Gap: 10})
+var automationsWeekdays = [...]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+
+func automationsTime(millis int64, zone string) string {
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		loc = time.UTC
+	}
+	return time.UnixMilli(millis).In(loc).Format("Mon 2 Jan, 15:04")
 }
 
-func automationsHeading(text string) core.Text {
-	return core.Text{Content: text, Role: core.RoleHeader, Style: core.Style{FontSize: 22, FontWeight: core.FontWeightSemibold}}
-}
-
-func automationsStatus(id string, text func() string) core.Node {
-	return core.Show{When: func() bool { return text() != "" }, Then: func(*core.Scope) core.Node {
-		return core.Text{TestID: id, ContentFunc: text, Role: core.RoleStatus}
-	}}
-}
-
-func automationsTime(millis int64) string {
-	return time.UnixMilli(millis).Local().Format("2006-01-02 15:04 MST")
-}
-
-func automationsScheduleText(item automationsEntry) string {
-	schedule := item.Schedule
-	var label string
-	switch schedule.Kind {
+func automationsScheduleText(a automationsEntry) string {
+	s := a.Schedule
+	switch s.Kind {
 	case "every":
-		label = fmt.Sprintf("每 %d 分钟", schedule.Minutes)
+		return fmt.Sprintf("Every %d minutes", s.Minutes)
 	case "daily":
-		label = "每天 " + schedule.Time + "（" + item.TimeZone + "）"
-	case "weekly":
-		label = fmt.Sprintf("每周 %v %s（%s）", schedule.Days, schedule.Time, item.TimeZone)
+		return "Every day at " + s.Time
 	case "once":
-		label = "仅一次：" + automationsTime(schedule.At)
+		return "Once on " + automationsTime(s.At, a.TimeZone)
+	case "weekly":
+		days := slices.Sorted(slices.Values(s.Days))
+		var names []string
+		for _, day := range days {
+			if day >= 1 && day <= 7 {
+				names = append(names, automationsWeekdays[day-1])
+			}
+		}
+		what := strings.Join(names, ", ")
+		if len(names) == 7 {
+			what = "day"
+		} else if slices.Equal(days, []int{1, 2, 3, 4, 5}) {
+			what = "weekday"
+		}
+		return "Every " + what + " at " + s.Time
+	default:
+		return ""
 	}
-	if len(item.NextRuns) > 0 {
-		label += "\n下次运行：" + automationsTime(item.NextRuns[0])
+}
+
+func automationsSessionText(session string) string {
+	switch session {
+	case "session":
+		return "Existing session"
+	case "reuse":
+		return "One session"
+	default:
+		return "New session each run"
 	}
-	return label
+}
+
+func automationsNextText(a automationsEntry) string {
+	if len(a.NextRuns) > 0 {
+		return "next " + automationsTime(a.NextRuns[0], a.TimeZone)
+	}
+	if a.Enabled {
+		return "done"
+	}
+	return "paused"
 }
 
 func automationsRunLabel(run automationsRun) string {
-	switch run.Status {
-	case "running":
-		return "处理中"
-	case "failed":
-		return "运行失败"
-	case "skipped":
-		return "已跳过"
-	case "done":
+	if run.Status == "done" {
 		switch run.Outcome {
 		case "changed":
-			return "已完成 · 有变更"
+			return "Changed"
 		case "unchanged":
-			return "已完成 · 无变更"
-		default:
-			return "已完成"
+			return "Unchanged"
+		case "failed":
+			return "Failed"
 		}
-	default:
-		return "未知运行状态"
+		return "Done"
 	}
+	switch run.Status {
+	case "running":
+		return "Running"
+	case "failed":
+		return "Failed"
+	case "skipped":
+		return "Skipped"
+	}
+	return cmp.Or(run.Status, "Unknown")
 }

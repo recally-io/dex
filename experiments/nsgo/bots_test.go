@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -97,11 +98,43 @@ func TestUserCreatesBotAndRenamesItWithoutLosingNewInstructions(t *testing.T) {
 	app.Press("id:bot-settings-save")
 
 	// Then the renamed bot retains the latest instructions from the other client.
-	app.WaitFor("text:设置已保存", timeout)
+	app.WaitFor("text:Settings saved.", timeout)
 	if err := requestJSON(ctx, http.MethodGet, path, nil, &settings); err != nil {
 		t.Fatal(err)
 	}
 	if settings.Name != newName || settings.Instructions != instructions {
 		t.Fatalf("saved name = %q, instructions = %q", settings.Name, settings.Instructions)
+	}
+
+	// The model button opens the catalog and saves a different synthetic model.
+	app.Press("id:bot-settings-model")
+	app.WaitFor("id:bot-settings-model-options", timeout)
+	app.Press("text:shout")
+	app.WaitFor("text:faux/shout", timeout)
+	if err := requestJSON(ctx, http.MethodGet, path, nil, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings.Provider != "faux" || settings.ModelID != "shout" || settings.Instructions != instructions {
+		t.Fatalf("saved model = %s/%s, instructions = %q", settings.Provider, settings.ModelID, settings.Instructions)
+	}
+
+	// A later name edit must not overwrite a concurrent edit to that name.
+	app.Clear("id:bot-settings-name")
+	app.Commit("id:bot-settings-name", name+" 冲突草稿")
+	settings.Name = name + " 另一客户端"
+	if err := requestJSON(ctx, http.MethodPut, path, settings, nil); err != nil {
+		t.Fatal(err)
+	}
+	app.Press("id:bot-settings-save")
+	app.WaitUntil(timeout, func() bool {
+		return len(app.Query("id:bot-settings-status")) == 1 &&
+			strings.Contains(app.Find("id:bot-settings-status").Text, "Another client changed the same field")
+	})
+	externalName := settings.Name
+	if err := requestJSON(ctx, http.MethodGet, path, nil, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings.Name != externalName || app.Find("id:bot-settings-name").Text != name+" 冲突草稿" {
+		t.Fatalf("saved name = %q, draft = %q", settings.Name, app.Find("id:bot-settings-name").Text)
 	}
 }

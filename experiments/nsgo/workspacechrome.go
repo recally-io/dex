@@ -173,7 +173,7 @@ func (w *workspaceView) sidebar(cx *core.Scope, drawer bool) core.Node {
 	}{{"board", "Board", lucide.ListTodo}, {"integrations", "Integrations", lucide.Cable}, {"global-settings", "Settings", lucide.Settings}} {
 		active := func() bool {
 			p := w.route.Get().page
-			return p == entry.page || entry.page == "board" && p == "task" || entry.page == "global-settings" && p == "archived"
+			return p == entry.page || entry.page == "board" && p == "task" || entry.page == "board" && p == "board-result"
 		}
 		var badge core.Node
 		switch entry.page {
@@ -243,7 +243,7 @@ func (w *workspaceView) header(cx *core.Scope, d destination, openChat func(stri
 	}}, core.Show{When: w.parent.Get, Then: func(*core.Scope) core.Node {
 		return chromeIcon(cx, "workspace-back", "Back", lucide.ChevronLeft, 32, 16, w.back)
 	}}}}
-	labels := map[string]string{"sessions": "Sessions", "automations": "Automations", "artifacts": "Files", "settings": "Settings", "tools": "Settings", "board": "Board", "task": "Board", "integrations": "Integrations", "global-settings": "Settings", "archived": "Settings"}
+	labels := map[string]string{"sessions": "Sessions", "automations": "Automations", "artifacts": "Files", "settings": "Settings", "tools": "Settings", "channels": "Settings", "secrets": "Settings", "automation": "Automations", "board-result": "Board", "board": "Board", "task": "Board", "integrations": "Integrations", "global-settings": "Settings", "archived": "Settings"}
 	sessionTitle := core.NewSignal(cx, "New session")
 	if d.page == "session" {
 		work(cx, func(ctx context.Context) (chatSession, error) { return chatGetSession(ctx, d.bot, d.session) }, func(s chatSession, err error) {
@@ -290,6 +290,8 @@ func (w *workspaceView) header(cx *core.Scope, d destination, openChat func(stri
 				return
 			}
 			openChat(d.bot, s.ID, s.Title)
+			w.newSession.Set(s)
+			w.overlay.Set("project")
 		})
 	}
 	var buttons, items []core.Node
@@ -306,7 +308,9 @@ func (w *workspaceView) header(cx *core.Scope, d destination, openChat func(stri
 		b := chromeIcon(cx, "nav-"+item.id, item.label, item.icon, 28, 16, action)
 		b.Disabled = disabled
 		if item.id != "new-session" {
-			b.Selected = func() bool { return d.page == item.id || item.id == "settings" && d.page == "tools" }
+			b.Selected = func() bool {
+				return d.page == item.id || item.id == "automations" && d.page == "automation" || item.id == "settings" && (d.page == "tools" || d.page == "channels" || d.page == "secrets")
+			}
 		}
 		buttons = append(buttons, b)
 		items = append(items, base.MenuItem{Label: item.label, TestID: b.TestID, OnSelect: action, Disabled: disabled,
@@ -322,7 +326,7 @@ func (w *workspaceView) header(cx *core.Scope, d destination, openChat func(stri
 	}
 	actions := []core.Node{}
 	if d.page == "main" || d.page == "session" {
-		files := chromeIcon(cx, "nav-artifacts", "Artifacts", lucide.Files, 28, 16, func() { w.goTo(destination{page: "artifacts", bot: d.bot}, true) })
+		files := chromeIcon(cx, "nav-artifacts", "Artifacts", lucide.Files, 28, 16, func() { w.overlay.Set("artifacts") })
 		actions = append(actions, files)
 	}
 	actions = append(actions, core.Show{When: compact, Then: func(*core.Scope) core.Node {

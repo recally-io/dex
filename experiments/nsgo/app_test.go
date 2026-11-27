@@ -63,7 +63,7 @@ func TestUserSendsChineseAndSeesReplyAfterReconnect(t *testing.T) {
 
 	// Given the default bot chat with an isolated faux/echo gateway.
 	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
-		return chatTestViewport(cx, chatPage(cx, "default", 0, "Dex", map[string]string{}))
+		return chatTestViewport(cx, chatPage(cx, "default", 0, "Dex", core.NewSignal(cx, ""), core.NewSignal(cx, chatSession{})))
 	})
 	chatTestWaitReady(app, timeout)
 
@@ -99,11 +99,10 @@ func TestUserCreatesArchivesAndRestoresSession(t *testing.T) {
 	// Given the session list of an isolated bot.
 	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
 		id := core.NewSignal(cx, 0)
-		drafts := map[string]string{}
 		return chatTestViewport(cx, core.Show{When: func() bool { return id.Get() != 0 }, Then: func(cx *core.Scope) core.Node {
 			return core.View{Style: core.Style{FlexGrow: 1}, Children: []core.Node{
 				ui.Button{Text: "返回会话", TestID: "test-back", OnPress: func() { id.Set(0) }},
-				chatPage(cx, "default", id.Get(), "新会话", drafts),
+				chatPage(cx, "default", id.Get(), "新会话", core.NewSignal(cx, ""), core.NewSignal(cx, chatSession{})),
 			}}
 		}, Else: func(cx *core.Scope) core.Node {
 			pending := core.NewSignal(cx, false)
@@ -124,7 +123,7 @@ func TestUserCreatesArchivesAndRestoresSession(t *testing.T) {
 					})
 				}},
 				core.Text{ContentFunc: status.Get},
-				sessionsPage(cx, "default", func(sessionID int, _ string) { id.Set(sessionID) }),
+				sessionsPage(cx, "default", func(_ string, sessionID int, _ string) { id.Set(sessionID) }),
 			}}
 		}})
 	})
@@ -183,11 +182,10 @@ func TestUserCreatesArchivesAndRestoresSession(t *testing.T) {
 
 	// Then the user can archive and restore that same session.
 	app.Press("id:sessions-archive-" + openedID)
-	app.WaitFor("text:已归档会话", timeout)
+	app.WaitFor("text:Archived session.", timeout)
 	app.Press("id:sessions-archived")
 	app.WaitFor("id:sessions-restore-"+openedID, timeout)
 	app.Press("id:sessions-restore-" + openedID)
-	app.WaitFor("text:已恢复会话", timeout)
-	app.Press("id:sessions-active")
+	app.WaitFor("text:Restored session.", timeout)
 	app.WaitFor("id:sessions-archive-"+openedID, timeout)
 }

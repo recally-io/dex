@@ -54,6 +54,15 @@ curl --noproxy '*' -fsS "$bot" | jq '. + {provider:"faux", modelId:"echo"}' | \
   curl --noproxy '*' -fsS -X PUT -H 'Content-Type: application/json' --data-binary @- "$bot" >/dev/null
 
 curl --noproxy '*' -fsS -H 'Content-Type: application/json' --data-binary '{"title":"体验 Bot 工作区","assigneeBotId":"default","note":"在这里添加备注，或发送给负责 Bot，然后查看它的主对话。"}' "$DEX_API_URL/api/tasks" >/dev/null
+
+# Seed the page comparison only in the temporary Dex with the echo model.
+if [[ ${NSGO_PREVIEW_PAGES_FIXTURE:-0} == 1 ]]; then
+  session=$(curl --noproxy '*' -fsS -X POST "$bot/sessions" | jq -er '.id')
+  curl --noproxy '*' -fsS -H 'Content-Type: application/json' --data-binary '{"id":"63a7a062-45ef-4311-98b4-d1ef699a2587","text":"Review the release notes."}' "$bot/sessions/$session/messages" >/dev/null
+  curl --noproxy '*' -fsS -H 'Content-Type: application/json' --data-binary '{"name":"Weekly workspace review","prompt":"Review the weekly notes.","schedule":{"kind":"weekly","time":"09:00","days":[1]},"timeZone":"UTC","session":"new","enabled":false}' "$bot/automations" >/dev/null
+  mkdir -p "$work/data/agents/default/artifacts"
+  printf '%s\n' 'The desktop and phone clients are ready for review.' >"$work/data/agents/default/artifacts/release-notes.txt"
+fi
 }
 if (($# == 0)); then
   start_demo

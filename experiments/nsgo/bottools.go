@@ -7,21 +7,12 @@ import (
 	"strings"
 
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/icons/lucide"
 	"github.com/nsgo-dev/nsgo/ui"
 )
 
 func toolsPage(cx *core.Scope, botID string) core.Node {
-	base := botPath(botID)
-	return core.Scroll{
-		TestID: "tools-page",
-		Style:  core.Style{FlexGrow: 1, FlexBasis: core.Pt(0), MinHeight: core.Pt(0), Padding: core.All(12), Gap: 12},
-		Children: []core.Node{
-			core.Text{Content: "工具与连接", Role: core.RoleHeader, Style: core.Style{FontSize: 22, FontWeight: core.FontWeightSemibold}},
-			toolsCatalogSection(cx, base+"/integrations"),
-			toolsChannelsSection(cx, base+"/channels"),
-			toolsVaultSection(cx, base+"/vault"),
-		},
-	}
+	return botProfileScreen(cx, botID, "integrations", nil, nil)
 }
 
 type toolsFeed[T any] struct {
@@ -43,14 +34,16 @@ func (f toolsFeed[T]) run(wait, success, failure string, load func(context.Conte
 	f.busy.Set(true)
 	f.message.Set(wait)
 	work(f.cx, load, func(data T, err error) {
-		if err == nil {
-			f.value.Set(new(data))
-			f.message.Set(success)
-		} else {
-			f.message.Set(failure)
-		}
-		f.fresh.Set(err == nil)
-		f.busy.Set(false)
+		f.cx.Batch(func() {
+			if err == nil {
+				f.value.Set(new(data))
+				f.message.Set(success)
+			} else {
+				f.message.Set(failure)
+			}
+			f.fresh.Set(err == nil)
+			f.busy.Set(false)
+		})
 	})
 }
 
@@ -65,32 +58,23 @@ func toolsGet[T any](ctx context.Context, path string) (out T, err error) {
 	return out, err
 }
 
-func toolsSection(cx *core.Scope, title string, children ...core.Node) core.Node {
-	return core.View{
-		Style:     core.Style{Gap: 10, Padding: core.All(12), BorderWidth: 1, CornerRadius: 10},
-		StyleFunc: func() core.Style { return core.Style{BorderColor: ui.ColorsOf(cx).Border()} },
-		Children: append([]core.Node{core.Text{Content: title, Role: core.RoleHeader,
-			Style: core.Style{FontSize: 17, FontWeight: core.FontWeightSemibold}}}, children...),
-	}
-}
-
 func toolsCaption(cx *core.Scope, text string) core.Text {
 	return core.Text{Content: text, StyleFunc: func() core.Style {
-		return core.Style{FontSize: 13, Color: ui.ColorsOf(cx).Muted()}
+		return core.Style{FontSize: 12.5, Color: ui.ColorsOf(cx).Muted()}
 	}}
 }
 
 func toolsLabel(text string) core.Node {
-	return core.Text{Content: text, Style: core.Style{FontWeight: core.FontWeightSemibold}}
+	return core.Text{Content: text, Style: core.Style{FontSize: 13.5, FontWeight: core.FontWeightMedium}}
 }
 
 func toolsRow(children ...core.Node) core.Node {
-	return core.View{Style: core.Style{Gap: 4, Padding: core.Edges{Top: 4, Bottom: 4}}, Children: children}
+	return core.View{Style: core.Style{Gap: 4, Padding: core.Symmetric(12, 16)}, Children: children}
 }
 
 func toolsButton(id, text string, variant ui.ButtonVariant, disabled func() bool, press func()) ui.Button {
 	return ui.Button{TestID: id, Text: text, Variant: variant, Disabled: disabled, OnPress: press,
-		Style: core.Style{Height: core.Pt(40), AlignSelf: core.AlignStart}}
+		Style: core.Style{Height: core.Pt(30), AlignSelf: core.AlignStart}}
 }
 
 type toolsCatalog struct {
@@ -118,94 +102,97 @@ type toolsServer struct {
 	Overrides bool     `json:"overrides"`
 }
 
-func toolsCatalogSection(cx *core.Scope, path string) core.Node {
+func toolsCatalogSection(cx *core.Scope, path, section string) core.Node {
 	feed := toolsNewFeed[toolsCatalog](cx)
 	refresh := func() {
-		feed.run("正在读取工具…", "", "读取工具失败。请刷新工具。", func(ctx context.Context) (toolsCatalog, error) {
+		feed.run("Loading integrations…", "", "Could not load integrations.", func(ctx context.Context) (toolsCatalog, error) {
 			return toolsGet[toolsCatalog](ctx, path)
 		})
 	}
 	reload := func() {
-		feed.run("正在重载工具…", "工具已重载。", "未能确认工具重载。请刷新状态，等运行中的任务结束后再试。", func(ctx context.Context) (out toolsCatalog, err error) {
+		feed.run("Reloading…", "Integrations reloaded.", "Could not reload tools and MCP servers. Try again when this Bot is idle.", func(ctx context.Context) (out toolsCatalog, err error) {
 			err = requestJSON(ctx, http.MethodPost, path+"/reload", nil, &out)
 			return out, err
 		})
 	}
 	refresh()
-	return toolsSection(cx, "Skills 与 MCP",
-		toolsButton("tools-refresh", "刷新工具", ui.ButtonOutline, feed.busy.Get, refresh),
-		toolsButton("tools-reload", "重载工具", ui.ButtonSecondary, feed.busy.Get, reload),
+	return core.View{Style: core.Style{Gap: 24}, Children: []core.Node{
 		feed.status("tools-status"),
+		core.Show{When: func() bool { return !feed.busy.Get() && !feed.fresh.Get() }, Then: func(*core.Scope) core.Node {
+			return toolsButton("tools-refresh", "Try again", ui.ButtonOutline, nil, refresh)
+		}},
 		core.Dynamic(func(cx *core.Scope) core.Node {
 			catalog := feed.value.Get()
 			if catalog == nil {
 				return core.Group{}
 			}
-			rows := core.Group{}
+			var notes, skills, servers []core.Node
 			if len(catalog.Errors) > 0 {
-				rows = append(rows, toolsCaption(cx, "配置错误："+strings.Join(catalog.Errors, "\n")))
+				notes = append(notes, toolsRow(toolsLabel("Dex cannot read some files"), toolsCaption(cx, strings.Join(catalog.Errors, "\n"))))
 			}
 			if len(catalog.Warnings) > 0 {
-				rows = append(rows, toolsCaption(cx, "配置提醒："+strings.Join(catalog.Warnings, "\n")))
+				notes = append(notes, toolsRow(toolsCaption(cx, strings.Join(catalog.Warnings, "\n"))))
 			}
-			if catalog.ReloadPending {
-				rows = append(rows, toolsCaption(cx, "有更改等待重载。"))
+			if catalog.ReloadPending && len(catalog.Errors) == 0 {
+				notes = append(notes, toolsRow(toolsCaption(cx, "Change waiting for this bot to be idle")))
 			}
-			rows = append(rows, toolsLabel("Skills"))
-			valid := 0
 			for _, skill := range catalog.Skills {
+				var detail core.Node = core.Text{Content: skill.Description}
 				if skill.Error != "" {
-					rows = append(rows, toolsCaption(cx, skill.Name+" 未生效："+skill.Error))
-					continue
+					detail = toolsCaption(cx, skill.Error)
 				}
-				valid++
-				rows = append(rows, toolsRow(toolsLabel(skill.Name),
-					toolsCaption(cx, toolsScopeLabel(skill.Scope, skill.Overrides)),
-					core.Text{Content: skill.Description}))
+				skills = append(skills, toolsRow(toolsLabel(skill.Name), toolsCaption(cx, toolsScopeLabel(skill.Scope, skill.Overrides)), detail))
 			}
-			if valid == 0 {
-				rows = append(rows, toolsCaption(cx, "暂无有效 Skill。"))
-			}
-			rows = append(rows, toolsLabel("MCP"))
-			if len(catalog.Servers) == 0 {
-				rows = append(rows, toolsCaption(cx, "暂无 MCP 服务。"))
+			if len(skills) == 0 {
+				skills = append(skills, toolsRow(toolsCaption(cx, "No skills available to this Bot.")))
 			}
 			for _, server := range catalog.Servers {
 				details := toolsScopeLabel(server.Scope, server.Overrides) + " · " + toolsMCPState(server.State)
 				switch server.OAuth {
 				case "authorize":
-					details += " · 待授权"
+					details += " · Authorization required"
 				case "reauthorize":
-					details += " · 需重新授权"
+					details += " · Reauthorization required"
 				case "authorized":
-					details += " · 已授权"
+					details += " · Authorized"
 				}
 				row := []core.Node{toolsLabel(server.Name), toolsCaption(cx, details)}
 				if len(server.Tools) != 0 {
-					row = append(row, core.Text{Content: fmt.Sprintf("%d 个工具：%s", len(server.Tools), strings.Join(server.Tools, "、"))})
+					row = append(row, toolsCaption(cx, fmt.Sprintf("Tools (%d): %s", len(server.Tools), strings.Join(server.Tools, ", "))))
 				}
-				rows = append(rows, toolsRow(row...))
+				servers = append(servers, toolsRow(row...))
 			}
-			return rows
+			if len(servers) == 0 {
+				servers = append(servers, toolsRow(toolsCaption(cx, "No MCP servers available to this Bot.")))
+			}
+			sections := core.Group{}
+			if len(notes) != 0 {
+				sections = append(sections, botProfileSection(cx, "Configuration", "", botProfilePanel(cx, notes...)))
+			}
+			var skillsHeading, mcpHeading *core.Ref
+			if section == "skills" {
+				skillsHeading = &core.Ref{}
+				cx.Post(func() { skillsHeading.Reveal(core.RevealOptions{}) })
+			} else if section == "mcp" {
+				mcpHeading = &core.Ref{}
+				cx.Post(func() { mcpHeading.Reveal(core.RevealOptions{}) })
+			}
+			sections = append(sections, botProfileSectionAt(cx, skillsHeading, "Skills", "", botProfilePanel(cx, skills...)),
+				botProfileSectionAt(cx, mcpHeading, "MCP servers", "Reload refreshes this Bot's tools and MCP connections when it is idle.",
+					toolsButton("tools-reload", "Reload", ui.ButtonSecondary, feed.busy.Get, reload), botProfilePanel(cx, servers...)))
+			return sections
 		}),
-		toolsCaption(cx, "MCP 授权需在 Dex 网页完成。"),
-	)
+		toolsCaption(cx, "Use Dex Web to add skills or MCP servers, or to authorize an MCP connection."),
+	}}
 }
 
 func toolsScopeLabel(scope string, overrides bool) string {
-	var label string
-	switch scope {
-	case "dex":
-		label = "Dex 共享"
-	case "agent":
-		label = "Bot 专属"
-	case "project":
-		label = "工作区"
-	default:
-		label = "来源未知"
+	label := scope
+	if scope == "dex" {
+		label = "Shared"
 	}
 	if overrides {
-		label += " · 覆盖同名项"
+		label += ", replaces a wider entry"
 	}
 	return label
 }
@@ -213,22 +200,23 @@ func toolsScopeLabel(scope string, overrides bool) string {
 func toolsMCPState(state string) string {
 	switch state {
 	case "idle":
-		return "未加载"
+		return "Idle"
 	case "connected":
-		return "已连接"
+		return "Connected"
 	case "failed":
-		return "连接失败"
+		return "Failed"
 	case "disabled":
-		return "已停用"
+		return "Disabled"
 	default:
-		return "状态未知"
+		return "Unknown"
 	}
 }
 
 type toolsChannel struct {
 	Enabled bool `json:"enabled"`
 	Status  struct {
-		State string `json:"state"`
+		State  string `json:"state"`
+		Reason string `json:"reason"`
 	} `json:"status"`
 }
 
@@ -242,90 +230,186 @@ type toolsChannels struct {
 	} `json:"feishu"`
 }
 
-func toolsChannelsSection(cx *core.Scope, path string) core.Node {
-	feed := toolsNewFeed[toolsChannels](cx)
-	confirm := core.NewSignal(cx, "")
-	refresh := func() {
-		confirm.Set("")
-		feed.run("正在读取渠道…", "", "读取渠道失败。请刷新渠道。", func(ctx context.Context) (toolsChannels, error) {
-			return toolsGet[toolsChannels](ctx, path)
-		})
+type toolsChannelInfo struct {
+	key, name, description string
+	icon                   func() *core.SVG
+}
+
+var toolsChannelList = []toolsChannelInfo{
+	{"telegram", "Telegram", "Private messages from allowed people.", lucide.Send},
+	{"wechat", "WeChat", "Private messages from the paired owner.", lucide.MessageCircle},
+	{"feishu", "Feishu / Lark", "Private messages from the paired owner.", lucide.Feather},
+}
+
+func toolsChannelStatus(channels toolsChannels, key string) (enabled bool, state, reason string) {
+	switch key {
+	case "telegram":
+		return channels.Telegram.Enabled, channels.Telegram.Status.State, channels.Telegram.Status.Reason
+	case "wechat":
+		return channels.Wechat.Enabled, channels.Wechat.Status.State, channels.Wechat.Status.Reason
+	case "feishu":
+		return channels.Feishu.Enabled, channels.Feishu.Status, ""
+	default:
+		return false, "", ""
 	}
-	canDisconnect := func() bool { return feed.fresh.Get() && !feed.busy.Get() }
-	disconnect := func(key, name string) {
-		if !canDisconnect() || confirm.Get() != key {
-			return
-		}
-		confirm.Set("")
-		feed.run("正在断开"+name+"…", "已断开"+name+"。", "未能确认断开结果。请刷新渠道后再试。", func(ctx context.Context) (toolsChannels, error) {
-			if err := requestJSON(ctx, http.MethodDelete, path+"/"+key, nil, nil); err != nil {
-				return toolsChannels{}, err
-			}
+}
+
+func toolsLoadChannels(cx *core.Scope, path string) (toolsFeed[toolsChannels], func()) {
+	feed := toolsNewFeed[toolsChannels](cx)
+	refresh := func() {
+		feed.run("Loading channels…", "", "Could not load channels.", func(ctx context.Context) (toolsChannels, error) {
 			return toolsGet[toolsChannels](ctx, path)
 		})
 	}
 	refresh()
-	return toolsSection(cx, "渠道连接",
-		toolsButton("tools-channels-refresh", "刷新渠道", ui.ButtonOutline, feed.busy.Get, refresh),
-		feed.status("tools-channels-status"),
+	return feed, refresh
+}
+
+func toolsChannelsSection(cx *core.Scope, base string, navigate func(string)) core.Node {
+	feed, refresh := toolsLoadChannels(cx, base+"/channels")
+	targets := toolsNotificationTargets(cx, base+"/notification-targets")
+	return core.View{Style: core.Style{Gap: 16}, Children: []core.Node{
+		botProfileRetry(feed, "tools-channels-refresh", refresh),
 		core.Dynamic(func(cx *core.Scope) core.Node {
 			channels := feed.value.Get()
 			if channels == nil {
 				return core.Group{}
 			}
-			rows := core.Group{}
-			for _, channel := range []struct {
-				key, name, state string
-				enabled          bool
-			}{
-				{"telegram", "Telegram", channels.Telegram.Status.State, channels.Telegram.Enabled},
-				{"feishu", "飞书", channels.Feishu.Status, channels.Feishu.Enabled},
-				{"wechat", "微信", channels.Wechat.Status.State, channels.Wechat.Enabled},
-			} {
-				status := "未启用"
-				if channel.enabled {
-					status = "已启用 · " + toolsChannelState(channel.key, channel.state, channels.Feishu.Paired)
-				}
-				badge := toolsCaption(cx, status)
+			var rows []core.Node
+			for _, channel := range toolsChannelList {
+				_, state, _ := toolsChannelStatus(*channels, channel.key)
+				badge := toolsCaption(cx, toolsChannelState(channel.key, state))
 				badge.TestID = "tools-" + channel.key + "-status"
-				row := []core.Node{toolsLabel(channel.name), badge}
-				if channel.enabled {
-					row = append(row, core.Show{When: func() bool { return confirm.Get() == channel.key },
-						Then: func(cx *core.Scope) core.Node {
-							return toolsRow(toolsCaption(cx, "断开会清除此渠道的凭据。重新启用时需要连接。"),
-								toolsButton("tools-"+channel.key+"-confirm", "确认断开"+channel.name, ui.ButtonDanger,
-									func() bool { return !canDisconnect() }, func() { disconnect(channel.key, channel.name) }),
-								toolsButton("tools-"+channel.key+"-cancel", "取消", ui.ButtonGhost, nil, func() { confirm.Set("") }))
-						}, Else: func(*core.Scope) core.Node {
-							return toolsButton("tools-"+channel.key+"-disconnect", "断开"+channel.name, ui.ButtonDanger,
-								func() bool { return !canDisconnect() }, func() { confirm.Set(channel.key) })
-						}})
+				var name core.Node = toolsLabel(channel.name)
+				if navigate != nil {
+					name = ui.Button{TestID: "tools-channel-" + channel.key, Text: channel.name,
+						Variant: ui.ButtonGhost, Icon: channel.icon, Style: core.Style{AlignSelf: core.AlignStart, Height: core.Pt(32)},
+						OnPress: func() { navigate("channels/" + channel.key) }}
 				}
-				rows = append(rows, toolsRow(row...))
+				rows = append(rows, core.View{Style: core.Style{Direction: core.Row, AlignItems: core.AlignCenter, Gap: 12, Padding: core.Symmetric(10, 16)}, Children: []core.Node{
+					core.View{Style: core.Style{Gap: 2, FlexGrow: 1, FlexShrink: 1}, Children: []core.Node{name, toolsCaption(cx, channel.description)}}, badge,
+				}})
 			}
-			return rows
+			return botProfileSection(cx, "Channels", "Each channel talks to the same bot.", botProfilePanel(cx, append(rows, targets)...))
 		}),
-		toolsCaption(cx, "连接或重新配对请在 Dex 网页完成。"),
-	)
+	}}
 }
 
-func toolsChannelState(key, state string, feishuPaired bool) string {
+func toolsChannelDetails(cx *core.Scope, path string, channel toolsChannelInfo) core.Node {
+	feed, refresh := toolsLoadChannels(cx, path)
+	confirm := core.NewSignal(cx, false)
+	canDisconnect := func() bool { return feed.fresh.Get() && !feed.busy.Get() }
+	disconnect := func() {
+		if !canDisconnect() || !confirm.Get() {
+			return
+		}
+		confirm.Set(false)
+		feed.run("Turning off…", channel.name+" is off.", "Could not confirm the change. Reload channels before you try again.", func(ctx context.Context) (toolsChannels, error) {
+			if err := requestJSON(ctx, http.MethodDelete, path+"/"+channel.key, nil, nil); err != nil {
+				return toolsChannels{}, err
+			}
+			return toolsGet[toolsChannels](ctx, path)
+		})
+	}
+	return core.View{Style: core.Style{Gap: 24}, Children: []core.Node{
+		feed.status("tools-channels-status"),
+		core.Show{When: func() bool { return !feed.busy.Get() && !feed.fresh.Get() }, Then: func(*core.Scope) core.Node {
+			return toolsButton("tools-channels-refresh", "Try again", ui.ButtonOutline, nil, refresh)
+		}},
+		core.Dynamic(func(cx *core.Scope) core.Node {
+			channels := feed.value.Get()
+			if channels == nil {
+				return core.Group{}
+			}
+			enabled, state, reason := toolsChannelStatus(*channels, channel.key)
+			badge := toolsCaption(cx, toolsChannelState(channel.key, state))
+			badge.TestID = "tools-" + channel.key + "-status"
+			rows := []core.Node{badge, toolsCaption(cx, "Use Dex Web to connect, edit, or pair this channel.")}
+			if reason != "" {
+				rows = append(rows, toolsCaption(cx, reason))
+			}
+			sections := core.Group{botProfileSection(cx, "Connection", "", botProfilePanel(cx, toolsRow(rows...)))}
+			if enabled {
+				sections = append(sections, botProfileSection(cx, "Turn off", "", core.Show{When: confirm.Get,
+					Then: func(cx *core.Scope) core.Node {
+						return botProfilePanel(cx, toolsRow(toolsLabel("Turn off "+channel.name+"?"),
+							toolsCaption(cx, "Dex forgets the saved credentials. The main timeline stays."),
+							toolsButton("tools-"+channel.key+"-confirm", "Turn off", ui.ButtonDanger, func() bool { return !canDisconnect() }, disconnect),
+							toolsButton("tools-"+channel.key+"-cancel", "Cancel", ui.ButtonGhost, nil, func() { confirm.Set(false) })))
+					}, Else: func(*core.Scope) core.Node {
+						return toolsButton("tools-"+channel.key+"-disconnect", "Turn off "+channel.name, ui.ButtonDanger,
+							func() bool { return !canDisconnect() }, func() { confirm.Set(true) })
+					}}))
+			}
+			return sections
+		}),
+	}}
+}
+
+func toolsChannelState(key, state string) string {
 	switch state {
 	case "running":
-		if key == "feishu" && !feishuPaired {
-			return "待配对"
-		}
-		return "运行中"
+		return "Connected"
 	case "off":
-		return "未运行"
+		return "Off"
 	case "error":
-		return "连接异常"
+		return "Error"
 	case "needs_login":
 		if key == "feishu" {
-			return "待配对"
+			return "Needs owner"
 		}
-		return "需重新登录"
+		return "Scan again"
 	default:
-		return "状态未知"
+		return "Unknown"
 	}
+}
+
+type toolsTargets struct {
+	PrimaryID string `json:"primaryId"`
+	Targets   []struct {
+		ID       string `json:"id"`
+		Platform string `json:"platform"`
+		Peer     string `json:"peer"`
+	} `json:"targets"`
+}
+
+func toolsNotificationTargets(cx *core.Scope, path string) core.Node {
+	feed := toolsNewFeed[toolsTargets](cx)
+	get := func(ctx context.Context) (toolsTargets, error) { return toolsGet[toolsTargets](ctx, path) }
+	refresh := func() { feed.run("Loading notification targets…", "", "Could not load notification targets.", get) }
+	refresh()
+	return toolsRow(toolsLabel("Primary notification channel"),
+		toolsCaption(cx, "Automations can follow this default or choose another authorized recipient."),
+		ui.Select[string]{TestID: "tools-notification-primary", Label: "Primary notification channel",
+			Value: func() string {
+				if saved := feed.value.Get(); saved != nil {
+					return saved.PrimaryID
+				}
+				return ""
+			},
+			OptionsFunc: func() []ui.Option[string] {
+				options := []ui.Option[string]{{Label: "None"}}
+				if saved := feed.value.Get(); saved != nil {
+					for _, target := range saved.Targets {
+						options = append(options, ui.Option[string]{Value: target.ID, Label: target.Platform + ": " + target.Peer})
+					}
+				}
+				return options
+			}, Disabled: func() bool { return !feed.fresh.Get() || feed.busy.Get() },
+			OnChange: func(id string) {
+				if !feed.fresh.Get() || feed.busy.Get() {
+					return
+				}
+				feed.run("Saving…", "Primary notification channel updated.", "Could not confirm the change to notification targets.", func(ctx context.Context) (toolsTargets, error) {
+					if err := requestJSON(ctx, http.MethodPut, path, map[string]string{"targetId": id}, nil); err != nil {
+						return toolsTargets{}, err
+					}
+					return get(ctx)
+				})
+			}},
+		feed.status("tools-notification-status"),
+		core.Show{When: func() bool { return !feed.busy.Get() && !feed.fresh.Get() }, Then: func(*core.Scope) core.Node {
+			return toolsButton("tools-notification-refresh", "Try again", ui.ButtonOutline, nil, refresh)
+		}},
+	)
 }
