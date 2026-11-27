@@ -1,8 +1,10 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 import { once } from "node:events";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { basename, join, resolve } from "node:path";
 
 const contentType = { "content-type": "application/json" };
 
@@ -425,6 +427,100 @@ test("adds Bot-only and shared MCP servers and authorizes the shared server", as
     held.resolve();
     statusGate.resolve();
     await fetch(`${dex}/api/bots/${id}`, { method: "DELETE" });
+    server.close();
+  }
+});
+
+test("refreshes shared skills when returning to Integrations", async ({ app, browser, screen }) => {
+  // Given a cached empty inventory, leave Integrations without reloading the app.
+  await app.open("/integrations");
+  await expect(screen.getByText("No shared skills yet.", { exact: true })).toBeVisible();
+  const { origin } = new URL(await browser.url());
+  const dataDir = resolve(process.env.DEX_E2E_DATA_DIR || ".e2e/data");
+  const health = await fetch(`${origin}/api/health`);
+  const info: { dataDir: string } = await health.json();
+
+  // Only write to the data directory configured for this test run.
+  expect(info.dataDir).toBe(dataDir);
+  const footer = screen.getByRole("navigation", "Workspace", { exact: true });
+
+  await footer.getByRole("link", "Settings", { exact: true }).tap();
+  await expect(browser).toHaveURL("/settings/general");
+  const store = join(dataDir, ".agents", "skills");
+
+  await mkdir(store, { recursive: true });
+  const skill = await mkdtemp(join(store, "refresh-"));
+
+  try {
+    // When a skill appears in the shared store, then the sidebar return shows it.
+    await writeFile(join(skill, "SKILL.md"), "---\ndescription: Shared skill added during the test\n---\n");
+    await footer.getByRole("link", "Integrations", { exact: true }).tap();
+    await expect(screen.getByText(basename(skill), { exact: true })).toBeVisible();
+  } finally {
+    await rm(skill, { recursive: true, force: true });
+  }
+});
+
+test("does not redirect for an OAuth start after Back closes the add dialog", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await app.open("/integrations");
+  const dex = new URL(await browser.url()).origin;
+  const { server, url } = await localOAuthServer(dex);
+  const name = `back_${Date.now()}`;
+  const startPath = `${dex}/api/integrations/mcp/${name}/oauth`;
+  const held = Promise.withResolvers<void>();
+  let upstreamStatus = 0;
+
+  try {
+    // Given a new shared declaration and a successful start response that the browser cannot read yet.
+    await screen.getByRole("button", "Add MCP server", { exact: true }).tap();
+    const dialog = screen.getByRole("dialog", "Add MCP server");
+
+    await dialog.getByLabel("Name", { exact: true }).fill(name);
+    await dialog.getByLabel("Server URL", { exact: true }).fill(url);
+    await dialog.getByRole("button", "Browser OAuth", { exact: true }).tap();
+    const created = browser.waitForResponse(`${dex}/api/integrations/mcp`);
+
+    await dialog.getByRole("button", "Add server", { exact: true }).tap();
+    expect((await created).status).toBe(201);
+    await browser.route(startPath, async (route) => {
+      const response = await route.fetch();
+      const body = await response.body();
+
+      upstreamStatus = response.status;
+      await held.promise;
+      await route.fulfill({ status: response.status, headers: response.headers, body });
+    });
+    const added = screen.getByRole("dialog", `Added ${name}`);
+
+    await added.getByRole("button", "Authorize", { exact: true }).tap();
+    await expect.poll(() => upstreamStatus).toBe(200);
+
+    // When Back unmounts the dialog before the response arrives, then the URL stays unchanged.
+    await browser.back();
+    await expect(browser).toHaveURL("/integrations");
+    await expect(added).toHaveCount(0);
+    const delivered = browser.waitForResponse(startPath);
+
+    held.resolve();
+    await (await delivered).body();
+    const deadline = Date.now() + 750;
+    let unexpectedUrl: string | undefined;
+
+    await expect
+      .poll(async () => {
+        const current = await browser.url();
+
+        if (current !== `${dex}/integrations`) unexpectedUrl ??= current;
+
+        return unexpectedUrl ?? (Date.now() >= deadline ? current : undefined);
+      })
+      .toBe(`${dex}/integrations`);
+  } finally {
+    held.resolve();
     server.close();
   }
 });

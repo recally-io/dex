@@ -45,7 +45,7 @@ export function IntegrationsPage({
   onAdd: (kind: AddIntegration) => void;
   onClose: () => void;
 }) {
-  const query = useQuery(getSharedIntegrationsOptions());
+  const query = useQuery({ ...getSharedIntegrationsOptions(), refetchOnMount: "always" });
 
   return (
     <FramedPage
@@ -477,7 +477,12 @@ function AddedMcpServer({ added, onClose }: { added: Added; onClose: () => void 
           {canAuthorize ? (
             <Button
               disabled={authorize.isPending}
-              onClick={() => authorize.mutate({ name: added.name, scope })}
+              onClick={() =>
+                authorize.mutate(
+                  { name: added.name, scope },
+                  { onSuccess: ({ data }) => window.location.assign(data.authorizationUrl) },
+                )
+              }
             >
               {authorize.isPending
                 ? "Starting…"

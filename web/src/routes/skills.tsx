@@ -295,7 +295,6 @@ export function useAuthorizeMcp(botId?: string) {
         ? startMcpOAuth({ path: { botId, name }, body: { scope }, throwOnError: true })
         : startSharedMcpOAuth({ path: { name }, throwOnError: true }),
     gcTime: 0,
-    onSuccess: ({ data }) => window.location.assign(data.authorizationUrl),
   });
 }
 
@@ -333,7 +332,12 @@ function ServerRow({ server: s, botId }: { server: McpServer; botId?: string }) 
             size="sm"
             variant="outline"
             disabled={authorize.isPending}
-            onClick={() => authorize.mutate({ name: s.name, scope: s.scope })}
+            onClick={() =>
+              authorize.mutate(
+                { name: s.name, scope: s.scope },
+                { onSuccess: ({ data }) => window.location.assign(data.authorizationUrl) },
+              )
+            }
           >
             {authorize.isPending ? "Starting…" : authorizeLabel}
           </Button>
