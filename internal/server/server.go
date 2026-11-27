@@ -102,7 +102,7 @@ func New(cfg Config) http.Handler {
 				return
 			}
 			// Decoder errors can quote a value with the wrong JSON type.
-			if taskExternalPath(r) || taskTokenResponse(r) || strings.HasSuffix(r.URL.Path, "/vault") || strings.HasSuffix(r.URL.Path, "/oauth") {
+			if taskExternalPath(r) || taskTokenResponse(r) || strings.HasSuffix(r.URL.Path, "/vault") || strings.HasSuffix(r.URL.Path, "/oauth") || strings.HasSuffix(r.URL.Path, "/integrations/mcp") {
 				writeError(w, http.StatusBadRequest, "the request is not valid")
 				return
 			}
@@ -131,7 +131,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, bot.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, session.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrBotArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, bot.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, bot.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, bot.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, bot.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget), errors.Is(err, engine.ErrMCPServerExists):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -246,7 +246,8 @@ func botID(ctx context.Context) string {
 // withBot checks the path before the strict handler decodes the body or opens storage.
 func (h *handler) withBot(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if id := r.PathValue("botId"); id != "" {
+		id := r.PathValue("botId")
+		if id != "" {
 			archived, err := h.Bots.Bot(r.Context(), id)
 			// An archived bot is hidden: only its restore route answers.
 			if err == nil && archived.ArchivedAt != 0 && !isRestore(r) {
@@ -265,12 +266,11 @@ func (h *handler) withBot(next http.Handler) http.Handler {
 				writeError(w, status, err.Error())
 				return
 			}
-			ctx := context.WithValue(r.Context(), botKey{}, id)
-			if strings.HasSuffix(r.URL.Path, "/oauth") {
-				w.Header().Set("Cache-Control", "no-store")
-				ctx = context.WithValue(ctx, mcpOAuthRequestKey{}, mcpOAuthOrigin{origin: r.Header.Get("Origin"), host: r.Host})
-			}
-			r = r.WithContext(ctx)
+			r = r.WithContext(context.WithValue(r.Context(), botKey{}, id))
+		}
+		if (id != "" && strings.HasSuffix(r.URL.Path, "/oauth")) || r.Pattern == "POST /api/integrations/mcp/{name}/oauth" {
+			w.Header().Set("Cache-Control", "no-store")
+			r = r.WithContext(context.WithValue(r.Context(), mcpOAuthRequestKey{}, mcpOAuthOrigin{origin: r.Header.Get("Origin"), host: r.Host}))
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -331,6 +331,29 @@ func (h *handler) integrationView(ctx context.Context) (api.BotIntegrations, err
 func (h *handler) GetBotIntegrations(ctx context.Context, _ api.GetBotIntegrationsRequestObject) (api.GetBotIntegrationsResponseObject, error) {
 	out, err := h.integrationView(ctx)
 	return api.GetBotIntegrations200JSONResponse(out), err
+}
+func (h *handler) CreateMcpServer(ctx context.Context, req api.CreateMcpServerRequestObject) (api.CreateMcpServerResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	// The body type decodes strictly, so unknown fields never reach this point.
+	if err := h.Engine.CreateMCPServer(ctx, botID(ctx), *req.Body); err != nil {
+		return nil, err
+	}
+	return api.CreateMcpServer201JSONResponse(ok), nil
+}
+func (h *handler) GetSharedIntegrations(ctx context.Context, _ api.GetSharedIntegrationsRequestObject) (api.GetSharedIntegrationsResponseObject, error) {
+	out, err := h.Engine.SharedIntegrations(ctx)
+	return api.GetSharedIntegrations200JSONResponse(out), err
+}
+func (h *handler) CreateSharedMcpServer(ctx context.Context, req api.CreateSharedMcpServerRequestObject) (api.CreateSharedMcpServerResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	if err := h.Engine.CreateSharedMCPServer(ctx, *req.Body); err != nil {
+		return nil, err
+	}
+	return api.CreateSharedMcpServer201JSONResponse(ok), nil
 }
 func (h *handler) ListVault(ctx context.Context, _ api.ListVaultRequestObject) (api.ListVaultResponseObject, error) {
 	list, err := h.Engine.VaultList(botID(ctx))

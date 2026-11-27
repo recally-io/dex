@@ -29,8 +29,8 @@ function segment(current: boolean) {
 
 const botPages = [
   { to: "/b/$botId/bot", label: "General", segment: "bot" },
-  { to: "/b/$botId/skills", label: "Skills", segment: "skills" },
   { to: "/b/$botId/integrations", label: "Integrations", segment: "integrations" },
+  { to: "/b/$botId/channels", label: "Channels", segment: "channels" },
   { to: "/b/$botId/secrets", label: "Secrets", segment: "secrets" },
 ] as const;
 

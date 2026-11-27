@@ -45,6 +45,12 @@ hidden directories and `node_modules`. The front matter `name` wins over the
 directory name. A second skill with the same name in one level is a warning
 and does not block MCP Reload.
 
+`GET /api/integrations` reads only `<data dir>/.agents/skills` on the control host.
+It reports duplicate names and import warnings in `errors`. It does not open a
+Bot or lease a Runner. Global Integrations shows these skills. **Add skill**
+gives chat instructions for `skill_import`; it does not upload files. Bot
+Settings → Integrations shows the effective skills for that Bot.
+
 The dex and bot stores are on the control host. Owner sessions use
 `skill_list` and `skill_read` to inspect these stores. Use `skill_write`,
 `skill_edit`, and `skill_delete` to change them.
@@ -166,12 +172,36 @@ declaration. Writes apply after
 the current work ends and the affected bot reloads. A dex change marks all
 open bots for reload.
 
+The global Integrations API lists only Dex-level MCP declarations. It does not
+connect to servers. It shows connection state `idle` or `disabled`, no tools,
+and the OAuth grant state. It omits URLs, headers, and environment values.
+`POST /api/integrations/mcp` adds a Dex-level remote declaration. It returns 409
+only for a name already declared at the Dex level. Bot overrides stay in place.
+On the global Integrations page, the Add dialog can target Shared or one Bot.
+Bot Integrations links to that dialog with its Bot selected.
+
+The owner can also add a Bot-level remote declaration from Web Integrations.
+`POST /api/bots/{botId}/integrations/mcp` takes a name, a URL, and optional
+`oauth` with `clientId`, `clientSecret` as `vault:NAME`, and `scope`. It saves
+`type: "http"` (Streamable HTTP) through the same store and validation as
+`mcp_server_set`, and it marks only that bot for idle reload. It never replaces
+a declaration. The same name at the bot level or at the dex level returns 409,
+so a Web add cannot mask an inherited server. The store lock orders the check
+and the insert against all other declaration writes. The URL must use HTTPS,
+or HTTP on loopback, without user information, a query, or a fragment. The
+request takes no headers or environment, so it cannot store a static token.
+The body type decodes strictly: an unknown field, also inside `oauth`, returns
+the generic 400 and stores nothing, so a caller never gets a save without the
+authentication that it sent. It
+does not contact the server. A server that needs sign-in uses browser
+authorization below.
+
 `mcp_server_get` hides plain `env` and `headers` values and the URL query.
 dex resolves `vault:NAME` and inline `${vault:NAME}` in `env` and `headers`
 when it starts the server. For example, an HTTP header can use
 `Authorization: Bearer ${vault:NOTION_TOKEN}`. The declarations keep references,
-not resolved values. `mcp_server_get`, `mcp_server_list`, and the Integrations
-API show those references as written. To keep a hidden `env` or `headers`
+not resolved values. `mcp_server_get`, `mcp_server_list`, and the Bot
+Integrations API show those references as written. To keep a hidden `env` or `headers`
 value, include `[hidden]` for that key in `mcp_server_set`. Do not paste
 literal secrets into a declaration. A snippet can enter the transcript.
 Plain values in declarations are stored as plain text.
@@ -181,7 +211,7 @@ For an open Harness, the request uses the default Runner's lease to inspect
 workspace skills. If the lease has not opened, this request can open it without
 blocking admission on other Runners. Bot Settings → Integrations shows
 loaded MCP server state and the current OAuth grant state. Reload is available
-from both Integrations and Skills.
+from Bot Integrations.
 Before the bot opens, the API shows connection state `idle` for declarations
 that are not disabled.
 
@@ -198,7 +228,7 @@ pre-registered client. Dex does not serve Client ID Metadata Documents.
 
 Register `<dex origin>/mcp/oauth/callback` with the provider. Open dex over
 HTTPS or on loopback HTTP. Select **Authorize** or **Reauthorize** on the
-connection in the bot's Integrations page. Dex probes the MCP endpoint without credentials. Dex
+connection in global or Bot Integrations. Dex probes the MCP endpoint without credentials. Dex
 uses the protected resource metadata and then discovers the issuer with
 RFC 8414 or OIDC. Dex uses a challenged scope when present. Otherwise dex
 uses `oauth.scope` or the scopes in the protected resource metadata, in that
@@ -229,7 +259,11 @@ stays unchanged until the owner replaces it with `mcp_server_set`. If the
 owner selects OAuth again, Dex requires a fresh authorization. The change
 applies at the next idle reload.
 
-A successful callback opens `/b/{botId}/integrations` and marks the affected connections for idle reload. Dex refreshes an expired token when a refresh token is available.
+`POST /api/integrations/mcp/{name}/oauth` starts authorization for the Dex
+level. Bot overrides do not affect this flow. Its callback opens
+`/integrations?section=mcp`. A callback for a start from a Bot opens
+`/b/{botId}/integrations`. Both mark the affected connections for idle reload.
+Dex refreshes an expired token when a refresh token is available.
 On HTTP 401, dex attempts at most one refresh and retry. If the grant no longer
 works, Integrations shows **Reauthorize**. Dex does not fall back to static headers.
 

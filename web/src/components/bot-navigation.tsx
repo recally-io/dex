@@ -68,6 +68,15 @@ export function BotNavigation({ bot, segment, cwd }: { bot: Bot; segment: string
 
   const settingsLabel = dirty ? "Bot settings, unsaved instructions draft" : "Bot settings";
 
+  // The trigger name replaces the names of its marks, so it states both of them.
+  const menuLabel = [
+    `Bot menu: ${bot.name}`,
+    failed ? "latest automation run failed" : "",
+    dirty ? "unsaved instructions draft" : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   const items = (
     <>
       <DropdownMenuItem disabled={newSession.isPending} onClick={() => newSession.mutate()}>
@@ -91,7 +100,7 @@ export function BotNavigation({ bot, segment, cwd }: { bot: Bot; segment: string
         ) : null}
       </DropdownMenuItem>
       <DropdownMenuItem render={<Link to="/b/$botId/bot" params={{ botId }} />} aria-label={settingsLabel}>
-        <Settings size={15} /> Settings
+        <Settings size={15} /> Bot settings
         {dirty ? (
           <span aria-label="Unsaved instructions draft" className="text-orange">
             Draft
@@ -167,15 +176,16 @@ export function BotNavigation({ bot, segment, cwd }: { bot: Bot; segment: string
               variant="ghost"
               size="sm"
               className="relative shrink-0 text-muted-foreground lg:hidden"
-              aria-label={`Bot menu: ${bot.name}`}
+              aria-label={menuLabel}
+              title={menuLabel}
             />
           }
         >
           Menu <ChevronDown />
-          {dirty ? (
+          {failed || dirty ? (
             <span
-              aria-label="Unsaved instructions draft"
-              className="absolute top-1 right-1 size-1.5 rounded-full bg-orange"
+              aria-hidden
+              className={cn("absolute top-1 right-1 size-1.5 rounded-full", failed ? "bg-red" : "bg-orange")}
             />
           ) : null}
         </DropdownMenuTrigger>

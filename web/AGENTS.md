@@ -46,11 +46,16 @@ See the [API contract](../api/openapi.yaml) for request and response schemas.
 `src/lib/attachments.ts` uploads each file of the composer when the user adds
 it; a message sends only upload IDs.
 
-Bot links open Main at `/b/$botId`. The bot header offers New session,
-Sessions, Automations, and Settings. General settings open at `/b/$botId/bot`.
-Settings also includes Skills, Integrations, and Secrets.
+Bot links open Main at `/b/$botId`. The bot header offers Artifacts while it
+shows Main or a Session, then New session, Sessions, Automations, and Bot
+settings. Below `lg`, it shows Artifacts when available and a Bot menu. The menu
+trigger names a failed latest Automation run and an unsaved instructions draft.
+General settings open at `/b/$botId/bot`.
+Bot Settings also includes Integrations, Channels, and Secrets. A page outside
+a Bot has no Bot actions in its header.
 The right Sessions sidebar starts closed. The global sidebar
-opens Bots, [Board](../docs/dev/tasks.md#board), and Settings. Board (`/board`)
+scrolls the Bots list above a fixed footer with [Board](../docs/dev/tasks.md#board),
+Integrations, and Settings. The mobile drawer uses the same sidebar. Board (`/board`)
 shows the Owner attention count and groups Tasks with other work:
 
 - **Needs you**: active questions (answerable inline), Tasks awaiting Owner review (approvable inline), enabled Automations without an available model, and held external events (attach to an open Task or dismiss).
@@ -71,8 +76,20 @@ Board attention also polls every 10 seconds for changes outside the Task stream.
 Task edits keep the revision from the start of the edit. A conflict
 prompts the Owner to load the latest values. Approval uses the current review
 sequence. The composer adds a note or sends to the Assignee Bot's Main.
-Global Integrations lists Sources from `GET /api/settings/sources` with a switch for each. A note asks for a
-restart while a stored choice differs from what runs. When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
+Settings → Integrations lists Sources from `GET /api/settings/sources` with a switch for each. A note asks for a
+restart while a stored choice differs from what runs.
+Global Integrations (`/integrations`) reads only `GET /api/integrations`. It
+lists shared skills and MCP declarations with OAuth grant status. It does not
+show live connection status. `section=skills|mcp` focuses the named section.
+`add=skill|mcp` opens the Add dialog. Only the dialog loads the Bot list to
+choose a target. The default is Shared. An unavailable `target` blocks the
+action until the owner chooses a valid target. The old `bot` parameter has no
+effect. **Add skill** gives chat instructions for `skill_import` and does not
+write files. **Add MCP server** uses the create API for the selected target.
+The POST confirms the save independently of the status read. The dialog offers
+Try again if the read fails. Done is disabled while authorization starts.
+
+When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
 a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its
 components in `src/plugins/<name>/`, and a page renders them only when the
 plugin is on.
@@ -130,13 +147,16 @@ set or clear an optional plain-text description.
 Global Secrets (`/settings/secrets`) edits shared Vault entries and 1Password.
 A bot's Secrets page edits its own Vault entries. The vault API returns metadata
 only. The editor clears the value after submit and does not store it in the browser.
-[Skills and Integrations](../docs/dev/skills-and-integrations.md) read
-`/api/bots/{botId}/integrations` and both offer
-Reload. In Integrations, an OAuth MCP row starts authorization with an
-authenticated POST. The browser follows the returned URL in the same tab. The
-callback returns to `/b/{botId}/integrations`. The browser does not receive provider tokens.
+[Bot Integrations](../docs/dev/skills-and-integrations.md) reads
+`/api/bots/{botId}/integrations` and offers Reload. It shows effective skills
+and MCP servers with connection and OAuth states. Shared rows link to global
+Integrations, and Add links preselect this Bot. `/b/$botId/skills` redirects
+to `/b/$botId/integrations?section=skills`. OAuth starts with an authenticated
+POST and follows the authorization URL in the same tab. The callback returns
+to the initiating Integrations page. The browser does not receive provider tokens.
 
-The Telegram page under Integrations uses the existing token form. It also offers
+Channels (`/b/$botId/channels`) lists channels and the primary notification
+channel. The Telegram detail page uses the existing token form. It also offers
 managed creation when the API confirms Bot Management Mode for the saved manager.
 The managed dialog polls its setup state. It shows a private owner verification
 link first and the Telegram bot creation link second. Cancel calls the API.

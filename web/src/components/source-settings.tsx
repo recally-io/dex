@@ -13,7 +13,11 @@ const sourceNames = new Map([
 ]);
 
 // Dex reads the choices at start, so a change waits for a restart.
-export function SourceSettings() {
+export function SourceSettings({
+  caption = "Optional sources that run inside dex. Changes apply when dex starts again.",
+}: {
+  caption?: string;
+}) {
   const plugins = useQuery(listSourcesOptions());
   const client = useQueryClient();
 
@@ -35,10 +39,7 @@ export function SourceSettings() {
   const pending = plugins.data.sources.some((plugin) => !plugin.error && plugin.enabled !== plugin.running);
 
   return (
-    <Section
-      title="Sources"
-      caption="Optional sources that run inside dex. Changes apply when dex starts again."
-    >
+    <Section title="Sources" caption={caption}>
       <Panel>
         {plugins.data.sources.map((plugin) => (
           <div

@@ -71,18 +71,14 @@ export function ChannelFrame({
   return (
     <FramedPage
       eyebrow={
-        <Link
-          to="/b/$botId/integrations"
-          params={{ botId }}
-          className="hover:text-foreground hover:underline"
-        >
-          Integrations
+        <Link to="/b/$botId/channels" params={{ botId }} className="hover:text-foreground hover:underline">
+          Channels
         </Link>
       }
       title={channelInfo[channel].name}
       badge={state ? <ChannelState channel={channel} state={state} /> : null}
       description={description}
-      toolbar={<BotSettingsSwitcher segment="integrations" />}
+      toolbar={<BotSettingsSwitcher segment="channels" />}
     >
       {children}
     </FramedPage>

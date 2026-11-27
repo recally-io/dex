@@ -32,6 +32,9 @@ storage, and execution boundaries.
   active questions, Owner reviews, Automations that need a model, held Source
   events, and unhandled Automation results. Queued Task questions stay in Task
   detail until active. One-way notices stay in transcripts and Channels.
+- **Integrations** (`/integrations?bot=<id>`): The starting point for
+  connections. It shows the selected Bot's Channels and effective MCP servers.
+  Sources belong to the whole Dex instance.
 - **Settings**: Global General, Providers, Runners, Secrets, Integrations,
   Archived, and About pages.
 
