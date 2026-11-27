@@ -178,6 +178,8 @@ Neither the managed dialog nor the Channels response receives the created token.
 
 ## Components and theme
 
+Follow the [Dex UI design contract](../docs/dev/ui-design.md) for layout, visual roles, interaction states, and review evidence.
+
 The app uses the stock shadcn components in `src/components/ui/` and the preset
 theme in `src/styles.css`. Domain components compose those primitives. Do not
 copy a new atom or primitive. Add a component with the shadcn CLI when a stock

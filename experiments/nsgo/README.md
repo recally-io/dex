@@ -2,7 +2,7 @@
 
 This experiment is a Dex client for macOS, the iOS Simulator, and the web. It uses one Go UI and the existing [Dex HTTP API](../../api/openapi.yaml). Dex still runs the bots and stores their data. The [React web UI](../../web/AGENTS.md) remains the production client.
 
-The NSGo workspace follows the React UI layout: a Bot sidebar on wide screens, a navigation drawer on narrow screens, and a main area for chat, the Board, and settings. Open the two clients side by side to compare them. Full layout and feature parity is not an acceptance result.
+The NSGo workspace follows the React UI layout: a Bot sidebar on wide screens, a navigation drawer on narrow screens, and a main area for chat, the Board, and settings. Open the two clients side by side to compare them. Use the [Dex UI design contract](../../docs/dev/ui-design.md) to choose the reference screen and review differences. Full layout and feature parity is not an acceptance result.
 
 ## Try the workspace
 
@@ -63,6 +63,12 @@ From the repository root, compare the React and NSGo sidebars against the same B
 
 ```sh
 node experiments/nsgo/sidebar-check.cjs 19489 .local/nsgo-poc/screens
+```
+
+For a shell or chat style review, use a fresh disposable preview. In the default Bot, send `The release notes are ready for review.` as the only message. Wait for the echo, leave the draft empty, and run the comparison with that exact reply. This also measures the short conversation in both appearances. The sidebar-only command does not check the chat style.
+
+```sh
+node experiments/nsgo/sidebar-check.cjs 19489 .local/nsgo-poc/screens 'echo: The release notes are ready for review.'
 ```
 
 The macOS and iOS Simulator checks covered navigation from Main to the Board and back, a chat reply after reconnect, and session archive and restore. A separate macOS check covered Bot creation, rename, and retention of a concurrent instruction change. These checks do not verify the full client or a physical iPhone.

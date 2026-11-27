@@ -10,6 +10,7 @@ areas, read each matching rule. Do not load all rule files by default.
 - Database schema, migrations and queries: [database](.agents/rules/database.md).
 - Writing or changing tests: [testing](.agents/rules/testing.md).
 - Documents and diagrams: [documentation](.agents/rules/documentation.md).
+- Web or native UI design, implementation, and review: [UI design contract](docs/dev/ui-design.md). Choose the reference screen and state before implementation.
 - Selecting checks or completing work: [verification](.agents/rules/verification.md).
 
 ## Reference docs

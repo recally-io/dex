@@ -24,6 +24,8 @@ For web UI interaction, navigation, or browser flow changes, also run
 does not run browser tests. Report a failed browser task as a verification gap
 even when the aggregate check passes.
 
+For a visible UI change, apply the [UI design acceptance criteria](../../docs/dev/ui-design.md#pr-acceptance). For NSGo shell or chat style changes, run the same-data comparison with a short seeded reply and record the result. This is a review check; the current CI suite does not run it.
+
 A change to a provider or to model handling also needs a manual run against a
 real provider (`mise run dev:server`, with a key in Settings), because the tests use the
 faux provider. Report that run, or report that you did not do it.
