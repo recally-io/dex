@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#MISE description="Serve the React UI and an isolated echo Bot for the NSGo WebView trial"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+work=$(mktemp -d)
+pid=
+cleanup() {
+  if [[ -n $pid ]]; then
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  fi
+  rm -rf "$work"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
+
+go build -tags dex_e2e -o "$work/dex" ./cmd/dex
+mkdir "$work/home"
+url=http://127.0.0.1:19681
+env -i HOME="$work/home" PATH="$PATH" "$work/dex" serve --host 127.0.0.1 --port 19681 --data-dir "$work/data" >"$work/dex.log" 2>&1 &
+pid=$!
+# Configure only the Dex that this task started, never another listener on the port.
+for ((i=0; i<300; i++)); do
+  grep -q 'dex is running' "$work/dex.log" && break
+  kill -0 "$pid" 2>/dev/null || break
+  sleep .1
+done
+if ! grep -q 'dex is running' "$work/dex.log"; then
+  tail -20 "$work/dex.log" >&2
+  exit 1
+fi
+bot="$url/api/bots/default"
+curl --noproxy '*' -fsS "$bot" | jq '. + {provider:"faux", modelId:"echo"}' | \
+  curl --noproxy '*' -fsS -X PUT -H 'Content-Type: application/json' --data-binary @- "$bot" >/dev/null
+printf 'Open %s/b/default in the shell or browser. Press Ctrl-C to remove the demo.\n' "$url"
+wait "$pid"
