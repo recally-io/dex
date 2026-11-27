@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#MISE description="Preview NSGo chat with a temporary dex and the echo model"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+work=$(mktemp -d)
+pid=
+preview_pid=
+cleanup() {
+  if [[ -n $preview_pid ]]; then
+    kill "$preview_pid" 2>/dev/null || true
+    wait "$preview_pid" 2>/dev/null || true
+  fi
+  if [[ -n $pid ]]; then
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  fi
+  rm -rf "$work"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+(cd experiments/nsgo && go tool nsgo build -target web -output "$work/site")
+site=("$work/site/"*-web)
+go build -tags dex_e2e -o "$work/dex" ./cmd/dex
+mkdir "$work/home"
+env -i HOME="$work/home" PATH="$PATH" "$work/dex" serve --host 127.0.0.1 --port 19486 --data-dir "$work/data" >"$work/dex.log" 2>&1 &
+pid=$!
+# Only configure the process we started. Another service could own this port.
+for ((i=0; i<300; i++)); do
+  if grep -q 'dex is running' "$work/dex.log"; then break; fi
+  if ! kill -0 "$pid" 2>/dev/null; then break; fi
+  sleep .1
+done
+if ! grep -q 'dex is running' "$work/dex.log"; then
+  tail -20 "$work/dex.log" >&2
+  exit 1
+fi
+export DEX_API_URL=http://127.0.0.1:19486
+bot="$DEX_API_URL/api/bots/default"
+curl --noproxy '*' -fsS "$bot" | jq '. + {provider:"faux", modelId:"echo"}' | \
+  curl --noproxy '*' -fsS -X PUT -H 'Content-Type: application/json' --data-binary @- "$bot" >/dev/null
+
+cd web
+node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --strictPort --port 19487 --outDir "${site[0]}" &
+preview_pid=$!
+wait "$preview_pid"

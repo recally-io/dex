@@ -1,0 +1,8 @@
+name: Dex Chat
+id: io.recally.dex.chatpoc
+version: 0.1.0
+
+build:
+  output: dist
+  installers: false
+  targets: [macos_arm64, ios_simulator, web]

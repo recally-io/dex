@@ -49,7 +49,12 @@ job go-lint bash -c 'golangci-lint fmt --diff && golangci-lint run && go build .
 packages=()
 while IFS= read -r dir; do
   if [[ "$dir" != internal/app && -n "$(find "$dir" -maxdepth 1 -name '*.go' -print -quit 2>/dev/null)" ]]; then
-    packages+=("./$dir")
+    if [[ "$dir" != . && -f "$dir/go.mod" ]]; then
+      # A package with its own go.mod is outside the root module.
+      job "go-test-${dir//\//-}" go -C "$dir" test .
+    else
+      packages+=("./$dir")
+    fi
   fi
 done < <(xargs -rn1 dirname <<<"$changed" | sort -u)
 if ((${#packages[@]})); then
