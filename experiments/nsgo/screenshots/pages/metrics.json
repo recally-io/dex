@@ -1,0 +1,2855 @@
+{
+  "chromeVersion": "158.0.8127.38",
+  "builds": {
+    "react": {
+      "indexSHA256": "69be985d73eea602c74c852201e8fcb64f83ebb483ebe5c131c4253dfb9109b7",
+      "scripts": [
+        "/assets/index-BzPmrJSB.js"
+      ]
+    },
+    "nsgo": {
+      "indexSHA256": "0d0c92bd57dd238c2235c71abce3b7a186e6092bc354377eb461075858b8675d",
+      "scripts": [
+        "wasm_exec.0c949f4996.js",
+        "mount.a20f43b304.js"
+      ]
+    }
+  },
+  "scriptSHA256": "f1a927992a5c5a382eff3917b0a2c83763f4f61574d1cad7e41869addefff58a",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800
+    },
+    "phone": {
+      "width": 390,
+      "height": 820
+    }
+  },
+  "scale": 1,
+  "locale": "en-US",
+  "theme": "light",
+  "visualScope": "CSS geometry only; PNGs require visual review. No pixel or native sign-off.",
+  "entries": [
+    {
+      "id": "artifacts",
+      "title": "Artifacts",
+      "size": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "pair": "pairs/artifacts-desktop.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-desktop-artifacts-entry.png",
+          "sha256": "df0d534ab4fd0f4e8b6ae790ef165668785f8edd83fb5eb470aab869343dc41c",
+          "route": "/b/default/s/1",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 400,
+              "y": 303.09375,
+              "width": 480,
+              "height": 24.375
+            },
+            "primary": {
+              "x": 823.140625,
+              "y": 472.90625,
+              "width": 56.859375,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "opens a panel over the conversation",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "close returns to the same conversation",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-desktop-artifacts-entry.png",
+          "sha256": "38494aeb731537f3f809e54c263191aeebe98f3a4895e601504b233312867481",
+          "route": "/b/default/s/1",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 400,
+              "y": 303,
+              "width": 480,
+              "height": 25
+            },
+            "primary": {
+              "x": 823,
+              "y": 474,
+              "width": 57,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "opens a panel over the conversation",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "close returns to the same conversation",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "desktop",
+          "page": "artifacts",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "artifacts",
+          "region": "heading.y",
+          "difference": -0.09375,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "artifacts",
+          "region": "primary.x",
+          "difference": -0.140625,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "artifacts",
+          "region": "primary.y",
+          "difference": 1.09375,
+          "limit": 1,
+          "pass": false
+        }
+      ]
+    },
+    {
+      "id": "artifacts",
+      "title": "Artifacts",
+      "size": "phone",
+      "viewport": {
+        "width": 390,
+        "height": 820
+      },
+      "pair": "pairs/artifacts-phone.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-phone-artifacts-entry.png",
+          "sha256": "0468707c3c6624f6b369efabcb51ad76c52c4d85962ebeb2ab053ef89d7cba29",
+          "route": "/b/default/s/1",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 20,
+              "y": 302.9375,
+              "width": 350,
+              "height": 24.375
+            },
+            "primary": {
+              "x": 166.5625,
+              "y": 493.0625,
+              "width": 56.859375,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "opens a panel over the conversation",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "close returns to the same conversation",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-phone-artifacts-entry.png",
+          "sha256": "26bad5e0900354c4a556cfa342bf86f4207c0ff7a1f6176d90df8282bfbbc086",
+          "route": "/b/default/s/1",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 20,
+              "y": 303,
+              "width": 350,
+              "height": 25
+            },
+            "primary": {
+              "x": 167,
+              "y": 494,
+              "width": 57,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "opens a panel over the conversation",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "close returns to the same conversation",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "phone",
+          "page": "artifacts",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "artifacts",
+          "region": "heading.y",
+          "difference": 0.0625,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "artifacts",
+          "region": "primary.x",
+          "difference": 0.4375,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "artifacts",
+          "region": "primary.y",
+          "difference": 0.9375,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "new-session",
+      "title": "New session",
+      "size": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "pair": "pairs/new-session-desktop.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-desktop-new-session-entry.png",
+          "sha256": "62a679a4c7ef841ebd4ffff700d6a8862719bb29320513285132b56556e1b6fb",
+          "route": "/b/default",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": null,
+            "primary": {
+              "x": 1154,
+              "y": 9.5,
+              "width": 28,
+              "height": 28
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-desktop-new-session-entry.png",
+          "sha256": "d4b3a4095432437416dca20d0683e58ee86f3dc80f8cbdaf69e93bdd748886d8",
+          "route": "/b/default",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": null,
+            "primary": {
+              "x": 1154,
+              "y": 10,
+              "width": 28,
+              "height": 28
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "desktop",
+          "page": "new-session",
+          "region": "primary.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "new-session",
+          "region": "primary.y",
+          "difference": 0.5,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "new-session",
+      "title": "New session",
+      "size": "phone",
+      "viewport": {
+        "width": 390,
+        "height": 820
+      },
+      "pair": "pairs/new-session-phone.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-phone-new-session-entry.png",
+          "sha256": "43f4800a466f7b00eb8d743ce160c4a3bb42791f97d44898052ce155c63dd442",
+          "route": "/b/default",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": null,
+            "primary": {
+              "x": 142,
+              "y": 42,
+              "width": 240,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-phone-new-session-entry.png",
+          "sha256": "f09cd8095caefd46ebc9c8adac1c7bf25dbec3b445c62efabaf4f4b6561dc3b2",
+          "route": "/b/default",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": null,
+            "primary": {
+              "x": 142,
+              "y": 42,
+              "width": 240,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "phone",
+          "page": "new-session",
+          "region": "primary.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "new-session",
+          "region": "primary.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "sessions",
+      "title": "Sessions",
+      "size": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "pair": "pairs/sessions-desktop.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-desktop-sessions-entry.png",
+          "sha256": "6331e3133e346b5e9f30dafe6c632163166bf7a561ecd097d40f9fbccac5fc73",
+          "route": "/b/default/sessions",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 72,
+              "width": 73.890625,
+              "height": 22.5
+            },
+            "primary": {
+              "x": 945,
+              "y": 164.375,
+              "width": 107,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-desktop-sessions-entry.png",
+          "sha256": "d8b160cb9b1c4424051551ab0c6b87c6943c036f28dc48f4954f25929e019afc",
+          "route": "/b/default/sessions",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 72,
+              "width": 640,
+              "height": 23
+            },
+            "primary": {
+              "x": 945,
+              "y": 165,
+              "width": 107,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "desktop",
+          "page": "sessions",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "sessions",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "sessions",
+          "region": "primary.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "sessions",
+          "region": "primary.y",
+          "difference": 0.625,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "sessions",
+      "title": "Sessions",
+      "size": "phone",
+      "viewport": {
+        "width": 390,
+        "height": 820
+      },
+      "pair": "pairs/sessions-phone.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-phone-sessions-entry.png",
+          "sha256": "0ee9dd71acb7eb12f9ebf66b41e86264f8080aeed9b54a8ac82d00ea65bb00d6",
+          "route": "/b/default/sessions",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 72,
+              "width": 73.890625,
+              "height": 22.5
+            },
+            "primary": {
+              "x": 259,
+              "y": 208.25,
+              "width": 107,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-phone-sessions-entry.png",
+          "sha256": "54d99d4540b26f3f025760be40d19a986d3ae7a70f93ac1c378d39a319769860",
+          "route": "/b/default/sessions",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 72,
+              "width": 342,
+              "height": 23
+            },
+            "primary": {
+              "x": 259,
+              "y": 209,
+              "width": 107,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "phone",
+          "page": "sessions",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "sessions",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "sessions",
+          "region": "primary.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "sessions",
+          "region": "primary.y",
+          "difference": 0.75,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "automations",
+      "title": "Automations",
+      "size": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "pair": "pairs/automations-desktop.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-desktop-automations-entry.png",
+          "sha256": "773217e5f36a431136abcc202985a6567c2c24c48c48c4800ad86467daf9b327",
+          "route": "/b/default/automations",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 72,
+              "width": 104.921875,
+              "height": 22.5
+            },
+            "primary": {
+              "x": 929.25,
+              "y": 142.4375,
+              "width": 122.75,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "additional state",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-desktop-automations-entry.png",
+          "sha256": "70ad70375d2d2a20d561bc47a727a642aff14c3bbda676ac05a246ed1e6512de",
+          "route": "/b/default/automations",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 72,
+              "width": 768,
+              "height": 21
+            },
+            "primary": {
+              "x": 929,
+              "y": 142,
+              "width": 123,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "additional state",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "desktop",
+          "page": "automations",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "automations",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "automations",
+          "region": "primary.x",
+          "difference": -0.25,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "automations",
+          "region": "primary.y",
+          "difference": -0.4375,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "automations",
+      "title": "Automations",
+      "size": "phone",
+      "viewport": {
+        "width": 390,
+        "height": 820
+      },
+      "pair": "pairs/automations-phone.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-phone-automations-entry.png",
+          "sha256": "d42716d88a4edb482e50a91e7c2ff88cd72bc1fa0bd406dff35d4ece2360384f",
+          "route": "/b/default/automations",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 72,
+              "width": 104.921875,
+              "height": 22.5
+            },
+            "primary": {
+              "x": 24,
+              "y": 193.875,
+              "width": 122.75,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "additional state",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-phone-automations-entry.png",
+          "sha256": "c8bd1bddd1f8ef41171b639cc1aebb23285a76f310a4231782b3eadb623c7078",
+          "route": "/b/default/automations",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 72,
+              "width": 342,
+              "height": 21
+            },
+            "primary": {
+              "x": 24,
+              "y": 194,
+              "width": 123,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "additional state",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "phone",
+          "page": "automations",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "automations",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "automations",
+          "region": "primary.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "automations",
+          "region": "primary.y",
+          "difference": 0.125,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "bot-settings",
+      "title": "Bot settings",
+      "size": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "pair": "pairs/bot-settings-desktop.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-desktop-bot-settings-entry.png",
+          "sha256": "144fe004141f5775529bde95839f4847fdfcf4a7b2266a59ad26be0c632369da",
+          "route": "/b/default/bot",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 72,
+              "width": 64.109375,
+              "height": 22.5
+            },
+            "primary": {
+              "x": 902.796875,
+              "y": 324.8125,
+              "width": 133.203125,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-desktop-bot-settings-entry.png",
+          "sha256": "e7cde05eeb90e15d098a8b5051c3b9440fe335d2ef2a9ff9962e0f3ca4061fac",
+          "route": "/b/default/bot",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 72,
+              "width": 64,
+              "height": 23
+            },
+            "primary": {
+              "x": 902,
+              "y": 325,
+              "width": 133,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "desktop",
+          "page": "bot-settings",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "bot-settings",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "bot-settings",
+          "region": "primary.x",
+          "difference": -0.796875,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "bot-settings",
+          "region": "primary.y",
+          "difference": 0.1875,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "bot-settings",
+      "title": "Bot settings",
+      "size": "phone",
+      "viewport": {
+        "width": 390,
+        "height": 820
+      },
+      "pair": "pairs/bot-settings-phone.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-phone-bot-settings-entry.png",
+          "sha256": "4d0d4743d91c4a7926c786a22784bd4367f93f490a951c4872a845b28a9ea722",
+          "route": "/b/default/bot",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 72,
+              "width": 64.109375,
+              "height": 22.5
+            },
+            "primary": {
+              "x": 216.796875,
+              "y": 394.75,
+              "width": 133.203125,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-phone-bot-settings-entry.png",
+          "sha256": "5e5adbab64c419ced1f8832284af2029273868e82680406c90c5d1b572dd81e0",
+          "route": "/b/default/bot",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 72,
+              "width": 64,
+              "height": 23
+            },
+            "primary": {
+              "x": 216,
+              "y": 394,
+              "width": 133,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "phone",
+          "page": "bot-settings",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "bot-settings",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "bot-settings",
+          "region": "primary.x",
+          "difference": -0.796875,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "bot-settings",
+          "region": "primary.y",
+          "difference": -0.75,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "board",
+      "title": "Board",
+      "size": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "pair": "pairs/board-desktop.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-desktop-board-entry.png",
+          "sha256": "78eb522cf481251c811f7e5a2a4117d43a4b252a517d505842ac1813cb51d839",
+          "route": "/board",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 80,
+              "width": 62.8125,
+              "height": 30
+            },
+            "primary": {
+              "x": 321,
+              "y": 149,
+              "width": 651,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "additional state",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-desktop-board-entry.png",
+          "sha256": "9d626aaafb23e9d49bee8c7562058167d2e0f32c10ab7705eb235d4df8aca6c2",
+          "route": "/board",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 80,
+              "width": 65,
+              "height": 30
+            },
+            "primary": {
+              "x": 321,
+              "y": 149,
+              "width": 592,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "additional state",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "desktop",
+          "page": "board",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "board",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "board",
+          "region": "primary.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "board",
+          "region": "primary.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "board",
+      "title": "Board",
+      "size": "phone",
+      "viewport": {
+        "width": 390,
+        "height": 820
+      },
+      "pair": "pairs/board-phone.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-phone-board-entry.png",
+          "sha256": "03b174f54cb24ee3f008044bca8f31874f27f47cec177c8c171df3479e45e1da",
+          "route": "/board",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 80,
+              "width": 62.8125,
+              "height": 30
+            },
+            "primary": {
+              "x": 61,
+              "y": 149,
+              "width": 225,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "drawer width and footer order",
+              "pass": true
+            },
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "additional state",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-phone-board-entry.png",
+          "sha256": "648dcc3552daf7a293c0f64c1e42e7649e350ebfee11c9999a3c8430e2e8daa2",
+          "route": "/board",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 80,
+              "width": 65,
+              "height": 30
+            },
+            "primary": {
+              "x": 61,
+              "y": 149,
+              "width": 166,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "drawer width and footer order",
+              "pass": true
+            },
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "additional state",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "phone",
+          "page": "board",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "board",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "board",
+          "region": "primary.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "board",
+          "region": "primary.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "integrations",
+      "title": "Integrations",
+      "size": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "pair": "pairs/integrations-desktop.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-desktop-integrations-entry.png",
+          "sha256": "ffe0fe462eb2316fbb0d750c0770747630e09d264fa8f52973a633ddc6070f25",
+          "route": "/integrations",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 80,
+              "width": 126.75,
+              "height": 30
+            },
+            "primary": {
+              "x": 912.171875,
+              "y": 384.0625,
+              "width": 139.828125,
+              "height": 28
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-desktop-integrations-entry.png",
+          "sha256": "8798dd9c4d465afcc024a667e2e4c4c0eee520f867216eded00e049be5b1a875",
+          "route": "/integrations",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 80,
+              "width": 127,
+              "height": 30
+            },
+            "primary": {
+              "x": 912,
+              "y": 384,
+              "width": 140,
+              "height": 28
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "desktop",
+          "page": "integrations",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "integrations",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "integrations",
+          "region": "primary.x",
+          "difference": -0.171875,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "integrations",
+          "region": "primary.y",
+          "difference": -0.0625,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "integrations",
+      "title": "Integrations",
+      "size": "phone",
+      "viewport": {
+        "width": 390,
+        "height": 820
+      },
+      "pair": "pairs/integrations-phone.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-phone-integrations-entry.png",
+          "sha256": "181a6ac705e4bdfcdcfacef89096ec84ff391675dbcc036697bb47319b919184",
+          "route": "/integrations",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 80,
+              "width": 126.75,
+              "height": 30
+            },
+            "primary": {
+              "x": 226.171875,
+              "y": 406.8125,
+              "width": 139.828125,
+              "height": 28
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-phone-integrations-entry.png",
+          "sha256": "77b983eee56b9231b8a809c24eca8f84c127e8b63710288b5d0108eb84cdba2e",
+          "route": "/integrations",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 80,
+              "width": 127,
+              "height": 30
+            },
+            "primary": {
+              "x": 226,
+              "y": 407,
+              "width": 140,
+              "height": 28
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "phone",
+          "page": "integrations",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "integrations",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "integrations",
+          "region": "primary.x",
+          "difference": -0.171875,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "integrations",
+          "region": "primary.y",
+          "difference": 0.1875,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "Settings",
+      "size": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "pair": "pairs/settings-desktop.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-desktop-settings-entry.png",
+          "sha256": "42699dbfc868dc042cabd375b0de9c58491d4ee2f97bf6bad1f01be047c62139",
+          "route": "/settings/general",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 106,
+              "width": 82.515625,
+              "height": 30
+            },
+            "primary": {
+              "x": 902.796875,
+              "y": 310.375,
+              "width": 133.203125,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-desktop-settings-entry.png",
+          "sha256": "8a5d5362b64457ae2cb0395249a01b60115125d4fda7c1023b5c9fe199705d09",
+          "route": "/settings/general",
+          "measurements": {
+            "pane": {
+              "x": 260,
+              "y": 0,
+              "width": 1020,
+              "height": 48
+            },
+            "heading": {
+              "x": 284,
+              "y": 106,
+              "width": 83,
+              "height": 30
+            },
+            "primary": {
+              "x": 903,
+              "y": 310,
+              "width": 133,
+              "height": 32
+            },
+            "sidebar": {
+              "x": 0,
+              "y": 0,
+              "width": 260,
+              "height": 800
+            },
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "desktop",
+          "page": "settings",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "settings",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "settings",
+          "region": "primary.x",
+          "difference": 0.203125,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "desktop",
+          "page": "settings",
+          "region": "primary.y",
+          "difference": -0.375,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "Settings",
+      "size": "phone",
+      "viewport": {
+        "width": 390,
+        "height": 820
+      },
+      "pair": "pairs/settings-phone.png",
+      "originals": {
+        "react": {
+          "file": "originals/react-phone-settings-entry.png",
+          "sha256": "a6112e456a15bfc4c520a62ed013763bb9774a2132cd266f08688fd6220eafe9",
+          "route": "/settings/general",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 106,
+              "width": 82.515625,
+              "height": 30
+            },
+            "primary": {
+              "x": 216.796875,
+              "y": 375.625,
+              "width": 133.203125,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        },
+        "nsgo": {
+          "file": "originals/nsgo-phone-settings-entry.png",
+          "sha256": "197df0c022474794fe326617e7b372d208dacb3ec540b7ef5378769d56b31ebc",
+          "route": "/settings/general",
+          "measurements": {
+            "pane": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 48
+            },
+            "heading": {
+              "x": 24,
+              "y": 106,
+              "width": 83,
+              "height": 30
+            },
+            "primary": {
+              "x": 217,
+              "y": 376,
+              "width": 133,
+              "height": 32
+            },
+            "sidebar": null,
+            "overflow": 0
+          },
+          "checks": [
+            {
+              "key": "actual entry",
+              "pass": true
+            },
+            {
+              "key": "title",
+              "pass": true
+            },
+            {
+              "key": "main control visible",
+              "pass": true
+            },
+            {
+              "key": "visible API data or expected empty state",
+              "pass": true
+            },
+            {
+              "key": "no Bot actions on global page",
+              "pass": true
+            },
+            {
+              "key": "layout within viewport",
+              "pass": true
+            },
+            {
+              "key": "secondary action without saving",
+              "pass": true
+            },
+            {
+              "key": "direct page load",
+              "pass": true
+            },
+            {
+              "key": "direct detail load",
+              "pass": true
+            },
+            {
+              "key": "no attempted write or browser egress",
+              "pass": true
+            }
+          ]
+        }
+      },
+      "anchors": [
+        {
+          "size": "phone",
+          "page": "settings",
+          "region": "heading.x",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "settings",
+          "region": "heading.y",
+          "difference": 0,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "settings",
+          "region": "primary.x",
+          "difference": 0.203125,
+          "limit": 1,
+          "pass": true
+        },
+        {
+          "size": "phone",
+          "page": "settings",
+          "region": "primary.y",
+          "difference": 0.375,
+          "limit": 1,
+          "pass": true
+        }
+      ]
+    }
+  ]
+}
