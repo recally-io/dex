@@ -29,7 +29,7 @@ Send a short message in the shell. Check that its `echo:` reply appears in both 
 
 ### Test iPhone input focus
 
-Use the disposable demo and its default Bot. Install the shell on an iPhone simulator and enable the software keyboard. The [XCTest case](uitests/FocusZoom.swift) sends a message and checks the horizontal bounds of the composer and Send button during input, after keyboard dismissal, and after the echo. No app restart occurs between these steps.
+Use the disposable demo and its default Bot. Install the shell on an iPhone simulator and enable the software keyboard. Dismiss Safari's first-use tips on that simulator. The [UI tests](uitests/FocusZoom.swift) cover both the shell and a direct visit to the same chat in Safari. They check that the composer and Send button keep their horizontal bounds during typing and after the echo. The Safari case can run without the shell installed.
 
 To run the case in Xcode, add it to an iOS UI Testing Bundle. If you use XcodeGen, you can run the same test from `experiments/nsgo-webview/uitests`:
 

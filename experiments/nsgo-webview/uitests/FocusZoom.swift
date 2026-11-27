@@ -1,19 +1,31 @@
 import XCTest
 
 final class FocusZoom: XCTestCase {
-    func testUserCanTypeAndSendWithoutZooming() throws {
-        continueAfterFailure = true
+    func testUserCanTypeAndSendWithoutZooming() {
         let app = XCUIApplication(bundleIdentifier: "dev.vaayne.dex.webviewpoc")
         app.launch()
+        checkChat(app, dismissKeyboardBeforeSend: true)
+    }
+
+    func testUserCanTypeAndSendWithoutZoomingInSafari() throws {
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:19681/b/default"))
+        safari.open(url)
+        checkChat(safari, dismissKeyboardBeforeSend: false)
+    }
+
+    private func checkChat(_ app: XCUIApplication, dismissKeyboardBeforeSend: Bool) {
+        continueAfterFailure = true
         let window = app.windows.firstMatch
-        let web = app.webViews.firstMatch
+        let web = app.webViews.containing(.textView, identifier: "Message Dex").firstMatch
         let composer = web.textViews["Message Dex"].firstMatch
         let send = web.buttons["Send message"].firstMatch
         let menu = web.otherElements["Bot menu: Dex"].firstMatch
         let keyboard = app.keyboards.firstMatch
-        XCTAssertTrue(composer.waitForExistence(timeout: 15))
-        XCTAssertTrue(send.exists)
-        XCTAssertTrue(menu.exists)
+        guard composer.waitForExistence(timeout: 15), send.exists, menu.exists else {
+            XCTFail("Expected the Dex demo chat. Close any Safari first-use prompts before running the test.")
+            return
+        }
         XCTAssertFalse(keyboard.exists)
 
         func capture(_ phase: String) {
@@ -48,17 +60,20 @@ final class FocusZoom: XCTestCase {
         let marker = UUID().uuidString.prefix(6)
         let message = "Focus zoom QA \(marker)."
         composer.typeText(message)
+        XCTAssertTrue(keyboard.exists, "The keyboard must stay open while typing")
         capture("before-send-keyboard")
         checkGeometry("keyboard shown")
         XCTAssertTrue(send.isEnabled && send.isHittable, "Send must be usable while the keyboard is shown")
 
-        window.coordinate(withNormalizedOffset: CGVector(dx: 0.50, dy: 0.22)).tap()
-        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keyboard)
-        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed, "A tap outside the composer must hide the keyboard")
-        capture("before-send-keyboard-hidden")
-        checkGeometry("keyboard hidden")
-        XCTAssertTrue(menu.isHittable, "The chat header must be reachable after dismissing the keyboard")
-        XCTAssertTrue(send.isEnabled && send.isHittable, "Send must be usable after dismissing the keyboard")
+        if dismissKeyboardBeforeSend {
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.50, dy: 0.22)).tap()
+            let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keyboard)
+            XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed, "A tap outside the composer must hide the keyboard")
+            capture("before-send-keyboard-hidden")
+            checkGeometry("keyboard hidden")
+            XCTAssertTrue(menu.isHittable, "The chat header must be reachable after dismissing the keyboard")
+            XCTAssertTrue(send.isEnabled && send.isHittable, "Send must be usable after dismissing the keyboard")
+        }
         if send.isEnabled && send.isHittable { send.tap() }
         XCTAssertTrue(web.staticTexts["echo: " + message].firstMatch.waitForExistence(timeout: 12), "A tap on Send must produce a new echo in this chat")
         capture("after-send")
