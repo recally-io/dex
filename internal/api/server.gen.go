@@ -1670,6 +1670,44 @@ type ItemEvent struct {
 // ItemEventType defines model for ItemEvent.Type.
 type ItemEventType string
 
+// McpCatalogEntry defines model for McpCatalogEntry.
+type McpCatalogEntry struct {
+	Addable     bool    `json:"addable"`
+	Description string  `json:"description"`
+	Name        string  `json:"name"`
+	Reason      *string `json:"reason,omitempty"`
+
+	// Remotes The Streamable HTTP remotes, including remotes that require setup before add.
+	Remotes []McpCatalogRemote `json:"remotes"`
+	Title   *string            `json:"title,omitempty"`
+	Version string             `json:"version"`
+}
+
+// McpCatalogHeader defines model for McpCatalogHeader.
+type McpCatalogHeader struct {
+	Description *string `json:"description,omitempty"`
+	IsRequired  bool    `json:"isRequired"`
+	IsSecret    bool    `json:"isSecret"`
+	Name        string  `json:"name"`
+
+	// Value A public default. Dex omits secret values.
+	Value *string `json:"value,omitempty"`
+}
+
+// McpCatalogPage defines model for McpCatalogPage.
+type McpCatalogPage struct {
+	NextCursor *string           `json:"nextCursor,omitempty"`
+	Servers    []McpCatalogEntry `json:"servers"`
+}
+
+// McpCatalogRemote defines model for McpCatalogRemote.
+type McpCatalogRemote struct {
+	Addable bool               `json:"addable"`
+	Headers []McpCatalogHeader `json:"headers"`
+	Reason  *string            `json:"reason,omitempty"`
+	Url     string             `json:"url"`
+}
+
 // McpServer An MCP server from control storage. Plain environment and header values are not returned. Vault references are returned as written.
 type McpServer struct {
 	Error *string `json:"error,omitempty"`
@@ -1707,7 +1745,7 @@ type McpServerState string
 // McpServerTransport Absent for a bot entry that only turns off a global server.
 type McpServerTransport string
 
-// McpServerInput A remote Streamable HTTP declaration. It takes no headers or static tokens. The server decodes it strictly.
+// McpServerInput A remote Streamable HTTP declaration. The server decodes it strictly.
 type McpServerInput = engine.MCPServerInput
 
 // MessageInput defines model for MessageInput.
@@ -2237,6 +2275,25 @@ type Skill struct {
 
 // SkillScope A file level, or project for .agents/skills under the bot workspace. The prompt reads the project level under the session's cwd.
 type SkillScope string
+
+// SkillCatalogEntry defines model for SkillCatalogEntry.
+type SkillCatalogEntry struct {
+	Author        *string `json:"author,omitempty"`
+	Description   string  `json:"description"`
+	DirectoryPath *string `json:"directoryPath,omitempty"`
+	Id            string  `json:"id"`
+	Installs      *int    `json:"installs,omitempty"`
+	Name          string  `json:"name"`
+	Namespace     *string `json:"namespace,omitempty"`
+	SourceUrl     string  `json:"sourceUrl"`
+	Stars         *int    `json:"stars,omitempty"`
+}
+
+// SkillCatalogPage defines model for SkillCatalogPage.
+type SkillCatalogPage struct {
+	NextOffset *int                `json:"nextOffset,omitempty"`
+	Skills     []SkillCatalogEntry `json:"skills"`
+}
 
 // SnapshotEvent defines model for SnapshotEvent.
 type SnapshotEvent struct {
@@ -2992,6 +3049,18 @@ type ListDirectoriesParams struct {
 
 	// RunnerId A Runner ID. Omit to use the default Runner of the bot.
 	RunnerId *string `form:"runnerId,omitempty" json:"runnerId,omitempty"`
+}
+
+// SearchMcpCatalogParams defines parameters for SearchMcpCatalog.
+type SearchMcpCatalogParams struct {
+	Q      *string `form:"q,omitempty" json:"q,omitempty"`
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// SearchSkillCatalogParams defines parameters for SearchSkillCatalog.
+type SearchSkillCatalogParams struct {
+	Q      *string `form:"q,omitempty" json:"q,omitempty"`
+	Offset *int    `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // SetSourceEnabledJSONBody defines parameters for SetSourceEnabled.
@@ -4071,6 +4140,12 @@ type ServerInterface interface {
 
 	// (GET /api/integrations)
 	GetSharedIntegrations(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/integrations/catalog/mcp)
+	SearchMcpCatalog(w http.ResponseWriter, r *http.Request, params SearchMcpCatalogParams)
+
+	// (GET /api/integrations/catalog/skills)
+	SearchSkillCatalog(w http.ResponseWriter, r *http.Request, params SearchSkillCatalogParams)
 
 	// (POST /api/integrations/mcp)
 	CreateSharedMcpServer(w http.ResponseWriter, r *http.Request)
@@ -6633,6 +6708,98 @@ func (siw *ServerInterfaceWrapper) GetSharedIntegrations(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// SearchMcpCatalog operation middleware
+func (siw *ServerInterfaceWrapper) SearchMcpCatalog(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchMcpCatalogParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchMcpCatalog(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchSkillCatalog operation middleware
+func (siw *ServerInterfaceWrapper) SearchSkillCatalog(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchSkillCatalogParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchSkillCatalog(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateSharedMcpServer operation middleware
 func (siw *ServerInterfaceWrapper) CreateSharedMcpServer(w http.ResponseWriter, r *http.Request) {
 
@@ -8222,6 +8389,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/bots/{botId}/artifacts/{artifactName}", wrapper.GetArtifact)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/bots/{botId}/artifacts/{artifactName}", wrapper.RenameArtifact)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/integrations", wrapper.GetSharedIntegrations)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/integrations/catalog/skills", wrapper.SearchSkillCatalog)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/integrations/catalog/mcp", wrapper.SearchMcpCatalog)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/integrations/mcp", wrapper.CreateSharedMcpServer)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/integrations/mcp/{name}/oauth", wrapper.StartSharedMcpOAuth)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/bots/{botId}/integrations", wrapper.GetBotIntegrations)
@@ -12716,6 +12885,140 @@ func (response GetSharedIntegrationsdefaultJSONResponse) VisitGetSharedIntegrati
 	return err
 }
 
+type SearchMcpCatalogRequestObject struct {
+	Params SearchMcpCatalogParams
+}
+
+type SearchMcpCatalogResponseObject interface {
+	VisitSearchMcpCatalogResponse(w http.ResponseWriter) error
+}
+
+type SearchMcpCatalog200JSONResponse McpCatalogPage
+
+func (response SearchMcpCatalog200JSONResponse) VisitSearchMcpCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchMcpCatalog400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SearchMcpCatalog400JSONResponse) VisitSearchMcpCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchMcpCatalog502JSONResponse Error
+
+func (response SearchMcpCatalog502JSONResponse) VisitSearchMcpCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchMcpCatalogdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SearchMcpCatalogdefaultJSONResponse) VisitSearchMcpCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchSkillCatalogRequestObject struct {
+	Params SearchSkillCatalogParams
+}
+
+type SearchSkillCatalogResponseObject interface {
+	VisitSearchSkillCatalogResponse(w http.ResponseWriter) error
+}
+
+type SearchSkillCatalog200JSONResponse SkillCatalogPage
+
+func (response SearchSkillCatalog200JSONResponse) VisitSearchSkillCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchSkillCatalog400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SearchSkillCatalog400JSONResponse) VisitSearchSkillCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchSkillCatalog502JSONResponse Error
+
+func (response SearchSkillCatalog502JSONResponse) VisitSearchSkillCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchSkillCatalogdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SearchSkillCatalogdefaultJSONResponse) VisitSearchSkillCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateSharedMcpServerRequestObject struct {
 	Body *CreateSharedMcpServerJSONRequestBody
 }
@@ -15762,6 +16065,12 @@ type StrictServerInterface interface {
 	// (GET /api/integrations)
 	GetSharedIntegrations(ctx context.Context, request GetSharedIntegrationsRequestObject) (GetSharedIntegrationsResponseObject, error)
 
+	// (GET /api/integrations/catalog/mcp)
+	SearchMcpCatalog(ctx context.Context, request SearchMcpCatalogRequestObject) (SearchMcpCatalogResponseObject, error)
+
+	// (GET /api/integrations/catalog/skills)
+	SearchSkillCatalog(ctx context.Context, request SearchSkillCatalogRequestObject) (SearchSkillCatalogResponseObject, error)
+
 	// (POST /api/integrations/mcp)
 	CreateSharedMcpServer(ctx context.Context, request CreateSharedMcpServerRequestObject) (CreateSharedMcpServerResponseObject, error)
 
@@ -18156,6 +18465,58 @@ func (sh *strictHandler) GetSharedIntegrations(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetSharedIntegrationsResponseObject); ok {
 		if err := validResponse.VisitGetSharedIntegrationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchMcpCatalog operation middleware
+func (sh *strictHandler) SearchMcpCatalog(w http.ResponseWriter, r *http.Request, params SearchMcpCatalogParams) {
+	var request SearchMcpCatalogRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchMcpCatalog(ctx, request.(SearchMcpCatalogRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchMcpCatalog")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchMcpCatalogResponseObject); ok {
+		if err := validResponse.VisitSearchMcpCatalogResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchSkillCatalog operation middleware
+func (sh *strictHandler) SearchSkillCatalog(w http.ResponseWriter, r *http.Request, params SearchSkillCatalogParams) {
+	var request SearchSkillCatalogRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchSkillCatalog(ctx, request.(SearchSkillCatalogRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchSkillCatalog")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchSkillCatalogResponseObject); ok {
+		if err := validResponse.VisitSearchSkillCatalogResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

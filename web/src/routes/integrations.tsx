@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import {
   getBotIntegrationsQueryKey,
@@ -9,18 +9,30 @@ import {
   listBotsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import {
-  createMcpServer,
-  createSharedMcpServer,
+  createBotSession,
   getBotIntegrations,
   getSharedIntegrations,
+  sendMessage,
 } from "../api/generated/sdk.gen";
-import type { McpServerInput, SharedIntegrations } from "../api/generated/types.gen";
+import type { McpServerInput, SharedIntegrations, SkillCatalogEntry } from "../api/generated/types.gen";
 import { Modal } from "../components/dialog";
 import { Failure, Loading } from "../components/feedback";
 import { Field, Input, RadioSegments, Select } from "../components/form";
 import { FramedPage, Note } from "../components/page";
 import { Button } from "../components/ui/button";
-import { useApp } from "../lib/app-state";
+import { Switch } from "../components/ui/switch";
+import {
+  checkMcpHeaders,
+  mcpServerName,
+  requiresVault,
+  saveMcpDeclaration,
+  type McpDraft,
+  type McpHeaderDraft,
+} from "../lib/mcp-declaration";
+import { errorText, refreshSessions } from "../lib/queries";
+import { buildSkillInstallPrompt, validSkillDirectory } from "../lib/skill-install";
+import { newId } from "../lib/utils";
+import { McpCatalog, SkillCatalog } from "./integration-catalogs";
 import {
   Configuration,
   IntegrationSections,
@@ -46,12 +58,19 @@ export function IntegrationsPage({
   onClose: () => void;
 }) {
   const query = useQuery({ ...getSharedIntegrationsOptions(), refetchOnMount: "always" });
+  const [install, setInstall] = useState<SkillCatalogEntry>();
+  const [draft, setDraft] = useState<McpDraft>();
+
+  function openMcp(prefill?: McpDraft) {
+    setDraft(prefill);
+    onAdd("mcp");
+  }
 
   return (
     <FramedPage
       headerTitle="Integrations"
       title="Integrations"
-      description="Browse shared skills and MCP servers for this Dex instance."
+      description="Find and add skills and MCP servers for all Bots or for one Bot."
     >
       {query.isError ? (
         <Failure
@@ -67,22 +86,39 @@ export function IntegrationsPage({
             {...query.data}
             section={add ? undefined : section}
             skillAction={
-              <Button size="sm" onClick={() => onAdd("skill")}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (add === "skill") document.getElementById("skill-catalog-search")?.focus();
+                  else onAdd("skill");
+                }}
+              >
                 <Plus aria-hidden /> Add skill
               </Button>
             }
             mcpAction={
-              <Button size="sm" onClick={() => onAdd("mcp")}>
+              <Button size="sm" onClick={() => openMcp()}>
                 <Plus aria-hidden /> Add MCP server
               </Button>
             }
+            skillCatalog={<SkillCatalog focus={add === "skill"} onInstall={setInstall} />}
+            mcpCatalog={<McpCatalog onAdd={openMcp} />}
           />
         </>
       ) : query.isPending ? (
         <Loading />
       ) : null}
-      {add === "mcp" ? <AddMcpServerDialog key={target} initialTarget={target} onClose={onClose} /> : null}
-      {add === "skill" ? <AddSkillDialog key={target} initialTarget={target} onClose={onClose} /> : null}
+      {add === "mcp" ? (
+        <AddMcpServerDialog key={target} initialTarget={target} draft={draft} onClose={onClose} />
+      ) : null}
+      {install ? (
+        <InstallSkillDialog
+          key={install.id}
+          skill={install}
+          initialTarget={target}
+          onClose={() => setInstall(undefined)}
+        />
+      ) : null}
     </FramedPage>
   );
 }
@@ -151,72 +187,202 @@ function TargetField({ target, disabled }: { target: ReturnType<typeof useTarget
   );
 }
 
-function AddSkillDialog({ initialTarget, onClose }: AddDialogProps) {
+function InstallSkillDialog({
+  initialTarget,
+  onClose,
+  skill,
+}: AddDialogProps & { skill: SkillCatalogEntry }) {
   const target = useTarget(initialTarget);
-  const { notify } = useApp();
-  const level = target.bot ? "agent" : "dex";
-  const request = `Use skill_import to import /path/to/my-skill from your Runner at level ${level}.`;
+  const [level, setLevel] = useState<"dex" | "agent">(initialTarget ? "agent" : "dex");
+  const [name, setName] = useState("");
+  const navigate = useNavigate();
 
-  async function copyRequest() {
-    try {
-      await navigator.clipboard.writeText(request);
-      notify("Request copied");
-    } catch {
-      notify("Could not copy. Select the request to copy it.");
-    }
-  }
+  const [attempt, setAttempt] = useState<{
+    botId: string;
+    sessionId: number;
+    messageId: string;
+    text: string;
+  }>();
+
+  const install = useMutation({
+    mutationFn: async (botId: string) => {
+      let request = attempt;
+
+      if (!request) {
+        const text = buildSkillInstallPrompt({
+          sourceUrl: skill.sourceUrl,
+          directoryPath: skill.directoryPath,
+          level,
+          name: name.trim(),
+        });
+
+        const { data } = await createBotSession({ path: { botId }, throwOnError: true });
+
+        // Retry the same session and message if Dex accepted the input but the response was lost.
+        request = { botId, sessionId: data.id, messageId: newId(), text };
+
+        setAttempt(request);
+      }
+
+      const { sessionId, messageId, text } = request;
+
+      await sendMessage({ path: { botId, sessionId }, body: { id: messageId, text }, throwOnError: true });
+      await refreshSessions(botId);
+
+      return { botId, sessionId: String(sessionId) };
+    },
+  });
+
+  const locked = install.isPending || !!attempt;
+
+  const nameError =
+    name.trim() && !validSkillDirectory(name.trim())
+      ? "Use one directory name with letters, digits, dots, - or _."
+      : undefined;
+
+  const unavailable = !!target.selected && !target.bot && !target.checking && target.list.isSuccess;
+  const canStart = !!target.bot && target.valid && !nameError && !install.isPending;
+  const failedSession = install.isError ? attempt : undefined;
 
   return (
     <Modal
-      title="Add skill"
-      description="Import a skill folder from a Bot's Runner in chat. This page does not upload files."
+      title={`Install ${skill.name}`}
+      description="A Bot reviews the source in a new Session. Follow the review and the install result there."
+      pending={install.isPending}
       onClose={onClose}
       footer={
-        <Button variant="secondary" onClick={onClose}>
-          Done
-        </Button>
+        <>
+          <Button variant="secondary" disabled={install.isPending} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="install-skill" disabled={!canStart}>
+            {install.isPending ? "Starting…" : failedSession ? "Retry sending" : "Start install"}
+          </Button>
+        </>
       }
     >
-      <TargetField target={target} />
-      {target.valid ? (
-        <>
-          <p className="text-[12.5px] text-muted-foreground">
-            {target.bot ? "Ask this Bot" : "Ask any Bot"} to run <code>skill_import</code>. Replace the
-            example path with the folder that contains SKILL.md.
-          </p>
-          <p className="rounded-md bg-muted p-3 font-mono text-[12px]">{request}</p>
-        </>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={!target.valid} onClick={() => void copyRequest()}>
-          Copy request
-        </Button>
-        {target.valid && target.bot ? (
-          <Link to="/b/$botId" params={{ botId: target.bot.id }} className="text-[12.5px] underline">
-            {`Open ${target.bot.name} chat`}
-          </Link>
+      <form
+        id="install-skill"
+        className="flex flex-col gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+
+          if (!canStart || !target.bot) return;
+
+          install.mutate(target.bot.id, {
+            onSuccess: (params) => {
+              void navigate({ to: "/b/$botId/s/$sessionId", params });
+            },
+          });
+        }}
+      >
+        <Field
+          label="Bot"
+          hint="This Bot runs the review on its Runner."
+          error={unavailable ? "This Bot is not available. Choose a Bot." : undefined}
+        >
+          {({ id, describedBy, invalid }) => (
+            <Select
+              id={id}
+              aria-describedby={describedBy}
+              aria-invalid={invalid || undefined}
+              value={target.bot?.id ?? ""}
+              disabled={locked}
+              onChange={(event) => target.setSelected(event.target.value || undefined)}
+              required
+            >
+              <option value="" disabled>
+                {target.checking ? "Loading Bots…" : "Choose a Bot"}
+              </option>
+              {target.bots.map((bot) => (
+                <option key={bot.id} value={bot.id}>
+                  {bot.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        {target.list.isError ? (
+          <Failure
+            title="Could not load Bots"
+            error={target.list.error}
+            retry={() => void target.list.refetch()}
+          />
         ) : null}
-      </div>
+        <Field label="Install level">
+          {({ id }) => (
+            <Select
+              id={id}
+              value={level}
+              disabled={locked}
+              onChange={(event) => setLevel(event.target.value === "agent" ? "agent" : "dex")}
+            >
+              <option value="dex">Shared (all Bots)</option>
+              <option value="agent">This Bot only</option>
+            </Select>
+          )}
+        </Field>
+        <Field
+          label="Directory name"
+          hint="Optional. Keep the original directory name if blank."
+          error={nameError}
+        >
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              aria-invalid={invalid || undefined}
+              autoComplete="off"
+              value={name}
+              disabled={locked}
+              onChange={(event) => setName(event.target.value)}
+            />
+          )}
+        </Field>
+        {install.isError ? (
+          <Failure title="Could not start the install" error={install.error}>
+            {failedSession ? (
+              <Link
+                to="/b/$botId/s/$sessionId"
+                params={{ botId: failedSession.botId, sessionId: String(failedSession.sessionId) }}
+                className="underline"
+              >
+                Open the install Session
+              </Link>
+            ) : null}
+          </Failure>
+        ) : null}
+      </form>
     </Modal>
   );
 }
 
-type Auth = "none" | "oauth";
+type Auth = McpDraft["auth"];
 
 /** A saved declaration. savedAt tells a status read after the save from the list cached before it. */
 type Added = { name: string; auth: Auth; savedAt: number; bot?: BotTarget };
 
 const authOptions = [
   { value: "none", label: "No authentication" },
+  { value: "header", label: "HTTP headers" },
   { value: "oauth", label: "Browser OAuth" },
 ] as const;
 
-function AddMcpServerDialog({ initialTarget, onClose }: AddDialogProps) {
+type HeaderRow = McpHeaderDraft & { id: string };
+
+function AddMcpServerDialog({ initialTarget, onClose, draft }: AddDialogProps & { draft?: McpDraft }) {
   const target = useTarget(initialTarget);
   const client = useQueryClient();
-  const [name, setName] = useState("");
-  const [url, setUrl] = useState("");
-  const [auth, setAuth] = useState<Auth>("none");
+  const [name, setName] = useState(draft?.name ?? "");
+  const [url, setUrl] = useState(draft?.url ?? "");
+  const [auth, setAuth] = useState<Auth>(draft?.auth ?? "none");
+
+  const [headers, setHeaders] = useState<HeaderRow[]>(
+    () => draft?.headers?.map((row) => ({ ...row, id: newId() })) ?? [],
+  );
+
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string>();
   const [advanced, setAdvanced] = useState(false);
   const [clientId, setClientId] = useState("");
   const [secretName, setSecretName] = useState("");
@@ -241,30 +407,19 @@ function AddMcpServerDialog({ initialTarget, onClose }: AddDialogProps) {
     scope.trim() ? "scope" : "",
   ].filter(Boolean);
 
-  const save = useMutation({
-    mutationFn: ({ bot, body }: { bot?: BotTarget; body: McpServerInput }) =>
-      bot
-        ? createMcpServer({ path: { botId: bot.id }, body, throwOnError: true })
-        : createSharedMcpServer({ body, throwOnError: true }),
-    onSuccess: (_, { bot, body }) => {
-      // The POST decides the outcome. The status read that follows can fail on its own.
-      setAdded({ name: body.name, auth: body.oauth ? "oauth" : "none", savedAt: Date.now(), bot });
-
-      if (bot) {
-        void client.invalidateQueries({ queryKey: getBotIntegrationsQueryKey({ path: { botId: bot.id } }) });
-      } else {
-        void client.invalidateQueries({ queryKey: getSharedIntegrationsQueryKey() });
-        // Mark cached Bot views stale without opening a Bot to refresh them here.
-        void client.invalidateQueries({ queryKey: [{ _id: "getBotIntegrations" }], refetchType: "none" });
-      }
-    },
-  });
-
   if (added) return <AddedMcpServer added={added} onClose={onClose} />;
 
-  const canSave = target.valid && !save.isPending && !!name.trim() && !!url.trim() && !advancedError;
+  const headerError = auth === "header" ? checkMcpHeaders(headers) : undefined;
 
-  const submit = () => {
+  const canSave =
+    target.valid &&
+    !saving &&
+    mcpServerName.test(name.trim()) &&
+    !!url.trim() &&
+    !advancedError &&
+    !headerError;
+
+  async function submit() {
     if (!canSave) return;
 
     const body: McpServerInput = { name: name.trim(), url: url.trim() };
@@ -282,22 +437,44 @@ function AddMcpServerDialog({ initialTarget, onClose }: AddDialogProps) {
       body.oauth = config;
     }
 
-    save.mutate({ bot: target.bot, body });
-  };
+    const { bot } = target;
+
+    setSaving(true);
+    setSaveError(undefined);
+
+    try {
+      await saveMcpDeclaration(bot?.id, body, auth === "header" ? headers : []);
+      // The POST decides the outcome. The status read that follows can fail on its own.
+      setHeaders([]);
+      setAdded({ name: body.name, auth, savedAt: Date.now(), bot });
+
+      if (bot) {
+        void client.invalidateQueries({ queryKey: getBotIntegrationsQueryKey({ path: { botId: bot.id } }) });
+      } else {
+        void client.invalidateQueries({ queryKey: getSharedIntegrationsQueryKey() });
+        void client.invalidateQueries({ queryKey: [{ _id: "getBotIntegrations" }], refetchType: "none" });
+      }
+    } catch (error) {
+      setSaveError(errorText(error));
+    } finally {
+      if (auth === "header") void client.invalidateQueries({ queryKey: [{ _id: "listVault" }] });
+      setSaving(false);
+    }
+  }
 
   return (
     <Modal
       title="Add MCP server"
-      description="Add a remote server for all Bots or for one Bot."
-      pending={save.isPending}
+      description="Add a Streamable HTTP server for all Bots or for one Bot."
+      pending={saving}
       onClose={onClose}
       footer={
         <>
-          <Button variant="secondary" disabled={save.isPending} onClick={onClose}>
+          <Button variant="secondary" disabled={saving} onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" form="add-mcp-server" disabled={!canSave}>
-            {save.isPending ? "Adding…" : "Add server"}
+            {saving ? "Adding…" : "Add server"}
           </Button>
         </>
       }
@@ -307,10 +484,10 @@ function AddMcpServerDialog({ initialTarget, onClose }: AddDialogProps) {
         className="flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
-          submit();
+          void submit();
         }}
       >
-        <TargetField target={target} disabled={save.isPending} />
+        <TargetField target={target} disabled={saving} />
         <Field label="Name" hint="Letters, digits, - and _.">
           {({ id, describedBy }) => (
             <Input
@@ -320,6 +497,7 @@ function AddMcpServerDialog({ initialTarget, onClose }: AddDialogProps) {
               onChange={(event) => setName(event.target.value)}
               pattern="[A-Za-z0-9_\-]{1,32}"
               maxLength={32}
+              disabled={saving}
               autoComplete="off"
               required
               autoFocus
@@ -334,6 +512,7 @@ function AddMcpServerDialog({ initialTarget, onClose }: AddDialogProps) {
               type="url"
               inputMode="url"
               value={url}
+              disabled={saving}
               onChange={(event) => setUrl(event.target.value)}
               autoComplete="off"
               required
@@ -344,13 +523,29 @@ function AddMcpServerDialog({ initialTarget, onClose }: AddDialogProps) {
           <span aria-hidden className="text-[12.5px] font-medium text-foreground">
             Authentication
           </span>
-          <RadioSegments label="Authentication" options={authOptions} value={auth} onChange={setAuth} />
+          <RadioSegments
+            label="Authentication"
+            options={authOptions}
+            value={auth}
+            onChange={(value) => {
+              if (!saving) setAuth(value);
+            }}
+            className="[&_button]:px-2 [&_button]:text-xs"
+          />
           <p className="text-[12px] text-muted-foreground">
             {auth === "none"
               ? "For a public server. Dex sends no credentials."
-              : "You sign in to the server in this browser after you add it. Most servers need nothing else."}
+              : auth === "oauth"
+                ? "You sign in to the server in this browser after you add it. Most servers need nothing else."
+                : "Dex sends these headers to this server. Check the URL before you enter secrets."}
           </p>
         </div>
+        {auth === "header" ? (
+          <div className="space-y-2">
+            <McpHeaderFields rows={headers} onChange={setHeaders} disabled={saving} />
+            {headerError ? <p className="text-xs text-muted-foreground">{headerError}</p> : null}
+          </div>
+        ) : null}
         {auth === "oauth" ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -422,9 +617,101 @@ function AddMcpServerDialog({ initialTarget, onClose }: AddDialogProps) {
             ) : null}
           </div>
         ) : null}
-        {save.isError ? <Failure title="Could not add the MCP server" error={save.error} /> : null}
+        {saveError ? <Failure title="Could not add the MCP server" error={saveError} /> : null}
       </form>
     </Modal>
+  );
+}
+
+function McpHeaderFields({
+  rows,
+  onChange,
+  disabled,
+}: {
+  rows: HeaderRow[];
+  onChange: (rows: HeaderRow[]) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      {rows.map((row, index) => {
+        const label = `Header ${index + 1}`;
+        const secret = row.secret || requiresVault(row.name);
+
+        const update = (next: Partial<McpHeaderDraft>) =>
+          onChange(rows.map((header) => (header.id === row.id ? { ...header, ...next } : header)));
+
+        return (
+          <div key={row.id} className="space-y-3 rounded-md border border-border p-3">
+            <Field label={`${label} name`}>
+              {({ id }) => (
+                <Input
+                  id={id}
+                  value={row.name}
+                  onChange={(event) => update({ name: event.target.value })}
+                  readOnly={row.required}
+                  disabled={disabled}
+                  autoComplete="off"
+                  required
+                />
+              )}
+            </Field>
+            <Field
+              label={`${label} value`}
+              hint={
+                row.prefix ? `${row.description ?? "Token"}. Format: ${row.prefix}{token}` : row.description
+              }
+            >
+              {({ id, describedBy }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  type={secret ? "password" : "text"}
+                  autoComplete={secret ? "new-password" : "off"}
+                  value={row.value}
+                  onChange={(event) => update({ value: event.target.value })}
+                  disabled={disabled}
+                  required
+                />
+              )}
+            </Field>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Switch
+                  checked={secret}
+                  disabled={disabled || requiresVault(row.name) || (row.required && row.secret)}
+                  onCheckedChange={(checked) => update({ secret: checked })}
+                  aria-label={`${label} secret`}
+                  size="sm"
+                />
+                Store in vault
+              </label>
+              {row.required ? null : (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  disabled={disabled}
+                  aria-label={`Remove ${label.toLowerCase()}`}
+                  onClick={() => onChange(rows.filter((header) => header.id !== row.id))}
+                >
+                  Remove
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={disabled}
+        onClick={() => onChange([...rows, { id: newId(), name: "", value: "", secret: false }])}
+      >
+        <Plus aria-hidden /> Add header
+      </Button>
+    </div>
   );
 }
 

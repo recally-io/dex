@@ -605,7 +605,11 @@ func (a *botExtensions) connect(ctx context.Context, entry serverEntry, env map[
 		if err != nil {
 			return nil, nil, err
 		}
-		t, err := mcp.NewStreamableHTTPTransport(mcp.StreamableHTTPTransportOptions{URL: c.URL, Headers: headers})
+		options := mcp.StreamableHTTPTransportOptions{URL: c.URL, Headers: headers}
+		if len(headers) != 0 {
+			options.Fetch = mcpHeaderClient
+		}
+		t, err := mcp.NewStreamableHTTPTransport(options)
 		if err != nil {
 			return nil, nil, &privateError{message: "invalid MCP URL", cause: err}
 		}

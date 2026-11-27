@@ -55,6 +55,9 @@ type Config struct {
 	FakeModel bool
 	// TelegramAPIURL replaces https://api.telegram.org, for example for a local Bot API server.
 	TelegramAPIURL string
+	// SkillCatalogURL and McpRegistryURL set catalog origins for tests.
+	SkillCatalogURL string
+	McpRegistryURL  string
 	// FeishuAPIURL and FeishuAccountsURL replace the platform boundaries in tests.
 	FeishuAPIURL      string
 	FeishuAccountsURL string
@@ -440,6 +443,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	})
 	a.handler = server.New(server.Config{
 		ChannelWebhooks: http.HandlerFunc(bots.webhook),
+		SkillCatalogURL: cfg.SkillCatalogURL,
+		McpRegistryURL:  cfg.McpRegistryURL,
 		Tasks:           tasks,
 		TaskEvents:      taskEvents,
 		Plugins:         plugins, AvailablePlugins: available, PluginErrors: pluginErrors,

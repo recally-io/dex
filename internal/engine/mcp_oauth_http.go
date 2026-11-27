@@ -36,6 +36,14 @@ var mcpOAuthPublic = &http.Client{Transport: mcpOAuthTransport(true), CheckRedir
 
 func mcpOAuthNoRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
+// net/http can forward custom headers across origins. Static credentials must stay on the configured origin.
+var mcpHeaderClient = &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 || !mcpSameOrigin(req.URL, via[0].URL) {
+		return http.ErrUseLastResponse
+	}
+	return nil
+}}
+
 func mcpOAuthTransport(publicOnly bool) *http.Transport {
 	transport := &http.Transport{
 		TLSHandshakeTimeout:   10 * time.Second,

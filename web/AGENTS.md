@@ -78,16 +78,24 @@ prompts the Owner to load the latest values. Approval uses the current review
 sequence. The composer adds a note or sends to the Assignee Bot's Main.
 Settings → Integrations lists Sources from `GET /api/settings/sources` with a switch for each. A note asks for a
 restart while a stored choice differs from what runs.
-Global Integrations (`/integrations`) reads only `GET /api/integrations`. It
-lists shared skills and MCP declarations with OAuth grant status. It does not
-show live connection status. `section=skills|mcp` focuses the named section.
-`add=skill|mcp` opens the Add dialog. Only the dialog loads the Bot list to
-choose a target. The default is Shared. An unavailable `target` blocks the
-action until the owner chooses a valid target. The old `bot` parameter has no
-effect. **Add skill** gives chat instructions for `skill_import` and does not
-write files. **Add MCP server** uses the create API for the selected target.
-The POST confirms the save independently of the status read. The dialog offers
-Try again if the read fails. Done is disabled while authorization starts.
+Global Integrations (`/integrations`) reads shared skills and MCP declarations
+from `GET /api/integrations`. It shows OAuth grant status, not live connection
+status. `section=skills|mcp` focuses the named section. `add=skill` focuses the
+Skill catalog search; `add=mcp` opens the Add MCP server dialog. A `target`
+preselects a Bot. The old `bot` parameter has no effect. Only the dialogs load
+the Bot list. An unavailable target blocks an add until the Owner makes a
+valid choice.
+
+Both catalogs debounce searches and load more results through the Dex API.
+**Install** requires a Bot and an install level. It creates a new Web Session,
+sends the prompt from `src/lib/skill-install.ts`, and opens the transcript.
+The browser does not download the skill. Official MCP presets in
+`src/lib/mcp-presets.ts` and addable MCP Registry results open the same MCP
+dialog as a custom add. The default MCP target is Shared. The dialog saves
+secret HTTP header values to the selected vault and puts only references in
+the create request. The POST confirms the save independently of the status
+read. The dialog offers Try again if the read fails. Done is disabled while
+OAuth starts.
 
 When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
 a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its

@@ -113,8 +113,7 @@ func TestUserAddsCustomRemoteMcpServerToOneBotFromWeb(t *testing.T) {
 		t.Fatalf("cross-site POST: %d", status)
 	}
 	// Authentication runs before the body is read, so a malformed request without the token is 401.
-	headerBody := `{"name":"bad","url":"https://mcp.example.test/mcp","headers":{"Authorization":"Bearer ` + secretValue + `"}}`
-	if status, _ := send(http.MethodPost, create, headerBody, nil); status != http.StatusUnauthorized {
+	if status, _ := send(http.MethodPost, create, `{"unknown":true}`, nil); status != http.StatusUnauthorized {
 		t.Fatalf("POST with an unknown field and without a token: %d", status)
 	}
 	if _, ok := servers("default")["notes"]; ok {
@@ -140,7 +139,6 @@ func TestUserAddsCustomRemoteMcpServerToOneBotFromWeb(t *testing.T) {
 	}
 	// Unknown fields are refused, not dropped: Dex would not send the authentication they name.
 	for _, body := range []string{
-		headerBody,
 		`{"name":"bad","url":"https://mcp.example.test/mcp","token":"` + secretValue + `"}`,
 		`{"name":"bad","url":"https://mcp.example.test/mcp","oauth":{"clientId":"c","accessToken":"` + secretValue + `"}}`,
 		`{"name":"bad","url":"https://mcp.example.test/mcp","oauth":{"headers":{"Authorization":"Bearer ` + secretValue + `"}}}`,

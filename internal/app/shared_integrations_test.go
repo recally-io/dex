@@ -111,7 +111,7 @@ func TestUserListsAndAddsSharedMcpIntegrations(t *testing.T) {
 	}
 
 	// When the owner sends unknown fields, Dex returns a generic error and stores nothing.
-	for _, extra := range []string{`,"headers":{}`, `,"oauth":{"accessToken":"not-stored"}`} {
+	for _, extra := range []string{`,"env":{}`, `,"oauth":{"accessToken":"not-stored"}`} {
 		raw := send(http.MethodPost, sharedMcpPath, `{"name":"bad","url":"`+remote+`"`+extra+`}`, "", true, http.StatusBadRequest)
 		if !strings.Contains(raw, `"the request is not valid"`) {
 			t.Fatalf("invalid declaration error: %s", raw)

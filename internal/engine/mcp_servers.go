@@ -185,12 +185,12 @@ func (s *MCPStore) remove(ctx context.Context, botID, name string) error {
 var ErrMCPServerExists = errors.New("an MCP server with this name exists for this bot or for Dex")
 
 // MCPServerInput is a remote Streamable HTTP declaration that the owner adds from the web UI.
-// It has no headers or environment, so it cannot hold a static token. The API uses it as the
-// request body, so the JSON tags match the McpServerInput schema.
+// Header secrets must use vault references. The JSON tags match the McpServerInput schema.
 type MCPServerInput struct {
-	Name  string         `json:"name"`
-	URL   string         `json:"url"`
-	OAuth *MCPOAuthInput `json:"oauth,omitzero"`
+	Name    string            `json:"name"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
+	OAuth   *MCPOAuthInput    `json:"oauth,omitzero"`
 }
 
 // MCPOAuthInput selects browser authorization. ClientSecret is a vault:NAME reference.
@@ -200,8 +200,8 @@ type MCPOAuthInput struct {
 	Scope        string `json:"scope,omitempty"`
 }
 
-// UnmarshalJSON refuses unknown members, also inside oauth. A dropped field such as headers
-// would save a connection without the authentication that the caller asked for.
+// UnmarshalJSON refuses unknown members, also inside OAuth. A dropped field could
+// save a connection without the authentication that the caller asked for.
 func (in *MCPServerInput) UnmarshalJSON(data []byte) error {
 	type plain MCPServerInput
 	return json.Unmarshal(data, (*plain)(in), json.RejectUnknownMembers(true))
@@ -226,18 +226,57 @@ func (a *Bots) createMCPServer(ctx context.Context, botID, scope string, in MCPS
 	if store == nil {
 		return ErrInvalidInput
 	}
-	u, err := mcpOAuthURL(in.URL)
-	if err != nil || u.RawQuery != "" || u.ForceQuery || strings.ContainsAny(in.URL, "?#") {
-		return fmt.Errorf("%w: use an HTTPS URL, or HTTP on loopback, without user information, a query, or a fragment", ErrInvalidInput)
+	if err := ValidateRemoteMCPURL(in.URL); err != nil {
+		return err
 	}
 	c := serverConfig{Type: "http", URL: in.URL}
 	if in.OAuth != nil {
+		if in.Headers != nil {
+			return fmt.Errorf("%w: use static headers or OAuth, not both", ErrInvalidInput)
+		}
 		c.OAuth = &mcpOAuthConfig{ClientID: in.OAuth.ClientID, ClientSecret: in.OAuth.ClientSecret, Scope: in.OAuth.Scope}
 	}
+	if err := validateWebMCPHeaders(in.Headers); err != nil {
+		return err
+	}
+	c.Headers = in.Headers
 	if err := store.write(ctx, botID, in.Name, c, true); err != nil {
 		return err
 	}
 	a.markExtensionChange(botID, scope, "MCP server create")
+	return nil
+}
+
+// ValidateRemoteMCPURL applies the URL rules for Web MCP declarations.
+func ValidateRemoteMCPURL(raw string) error {
+	u, err := mcpOAuthURL(raw)
+	if err != nil || u.RawQuery != "" || u.ForceQuery || strings.ContainsAny(raw, "?#") {
+		return fmt.Errorf("%w: use an HTTPS URL, or HTTP on loopback, without user information, a query, or a fragment", ErrInvalidInput)
+	}
+	return nil
+}
+
+var mcpHeaderName = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+
+// Common credential header names require references. For other names, only the
+// caller knows if a value is secret.
+func validateWebMCPHeaders(headers map[string]string) error {
+	seen := make(map[string]bool, len(headers))
+	for key, value := range headers {
+		name := strings.ToLower(key)
+		if !mcpHeaderName.MatchString(key) || seen[name] || strings.IndexFunc(value, func(r rune) bool {
+			return r < ' ' && r != '\t' || r == 0x7f
+		}) >= 0 {
+			return fmt.Errorf("%w: use valid HTTP headers with distinct names", ErrInvalidInput)
+		}
+		seen[name] = true
+		switch name {
+		case "authorization", "proxy-authorization", "cookie", "x-api-key", "api-key":
+			if !mcpVaultReference.MatchString(value) {
+				return fmt.Errorf("%w: credential headers require a vault reference", ErrInvalidInput)
+			}
+		}
+	}
 	return nil
 }
 

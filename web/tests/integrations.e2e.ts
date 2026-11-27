@@ -525,7 +525,11 @@ test("does not redirect for an OAuth start after Back closes the add dialog", as
   }
 });
 
-test("blocks an unavailable target and explains how to add skills", async ({ app, browser, screen }) => {
+test("blocks an unavailable target and installs a skill in a new Bot Session", async ({
+  app,
+  browser,
+  screen,
+}) => {
   await app.open("/integrations?add=mcp&target=missing-bot");
   const mcp = screen.getByRole("dialog", "Add MCP server");
 
@@ -534,18 +538,113 @@ test("blocks an unavailable target and explains how to add skills", async ({ app
   await expect(mcp.getByText("This Bot is not available. Choose a target.")).toBeVisible();
   await expect(mcp.getByRole("button", "Add server", { exact: true })).toBeDisabled();
 
-  await app.open("/b/default/skills");
-  await expect(browser).toHaveURL("/b/default/integrations?section=skills");
-  await expect.poll(() => browser.evaluate(() => document.activeElement?.textContent)).toBe("Skills");
-  await screen.getByRole("link", "Add skill", { exact: true }).tap();
-  const skill = screen.getByRole("dialog", "Add skill");
+  const { origin } = new URL(await browser.url());
+  const botId = await createBot(origin, `Skill review ${Date.now()}`);
 
-  await expect(skill.getByText(/Use skill_import.*level agent/)).toBeVisible();
-  await expect(skill.getByRole("link", /^Open .* chat$/)).toHaveAttribute("href", "/b/default");
-  await skill.getByLabel("Target", { exact: true }).selectOption({ value: "" });
-  await expect(skill.getByText(/Use skill_import.*level dex/)).toBeVisible();
-  await expect(skill.getByText(/Ask any Bot/)).toBeVisible();
-  await expect(skill.getByRole("button", "Copy request", { exact: true })).toBeEnabled();
+  try {
+    // Given a Bot with a model, follow its Add skill link and choose a catalog result.
+    await app.open(`/b/${botId}/skills`);
+    await expect(browser).toHaveURL(`/b/${botId}/integrations?section=skills`);
+    await expect.poll(() => browser.evaluate(() => document.activeElement?.textContent)).toBe("Skills");
+    await screen.getByRole("link", "Add skill", { exact: true }).tap();
+    const search = screen.getByLabel("Search skill catalog", { exact: true });
+    await expect
+      .poll(() => browser.evaluate(() => document.activeElement?.getAttribute("id")))
+      .toBe("skill-catalog-search");
+    await search.fill("pdf");
+    await screen.getByRole("button", "Load more skills", { exact: true }).tap();
+    await expect(screen.getByText("PDF forms", { exact: true })).toBeVisible();
+    await screen.getByRole("button", "Install PDF tools", { exact: true }).tap();
+    const skill = screen.getByRole("dialog", "Install PDF tools");
+    await expect(skill.getByLabel("Bot", { exact: true })).toHaveValue(botId);
+    await expect(skill.getByLabel("Install level", { exact: true })).toHaveValue("agent");
+    await skill.getByLabel("Directory name", { exact: true }).fill("pdf-reviewed");
+
+    // When the Owner starts the install, then the new Session has the submitted review prompt.
+    await skill.getByRole("button", "Start install", { exact: true }).tap();
+    await expect(browser).toHaveURL(new RegExp(`/b/${botId}/s/\\d+$`));
+
+    const sessionId = new URL(await browser.url()).pathname.split("/").at(-1);
+
+    const readPrompt = async () => {
+      const response = await fetch(
+        `${origin}/api/bots/${botId}/sessions/${sessionId}/history?before=${Number.MAX_SAFE_INTEGER}`,
+      );
+
+      const history: { items?: { kind: string; text: string }[] } = await response.json();
+
+      return history.items?.find((item) => item.kind === "user")?.text ?? "";
+    };
+
+    await expect.poll(readPrompt).toContain("pdf-reviewed");
+    const prompt = await readPrompt();
+    expect(prompt).toContain("https://github.com/anthropics/skills/tree/main/skills/pdf");
+    expect(prompt).toContain("Owner confirms in this Session");
+    expect(prompt).toContain('"level":"agent"');
+  } finally {
+    await fetch(`${origin}/api/bots/${botId}`, { method: "DELETE" });
+  }
+});
+
+test("prefills an official MCP preset and adds a registry server with a vault header", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  // Given an official preset and a local registry with a server that requires a secret header.
+  await app.open("/integrations?section=mcp");
+  const dex = new URL(await browser.url()).origin;
+  const botId = await createBot(dex, `Registry ${Date.now()}`);
+
+  try {
+    // When the owner chooses a preset, then its name, endpoint and OAuth option are ready.
+    await screen.getByRole("button", "Add Notion", { exact: true }).tap();
+    const dialog = screen.getByRole("dialog", "Add MCP server");
+    await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("notion");
+    await expect(dialog.getByLabel("Server URL", { exact: true })).toHaveValue("https://mcp.notion.com/mcp");
+    await expect(dialog.getByRole("button", "Browser OAuth", { exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await dialog.getByLabel("Target", { exact: true }).selectOption({ value: botId });
+    await dialog.getByRole("button", "Add server", { exact: true }).tap();
+    const addedPreset = screen.getByRole("dialog", "Added notion");
+    await expect(addedPreset.getByRole("button", "Authorize", { exact: true })).toBeVisible();
+    await addedPreset.getByRole("button", "Done", { exact: true }).tap();
+
+    // The Owner does not start OAuth. The only MCP endpoint contacted is local.
+    await screen.getByLabel("Search MCP Registry", { exact: true }).fill("fixture");
+    await screen.getByRole("button", "Load more MCP servers", { exact: true }).tap();
+    await expect(screen.getByText("Local package fixture", { exact: true })).toBeVisible();
+    await expect(screen.getByRole("button", "Add Local package fixture", { exact: true })).toHaveCount(0);
+    await screen.getByRole("button", "Add Registry fixture", { exact: true }).tap();
+    await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("fixture-auth");
+    await expect(dialog.getByLabel("Header 1 name", { exact: true })).toHaveValue("Authorization");
+    await expect(dialog.getByRole("switch", "Header 1 secret", { exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await dialog.getByLabel("Target", { exact: true }).selectOption({ value: botId });
+    const secret = "registry-secret-value";
+    await dialog.getByLabel("Header 1 value", { exact: true }).fill(`Bearer ${secret}`);
+    await dialog.getByRole("button", "Add server", { exact: true }).tap();
+    await expect(screen.getByRole("dialog", "Added fixture-auth")).toBeVisible();
+
+    // Then the declaration refers to the Bot vault, which lists the name and omits the value.
+    const root = `${dex}/api/bots/${botId}`;
+    const inventory = await (await fetch(`${root}/integrations`)).json();
+    const saved = inventory.servers.find((server: { name: string }) => server.name === "fixture-auth");
+    const reference = saved?.vaultReferences?.headers?.Authorization;
+    expect(reference).toMatch(/^\$\{vault:MCP_[A-Za-z0-9_]+\}$/);
+    const vault = await (await fetch(`${root}/vault`)).text();
+    const entries: { name: string; scope: string }[] = JSON.parse(vault);
+    const entry = entries.find((item) => item.name === reference.slice("${vault:".length, -1));
+    expect(entry?.scope).toBe("agent");
+    expect(vault).not.toContain(secret);
+    expect(JSON.stringify(inventory)).not.toContain(secret);
+  } finally {
+    await fetch(`${dex}/api/bots/${botId}`, { method: "DELETE" });
+  }
 });
 
 test("keeps a saved MCP server confirmed when its status cannot load", async ({ app, browser, screen }) => {

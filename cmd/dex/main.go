@@ -61,17 +61,21 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 
 	telegramURL, closeTelegram := testTelegramAPI()
 	defer closeTelegram()
+	catalogURL, closeCatalog := testCatalogAPI()
+	defer closeCatalog()
 	restartCh := make(chan string, 1)
 	a, err := app.Start(ctx, app.Config{
-		TelegramAPIURL: telegramURL,
-		DataDir:        cfg.DataDir,
-		ToolEnv:        app.ToolEnv(os.Environ()),
-		LoginEnv:       testLoginEnv(),
-		FakeModel:      testFakeModel(),
-		Version:        version(),
-		Token:          token,
-		RequireToken:   requireToken,
-		Logs:           logBuf,
+		TelegramAPIURL:  telegramURL,
+		SkillCatalogURL: catalogURL,
+		McpRegistryURL:  catalogURL,
+		DataDir:         cfg.DataDir,
+		ToolEnv:         app.ToolEnv(os.Environ()),
+		LoginEnv:        testLoginEnv(),
+		FakeModel:       testFakeModel(),
+		Version:         version(),
+		Token:           token,
+		RequireToken:    requireToken,
+		Logs:            logBuf,
 		RequestRestart: func(execPath string) {
 			select {
 			case restartCh <- execPath:

@@ -32,9 +32,9 @@ storage, and execution boundaries.
   active questions, Owner reviews, Automations that need a model, held Source
   events, and unhandled Automation results. Queued Task questions stay in Task
   detail until active. One-way notices stay in transcripts and Channels.
-- **Integrations** (`/integrations?bot=<id>`): The starting point for
-  connections. It shows the selected Bot's Channels and effective MCP servers.
-  Sources belong to the whole Dex instance.
+- **Integrations** (`/integrations`): The hub for shared Skills and MCP
+  declarations and for finding new entries. Bot Integrations shows the
+  effective Skills and MCP connections for that Bot. Settings lists Sources.
 - **Settings**: Global General, Providers, Runners, Secrets, Integrations,
   Archived, and About pages.
 
@@ -60,17 +60,22 @@ storage, and execution boundaries.
   resolves 1Password references. See [Security](architecture.md#security).
 - **Skills**: Reusable instructions and scripts from global, Bot, and Project
   `.agents/skills/` directories.
+- **Skill catalog**: Searchable listings from Claude Plugins. An install opens
+  a new Web Session so the Owner can follow the Bot's source review and import.
 - **Channel**: An Owner chat entry point such as Telegram, WeChat, or Feishu /
   Lark. It sends Owner-authorized input and receives replies.
 - **MCP Server**: An outbound tool server. Dex and Bot declarations live in
   `control.sqlite` in `mcp_servers` and apply on reload. See
   [Skills and Integrations](skills-and-integrations.md#mcp-declarations).
+- **MCP preset**: A curated official remote endpoint with an authentication
+  method that the Add dialog fills in.
+- **MCP Registry**: The public directory of MCP servers. Dex lists current
+  versions and can add compatible Streamable HTTP remotes from the directory.
 - **Source**: An inbound event feed, such as GitHub, Webhook, or Email. Its
   **Plugin** implements routing to Tasks through the core event store. Source
   switches apply at server restart.
 
-**Integrations** is a navigation label for Channels, MCP servers, and Sources.
-They do not share a runtime abstraction.
+Skills, Channels, MCP servers, and Sources do not share a runtime abstraction.
 
 ## Internal terms
 

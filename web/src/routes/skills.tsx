@@ -124,12 +124,16 @@ export function IntegrationSections({
   botId,
   skillAction,
   mcpAction,
+  skillCatalog,
+  mcpCatalog,
 }: Pick<BotIntegrations, "skills" | "servers"> & {
   levels?: BotIntegrations["levels"];
   section?: IntegrationSection;
   botId?: string;
   skillAction: ReactNode;
   mcpAction: ReactNode;
+  skillCatalog?: ReactNode;
+  mcpCatalog?: ReactNode;
 }) {
   return (
     <>
@@ -156,6 +160,7 @@ export function IntegrationSections({
             </ul>
           </details>
         ) : null}
+        {skillCatalog}
       </Section>
       <Section
         title="MCP servers"
@@ -169,6 +174,7 @@ export function IntegrationSections({
           ))}
           empty={botId ? "No MCP servers available to this Bot." : "No shared MCP servers yet."}
         />
+        {mcpCatalog}
       </Section>
     </>
   );

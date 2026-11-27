@@ -51,6 +51,10 @@ type Config struct {
 	DataDir     string
 	Version     string
 	ReleaseBase string
+
+	// Catalog origin overrides for local upstreams in tests.
+	SkillCatalogURL string
+	McpRegistryURL  string
 	// Engine owns native execution and extensions.
 	Engine *engine.Bots
 	Envs   *runner.Manager

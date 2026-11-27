@@ -1,6 +1,6 @@
 import {
   useId,
-  type InputHTMLAttributes,
+  type ComponentPropsWithRef,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
@@ -12,7 +12,7 @@ import { cn } from "../lib/utils";
 const fieldClass =
   "w-full rounded-md bg-card px-3 text-[13px] text-foreground shadow-card outline-none transition-shadow placeholder:text-muted-foreground disabled:opacity-60 aria-invalid:shadow-[0_0_0_1px_var(--red)]";
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...props }: ComponentPropsWithRef<"input">) {
   return <input {...props} className={cn(fieldClass, "h-9", className)} />;
 }
 
