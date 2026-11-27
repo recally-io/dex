@@ -41,6 +41,7 @@ Read this before you change code, dependencies, native execution, or stored data
 
 - Go code: follow the `use-modern-go` skill in `.agents/skills/`. New JSON
   code uses `encoding/json/v2`. IDs use the standard `uuid` package.
+- For changes to `experiments/nsgo/`, also use the [NSGo skill](../skills/nsgo/SKILL.md).
 - Call `internal/engine.Bots` through typed Go methods. Use
   `engine.Ref{BotID, ID}` for execution references. Do not add an internal
   serialized protocol or a backend subprocess.
