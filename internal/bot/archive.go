@@ -63,13 +63,13 @@ func (s *Service) syncChannelsLocked(ctx context.Context, id string, run bool) e
 			return err
 		}
 	}
-	if s.onTelegram != nil {
+	if s.onTelegram != nil && (tg == nil || s.canStartChannel(ctx, id)) {
 		s.onTelegram(id, tg)
 	}
-	if s.onFeishu != nil {
+	if s.onFeishu != nil && (fs == nil || s.canStartChannel(ctx, id)) {
 		s.onFeishu(id, fs)
 	}
-	if s.onWechat != nil {
+	if s.onWechat != nil && (wx == nil || s.canStartChannel(ctx, id)) {
 		s.onWechat(id, wx)
 	}
 	return nil

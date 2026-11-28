@@ -62,9 +62,9 @@ type Service struct {
 	channelApprovals map[string]channelApproval
 }
 
-// New connects model validation and Telegram runtime changes.
-func New(q *sqlc.Queries, checkModel func(context.Context, string, string) error, telegramAPIURL string, onTelegram func(string, *telegram.Config)) *Service {
-	return &Service{q: q, checkModel: checkModel, apiURL: telegramAPIURL, onTelegram: onTelegram}
+// New connects storage, model validation, and Telegram runtime changes.
+func New(q *sqlc.Queries, conn *sql.DB, checkModel func(context.Context, string, string) error, telegramAPIURL string, onTelegram func(string, *telegram.Config)) *Service {
+	return &Service{q: q, db: conn, checkModel: checkModel, apiURL: telegramAPIURL, onTelegram: onTelegram}
 }
 
 // Activity summarizes one bot for the bot list.
@@ -401,7 +401,7 @@ func (s *Service) setTelegram(ctx context.Context, botID, token string, allowedU
 	s.onTelegram(botID, nil)
 	committed := false
 	defer func() {
-		if !committed && saved != nil {
+		if !committed && saved != nil && s.canStartChannel(ctx, botID) {
 			s.onTelegram(botID, saved)
 		}
 	}()
@@ -414,15 +414,20 @@ func (s *Service) setTelegram(ctx context.Context, botID, token string, allowedU
 			return err
 		}
 	}
-	cfg.RetryAt, err = s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: botID,
-		Token: key, AllowedUsers: strings.Join(users, ","), Options: string(encoded),
-		WebhookUrl: cfg.Webhook.URL, WebhookSecret: cfg.Webhook.SecretToken,
-	})
-	if err != nil {
+	if err := s.writeActiveChannel(ctx, botID, func(q *sqlc.Queries) error {
+		var err error
+		cfg.RetryAt, err = q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: botID,
+			Token: key, AllowedUsers: strings.Join(users, ","), Options: string(encoded),
+			WebhookUrl: cfg.Webhook.URL, WebhookSecret: cfg.Webhook.SecretToken,
+		})
+		return err
+	}); err != nil {
 		return err
 	}
 	committed = true
-	s.onTelegram(botID, &cfg)
+	if s.canStartChannel(ctx, botID) {
+		s.onTelegram(botID, &cfg)
+	}
 	if saved != nil && saved.CredentialRef != cfg.CredentialRef {
 		s.forgetTelegramCredential(saved.CredentialRef)
 	}
@@ -444,12 +449,14 @@ func (s *Service) deleteTelegram(ctx context.Context, botID string) error {
 	s.onTelegram(botID, nil)
 	if saved != nil && saved.Webhook.URL != "" {
 		if err := telegram.DeleteWebhook(ctx, *saved); err != nil {
-			s.onTelegram(botID, saved)
+			if s.canStartChannel(ctx, botID) {
+				s.onTelegram(botID, saved)
+			}
 			return err
 		}
 	}
 	if err := s.q.DeleteTelegramSettings(ctx, botID); err != nil {
-		if saved != nil {
+		if saved != nil && s.canStartChannel(ctx, botID) {
 			s.onTelegram(botID, saved)
 		}
 		return err

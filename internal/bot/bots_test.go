@@ -18,7 +18,7 @@ func TestUserSavesSettingsForEachBot(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	q := sqlc.New(conn)
-	s := bot.New(q, nil, "", nil)
+	s := bot.New(q, conn, nil, "", nil)
 	for _, name := range []string{"First", "Second"} {
 		if _, err := s.CreateBot(t.Context(), bot.Patch{Name: &name}); err != nil {
 			t.Fatal(err)

@@ -373,6 +373,11 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 		return s.failManagedSetup(ctx, row.ID)
 	}
 	committed := false
+	defer func() {
+		if !committed {
+			s.forgetTelegramCredential(ref)
+		}
+	}()
 	if saved.WebhookUrl != "" && !strings.HasPrefix(saved.Token, account+":") {
 		old, err := s.TelegramConfig(ctx, row.BotID)
 		if err != nil {
@@ -381,12 +386,11 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 		// The callback URL and secret carry over, so the old account must stop sending there.
 		s.onTelegram(row.BotID, nil)
 		defer func() {
-			if !committed {
+			if !committed && s.canStartChannel(ctx, row.BotID) {
 				s.onTelegram(row.BotID, old)
 			}
 		}()
 		if err := telegram.DeleteWebhook(ctx, *old); err != nil {
-			s.forgetTelegramCredential(ref)
 			return s.failManagedSetup(ctx, row.ID)
 		}
 	}
@@ -421,7 +425,9 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 	}
 	committed = true
 	s.onTelegram(row.BotID, nil)
-	s.onTelegram(row.BotID, &cfg)
+	if s.canStartChannel(ctx, row.BotID) {
+		s.onTelegram(row.BotID, &cfg)
+	}
 	if strings.Contains(saved.Token, telegramVaultMarker) {
 		s.forgetTelegramCredential(saved.Token)
 	}

@@ -49,6 +49,10 @@ FROM submissions s JOIN sessions c ON c.id = s.session_id
 WHERE s.status = 'pending'
 GROUP BY c.bot_id;
 
+-- name: LockChannelWriter :exec
+-- Take the SQLite writer before reading archive state. This changes no rows.
+UPDATE bots SET archived_at = archived_at WHERE 0;
+
 -- name: BotArchived :one
 -- Input writers call this after they hold the SQLite writer, so an input and an archive are ordered.
 SELECT CAST(EXISTS (SELECT 1 FROM bots WHERE bots.id = @bot_id AND archived_at IS NOT NULL) AS INTEGER);

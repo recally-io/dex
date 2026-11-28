@@ -12,7 +12,6 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/channel/feishu"
-	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
@@ -141,7 +140,7 @@ func (s *Service) SetFeishu(ctx context.Context, botID string, appID, secret, br
 	s.onFeishu(botID, nil)
 	savedNew := false
 	defer func() {
-		if !savedNew && saved != nil {
+		if !savedNew && saved != nil && s.canStartChannel(ctx, botID) {
 			s.onFeishu(botID, saved)
 		}
 	}()
@@ -155,10 +154,6 @@ func (s *Service) SetFeishu(ctx context.Context, botID string, appID, secret, br
 }
 
 func (s *Service) saveFeishu(ctx context.Context, botID string, cfg feishu.Config, pairing string) error {
-	// A registration poll started before an archive can reach here; an archived bot starts no channel.
-	if err := db.RequireActive(ctx, s.q, botID); err != nil {
-		return err
-	}
 	if err := s.checkCredential(ctx, botID, "feishu", cfg.AppID); err != nil {
 		return err
 	}
@@ -169,19 +164,14 @@ func (s *Service) saveFeishu(ctx context.Context, botID string, cfg feishu.Confi
 			reactions.Int64 = 1
 		}
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
+	if err := s.writeActiveChannel(ctx, botID, func(q *sqlc.Queries) error {
+		return q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{Reactions: reactions, BotID: botID, AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli(), VerificationToken: cfg.Webhook.VerificationToken, EncryptKey: cfg.Webhook.EncryptKey})
+	}); err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
-	if err := q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{Reactions: reactions, BotID: botID, AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli(), VerificationToken: cfg.Webhook.VerificationToken, EncryptKey: cfg.Webhook.EncryptKey}); err != nil {
-		return err
+	if s.canStartChannel(ctx, botID) {
+		s.onFeishu(botID, &cfg)
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	s.onFeishu(botID, &cfg)
 	return nil
 }
 
@@ -195,9 +185,14 @@ func (s *Service) PairFeishu(ctx context.Context, botID string, owner, code stri
 	if owner == "" || code == "" {
 		return false, nil
 	}
-	rows, err := s.q.PairFeishuOwner(ctx, sqlc.PairFeishuOwnerParams{BotID: botID, OwnerID: owner, PairingCode: code, PairingExpiresAt: time.Now().UnixMilli()})
+	var rows int64
+	err := s.writeActiveChannel(ctx, botID, func(q *sqlc.Queries) error {
+		var err error
+		rows, err = q.PairFeishuOwner(ctx, sqlc.PairFeishuOwnerParams{BotID: botID, OwnerID: owner, PairingCode: code, PairingExpiresAt: time.Now().UnixMilli()})
+		return err
+	})
 	// The running bot adopts the saved owner without restarting itself.
-	return rows == 1, err
+	return err == nil && rows == 1, err
 }
 
 // revokeFeishuPairing keeps the app credentials. A new code must come from Settings.
@@ -213,7 +208,9 @@ func (s *Service) revokeFeishuPairing(ctx context.Context, botID string) error {
 	cfg.OwnerID = ""
 	s.onFeishu(botID, nil)
 	if err := s.saveFeishu(ctx, botID, cfg, ""); err != nil {
-		s.onFeishu(botID, saved)
+		if s.canStartChannel(ctx, botID) {
+			s.onFeishu(botID, saved)
+		}
 		return err
 	}
 	return nil
@@ -233,7 +230,7 @@ func (s *Service) deleteFeishu(ctx context.Context, botID string) error {
 	}
 	s.onFeishu(botID, nil)
 	if err := s.q.DeleteFeishuSettings(ctx, botID); err != nil {
-		if saved != nil {
+		if saved != nil && s.canStartChannel(ctx, botID) {
 			s.onFeishu(botID, saved)
 		}
 		return err
@@ -309,7 +306,7 @@ func (s *Service) PollFeishu(ctx context.Context, botID string, id string) (Feis
 	}
 	s.onFeishu(botID, nil)
 	if err := s.saveFeishu(ctx, botID, cfg, ""); err != nil {
-		if saved != nil {
+		if saved != nil && s.canStartChannel(ctx, botID) {
 			s.onFeishu(botID, saved)
 		}
 		return FeishuSetup{}, err
