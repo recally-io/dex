@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -132,7 +133,7 @@ func StageExecutable(ctx context.Context, executable, binaryName, tag string, ar
 	}
 	verify, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(verify, stage, "version").Output() //nolint:gosec // Run the verified release executable.
+	out, err := runStaged(verify, stage)
 	if err != nil {
 		return "", fmt.Errorf("staged executable did not run: %w", err)
 	}
@@ -142,6 +143,24 @@ func StageExecutable(ctx context.Context, executable, binaryName, tag string, ar
 	}
 	keep = true
 	return stage, nil
+}
+
+// runStaged runs the staged file's version command. A fork in another goroutine
+// can inherit the write descriptor of the staged file until that child calls exec,
+// so exec can fail with ETXTBSY for a short time (golang/go#22315). Retry until
+// the verify context ends.
+func runStaged(ctx context.Context, stage string) ([]byte, error) {
+	for delay := 10 * time.Millisecond; ; delay = min(2*delay, 200*time.Millisecond) {
+		out, err := exec.CommandContext(ctx, stage, "version").Output() //nolint:gosec // Run the verified release executable.
+		if !errors.Is(err, syscall.ETXTBSY) {
+			return out, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-time.After(delay):
+		}
+	}
 }
 
 // ReplaceExecutable keeps executable.previous via hardlink and atomically replaces executable with stage.
