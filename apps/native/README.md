@@ -18,8 +18,10 @@ The app uses Android System WebView. Keep it up to date; older versions can lack
 
 On the connection screen, select **Open Local Workspace**. Dex starts in the app process and opens the embedded web UI. The WebView sends requests directly to Dex through a native bridge. Local mode does not start an HTTP server, open a TCP port, or use loopback. It does not require a Dex access token.
 
-- **Mac:** Dex uses `DEX_DATA_DIR` if set, or `~/.dex`. Stop an existing Dex service before you open its data directory in the app. To keep both running, give them different data directories.
-- **iPhone and Android:** Dex stores the workspace in `dex` under the app's private data directory. Mobile tools do not inherit a login shell environment. Shell tools and stdio MCP servers need executables and process support from the device OS.
+- **Mac:** The default is `~/Library/Application Support/io.recally.dex/dex`. A non-empty `DEX_DATA_DIR` in the app's environment changes this path.
+- **iPhone and Android:** The app uses the `dex` subdirectory in its private data directory (the iOS app container or Android `filesDir`). The app ignores `DEX_DATA_DIR`. Mobile tools do not inherit a login shell environment. Shell tools and stdio MCP servers need executables and process support from the device OS.
+
+A standalone Dex server uses `~/.dex` by default. To use that server's workspace, connect to the server. The app does not move existing data when its local workspace path changes. If you set `DEX_DATA_DIR` on a Mac, do not use the same directory for a running server and the local workspace.
 
 The app saves your workspace choice and reopens it on launch. Local mode can make outbound requests to model and channel providers. Other devices cannot connect to a local workspace, and inbound webhooks need a separate Dex server.
 

@@ -86,6 +86,40 @@ func TestUserChoosesAndForgetsLocalWorkspace(t *testing.T) {
 	}
 }
 
+func TestUserLocalWorkspaceDataDir(t *testing.T) {
+	appDir := t.TempDir()
+	override := t.TempDir()
+	appDexDir := filepath.Join(appDir, "dex")
+	for _, tc := range []struct {
+		name     string
+		appDir   string
+		mac      bool
+		override string
+		want     string
+	}{
+		{"macOS default", appDir, true, "", appDexDir},
+		{"macOS override", "", true, override, override},
+		{"mobile default", appDir, false, "", appDexDir},
+		{"mobile ignores override", appDir, false, override, appDexDir},
+		{"macOS missing app directory", "", true, "", ""},
+		{"mobile missing app directory", "", false, override, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("DEX_DATA_DIR", tc.override)
+			got, err := localDataDir(tc.appDir, tc.mac)
+			if tc.want == "" {
+				if err == nil || err.Error() != "app data directory is not available" {
+					t.Fatalf("expected a missing app data directory error, got %q, %v", got, err)
+				}
+				return
+			}
+			if err != nil || got != tc.want {
+				t.Fatalf("local data directory = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestUserEntersServerOrigin(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

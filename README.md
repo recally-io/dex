@@ -48,6 +48,12 @@ For Apple silicon Macs, download `Dex-<tag>-macOS-arm64.zip` from [GitHub Releas
 
 For Android 9 or later on 64-bit ARM phones, download `Dex-<tag>-Android-arm64.apk` from the same release. Install the APK and open a local workspace or enter the HTTPS address of an existing Dex server. Keep Android System WebView up to date. See [Dex native apps](apps/native/README.md).
 
+The standalone server uses `~/.dex` by default. A native local workspace runs
+inside the app and uses a `dex` subdirectory in the platform's app data
+directory. Only the macOS app accepts `DEX_DATA_DIR` as an override. To use a
+server's data, connect to that server over HTTP or HTTPS. See [local workspace
+storage](apps/native/README.md#open-a-local-workspace).
+
 The API can run shell commands, so a host that is not loopback requires an
 access token:
 

@@ -113,7 +113,15 @@ start ([plugins](plugins.md#plugin-migrations)). The Bot directory remains
 transcripts, and tool calls. Only the engine opens a bot execution store, and business
 code calls typed engine methods instead of reading it.
 
-The server and macOS local workspace default to `~/.dex` (`DEX_DATA_DIR`). The iOS and Android local workspace use `dex` under the app's private data directory. Only the engine opens each bot execution store. A file lock prevents two Dex runtimes from opening the same data directory.
+The standalone server defaults to `~/.dex`. `DEX_DATA_DIR` can change that
+path. The native app connects to a standalone server over HTTP or HTTPS.
+
+The in-process local workspace stores data in the `dex` subdirectory of NSGo's
+`cx.DataDir()`. On macOS, the default is
+`~/Library/Application Support/io.recally.dex/dex`. On iOS and Android, the
+path is inside the app's private data directory. Only macOS uses a non-empty
+`DEX_DATA_DIR` from the app's environment in place of this default. A file lock
+prevents two Dex runtimes from opening the same data directory.
 
 ## Message flow
 

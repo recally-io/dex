@@ -36,18 +36,9 @@ func (w *localWorkspace) start(ctx context.Context, appDir, version string, mac 
 	if w.instance != nil {
 		return w.instance, nil
 	}
-	dir := filepath.Join(appDir, "dex")
-	if mac {
-		dir = os.Getenv("DEX_DATA_DIR")
-		if dir == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return nil, err
-			}
-			dir = filepath.Join(home, ".dex")
-		}
-	} else if appDir == "" {
-		return nil, errors.New("app data directory is not available")
+	dir, err := localDataDir(appDir, mac)
+	if err != nil {
+		return nil, err
 	}
 	instance, err := localdex.Start(ctx, localdex.Config{DataDir: dir, Version: version, Mobile: !mac})
 	if err != nil {
@@ -55,6 +46,18 @@ func (w *localWorkspace) start(ctx context.Context, appDir, version string, mac 
 	}
 	w.instance = instance
 	return instance, nil
+}
+
+func localDataDir(appDir string, mac bool) (string, error) {
+	if mac {
+		if dir := os.Getenv("DEX_DATA_DIR"); dir != "" {
+			return dir, nil
+		}
+	}
+	if appDir == "" {
+		return "", errors.New("app data directory is not available")
+	}
+	return filepath.Join(appDir, "dex"), nil
 }
 
 func (w *localWorkspace) close() error {
