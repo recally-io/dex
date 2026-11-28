@@ -1,0 +1,24 @@
+appName: Dex
+connection: Connect to Dex
+address: Server address
+addressPlaceholder: https://dex.example.com
+connect: Connect
+changeAddress: Change address
+retry: Retry
+forget: Forget server
+connecting: Connecting…
+offline: Offline. Could not open the Dex server.
+authRequired: Enable authentication on the Dex server, then retry.
+localOffline: Start the existing Dex service on this Mac with `dex service start`, then retry. You can also enter an HTTPS address.
+remoteHelp: Enter the HTTPS address of an existing Dex server that this device can reach.
+macHelp: Use an HTTPS address or Dex on this Mac at 127.0.0.1.
+invalidAddress: Enter a server address with no sign-in details, path, query, or fragment.
+clearFailed: Could not clear the WebView sign-in. Try again.
+saveFailed: Could not save the server address. Try again.
+clearing: Clearing sign-in…
+navExternalTitle: Open Link in Browser?
+navExternalMessage: Open a link to {host} in your browser.
+navOpenBrowser: Open Browser
+navCancel: Cancel
+navBlockedTitle: Navigation Blocked
+navBlockedMessage: To complete OAuth, open Dex in your browser and restart OAuth there.

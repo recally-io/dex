@@ -52,6 +52,7 @@ func parseInstallConfig(m service.Manager, args []string) (service.Config, error
 		return c, err
 	}
 	f := flags("service install")
+	f.BoolVar(&c.RequireToken, "require-token", c.RequireToken, "Require the access token even on loopback")
 	f.BoolVar(&c.AutoUpdate, "auto-update", c.AutoUpdate, "Enable daily updates (requires stored gh credentials)")
 	f.StringVar(&c.Channel, "channel", c.Channel, "Update channel: stable or prerelease")
 	if err := configured(f, args, &c); err != nil {
@@ -157,6 +158,8 @@ func serviceCommand(ctx context.Context, args []string) error {
 		fmt.Printf("dex is running: %s\nBinary: %s\nLogs: dex service logs\nLog location: %s\nStatus: dex service status\nUninstall: dex service uninstall\n", c.URL(), c.Executable, m.LogPath())
 		if !c.Loopback() {
 			fmt.Printf("dex accepts connections on %s over plain HTTP. Sign in with the token from: dex token\n", c.Addr())
+		} else if c.RequireToken {
+			fmt.Println("Sign in with the token from: dex token")
 		}
 		if _, set := os.LookupEnv("DEX_TOKEN"); set {
 			fmt.Println("The service does not use DEX_TOKEN from this shell; it uses the stored token.")
@@ -410,6 +413,7 @@ func serveCommand(ctx context.Context, args []string) error {
 		return errors.Join(errUsage, err)
 	}
 	f := flags("serve")
+	f.BoolVar(&c.RequireToken, "require-token", c.RequireToken, "Require the access token even on loopback")
 	storedOnly := f.Bool("stored-token", false, "Ignore DEX_TOKEN and use the stored token (the service sets this)")
 	err = configured(f, args, &c)
 	if err != nil {
@@ -422,12 +426,12 @@ func serveCommand(ctx context.Context, args []string) error {
 	return serve(ctx, c, token, require)
 }
 
-// serveAuth selects the access token: DEX_TOKEN when it is set, or the stored token when the host
-// is not loopback. A set DEX_TOKEN turns authentication on for a loopback host too.
+// serveAuth selects DEX_TOKEN when allowed and set. Otherwise, it uses the stored token if
+// the service requires authentication.
 func serveAuth(c service.Config, storedOnly bool) (token string, require bool, err error) {
 	token, set := os.LookupEnv("DEX_TOKEN")
 	if storedOnly || !set {
-		return "", !c.Loopback(), nil
+		return "", c.RequiresToken(), nil
 	}
 	if err := settings.CheckToken(token); err != nil {
 		return "", false, fmt.Errorf("DEX_TOKEN: %w", err)

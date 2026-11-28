@@ -34,6 +34,7 @@ export function SignIn() {
                 id={id}
                 aria-describedby={describedBy}
                 aria-invalid={invalid || undefined}
+                className="pointer-coarse:text-[16px]"
                 type="password"
                 autoComplete="current-password"
                 value={token}

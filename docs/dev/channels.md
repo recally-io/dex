@@ -126,7 +126,8 @@ still update the other settings without changing the transport.
 
 Keep dex on its private address (default `127.0.0.1:8787`). Use a public DNS
 name and a TLS reverse proxy with a trusted certificate. Expose only the
-needed callback paths. For example, for the `default` bot, a Caddy site can
+needed callback paths. This example does not expose the admin API. To serve the
+admin API over HTTPS, follow the [authenticated HTTPS setup](../../README.md#deploy-an-https-entry-point). For example, for the `default` bot, a Caddy site can
 use these rules:
 
 ```caddyfile

@@ -82,6 +82,18 @@ func TestUserServiceDefinitions(t *testing.T) {
 		})
 	}
 }
+
+func TestUserServiceKeepsLoopbackAuthenticationAfterRestart(t *testing.T) {
+	t.Parallel()
+	c := Config{Host: "127.0.0.1", Port: 18787, DataDir: t.TempDir(), Executable: "/usr/bin/dex", Channel: "stable", RequireToken: true}
+	for _, data := range [][]byte{plist(c, "/home/test", "/logs/dex.log"), unit(c)} {
+		restored, err := readConfig(data)
+		if err != nil || !restored.RequireToken || !bytes.Contains(data, []byte("--require-token")) {
+			t.Fatalf("service definition lost the token requirement: %v", err)
+		}
+	}
+}
+
 func TestUserHostAddress(t *testing.T) {
 	// A loopback host needs no token; local clients reach a wildcard host through loopback.
 	for host, want := range map[string]struct {

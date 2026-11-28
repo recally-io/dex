@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Build local macOS arm64 and iOS Simulator apps without launching them"
+#MISE dir="{{config_root}}/native"
+set -euo pipefail
+
+# NSGo uses the ambient API key even when the notary profile is empty.
+unset NSGO_NOTARY_KEY
+exec mise exec go@1.27.3 -- go tool nsgo build \
+  -target macos_arm64,ios_simulator -channel none -installers=false -open=false \
+  -sign=- -notarize= -output ../.local/apple-v1/build/dev

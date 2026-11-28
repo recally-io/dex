@@ -18,7 +18,10 @@ and MCP. The browser receives typed transcript events through SSE.
 ## Runtime modules
 
 The Go binary embeds the built web UI. Node and Bun are development tools
-for the web UI; the installed service needs neither runtime.
+for the web UI; the installed service needs neither runtime. The [Apple client](../../native/README.md)
+runs in a separate process. It opens the workspace from a selected Dex server in
+WebKit. It does not embed a second copy of the web UI or run an agent. The native
+connection screen remains available when the server is offline.
 
 The [module index](../../.agents/rules/implementation.md#modules) defines
 package ownership. `internal/app` connects the services. Business services call
@@ -44,7 +47,8 @@ Bot execution itself stays in dex. There is no backend subprocess or serialized 
 ## Service and updates
 
 `cmd/dex` runs the foreground server or manages a per-user launchd or systemd
-service. A host that is not loopback makes the API require the access token.
+service. A non-loopback host always requires the access token. On loopback,
+`--require-token` makes Dex use the stored token even behind a local TLS proxy.
 Definitions store serve
 arguments, a small service PATH, and a configuration record that permits partial
 reinstall across template changes. Install does not copy the shell PATH. Daily
@@ -243,9 +247,10 @@ without a sandbox, inside the selected project directory or bot workspace.
 Bots that use a remote Runner inherit its process environment.
 dex sends the configured 1Password credentials and only the vault values that
 an individual command requests. The HTTP server listens on
-`127.0.0.1:8787` by default. On loopback without DEX_TOKEN it has no
-authentication. On any other host, or with DEX_TOKEN, every `/api/` request
-needs the access token.
+`127.0.0.1:8787` by default. A loopback service needs no sign-in unless
+`--require-token` or a foreground `DEX_TOKEN` enables it. A non-loopback
+service always protects the admin API. Before you expose a loopback service
+through a TLS proxy, follow the [authenticated HTTPS setup](../../README.md#deploy-an-https-entry-point).
 A chat channel must allow only known user IDs: the settings refuse a
 Telegram bot without allowed users. WeChat captures the owner ID from QR
 confirmation and rejects a login without that ID. Other WeChat senders never

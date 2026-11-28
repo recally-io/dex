@@ -46,15 +46,16 @@ if touched '^web/'; then
 fi
 job go-lint bash -c 'golangci-lint fmt --diff && golangci-lint run && go build ./...'
 
+# The Apple client is a separate Go module. Its WebKit tests need macOS.
+if [[ $(uname -s) == Darwin ]] && grep -q '^native/' <<<"$changed"; then
+  job apple-test mise run apple:test
+fi
+
 packages=()
 while IFS= read -r dir; do
+  [[ "$dir" == native || "$dir" == native/* ]] && continue
   if [[ "$dir" != internal/app && -n "$(find "$dir" -maxdepth 1 -name '*.go' -print -quit 2>/dev/null)" ]]; then
-    if [[ "$dir" != . && -f "$dir/go.mod" ]]; then
-      # A package with its own go.mod is outside the root module.
-      job "go-test-${dir//\//-}" go -C "$dir" test .
-    else
-      packages+=("./$dir")
-    fi
+    packages+=("./$dir")
   fi
 done < <(xargs -rn1 dirname <<<"$changed" | sort -u)
 if ((${#packages[@]})); then

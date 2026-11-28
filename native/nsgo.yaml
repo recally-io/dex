@@ -1,0 +1,23 @@
+name: Dex
+id: io.recally.dex
+version: 0.1.0
+
+dev:
+  target: native
+
+build:
+  targets: [macos, ios]
+
+i18n:
+  source: en
+
+apple:
+  info:
+    LSMinimumSystemVersion: "14.0"
+    MinimumOSVersion: "17.0"
+    NSLocalNetworkUsageDescription: Connects to the Dex server you select.
+    NSAppTransportSecurity: {}
+    NSAppTransportSecurity-macos:
+      NSExceptionDomains:
+        "127.0.0.1":
+          NSExceptionAllowsInsecureHTTPLoads: true

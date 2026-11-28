@@ -1,0 +1,46 @@
+name: DexAppleQA
+options:
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  DexAppleQA:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - AppleSmoke.swift
+      - FocusZoom.swift
+      - path: Fixture.plist
+        buildPhase: resources
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.recally.dex.qa.runner
+        SWIFT_VERSION: "5.0"
+  DexMacQA:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - MacSmoke.swift
+      - path: Fixture.plist
+        buildPhase: resources
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.recally.dex.qa.mac-runner
+        SWIFT_VERSION: "5.0"
+schemes:
+  DexMacQA:
+    build:
+      targets:
+        DexMacQA: [test]
+    test:
+      targets:
+        - DexMacQA
+  DexAppleQA:
+    build:
+      targets:
+        DexAppleQA: [test]
+    test:
+      targets:
+        - DexAppleQA
