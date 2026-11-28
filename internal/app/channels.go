@@ -16,6 +16,10 @@ import (
 	"github.com/recally-io/dex/internal/session"
 )
 
+func bindChannelStaging(sessions *session.Service) {
+	sessions.ConfigureChannelStaging(telegrampolicy.LookupStagedSourceIn, telegrampolicy.CheckInputIn, telegrampolicy.DiscardStagedIn)
+}
+
 // botChannels wires the Telegram adapter's inbound interface to the manager
 // and the Telegram policy. Feishu and WeChat only use the manager.
 type botChannels struct {

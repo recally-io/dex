@@ -145,6 +145,10 @@ func TestUserUnknownTelegramTranscriptionIsNotSentToProviderAgain(t *testing.T) 
 	if calls.Load() != 1 {
 		t.Fatalf("unknown provider outcome retried: %d", calls.Load())
 	}
+	if n := f.fileRequests.Load(); n != 1 {
+		t.Fatalf("unknown speech outcome downloaded the voice file %d times; want one", n)
+	}
+	assertReceiptUpload(t, conn, data, "telegram:123:1")
 }
 
 func TestUserTelegramTranscriptionDoesNotUploadOverDurationBudget(t *testing.T) {

@@ -8,6 +8,33 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
+func TestUserWithoutStagingBindingCannotAdmitStagedChannelInput(t *testing.T) {
+	t.Parallel()
+	// Given a paired sender and a standalone Session service without staging hooks.
+	r := startNative(t, "echo")
+	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:fixture", AllowedUsers: "7"}); err != nil {
+		t.Fatal(err)
+	}
+	// When the sender tries to submit staged input, no source receipt can commit.
+	for source, input := range map[string]Message{
+		"telegram:123:1": {AlbumSource: "sealed-batch"},
+		"telegram:123:2": {SpeechSource: "stt:telegram:123:2"},
+	} {
+		input.Content = "staged input"
+		input.ChannelContext = ChannelContext{AccountID: "123", SenderID: "7"}
+		if err := r.service.AcceptMessage(t.Context(), "bot", "telegram:7", source, input); !errors.Is(err, errSessionInvalid) {
+			t.Fatalf("staged input %s: got %v, want invalid input", source, err)
+		}
+		if received, err := r.service.ReceivedSource(t.Context(), source); err != nil || received {
+			t.Fatalf("source %s received=%v err=%v", source, received, err)
+		}
+	}
+	// Then an ordinary web message still uses the normal receipt path.
+	if id, err := r.service.Post(t.Context(), "bot", MainKey, "", "web-input", "hello"); err != nil || id == 0 {
+		t.Fatalf("web input: session=%d err=%v", id, err)
+	}
+}
+
 func TestUserSourceReceiptBelongsToItsBotBeforeAdmission(t *testing.T) {
 	t.Parallel()
 	// Given a bot whose native admission is held for maintenance.
@@ -36,7 +63,7 @@ func TestUserSourceReceiptBelongsToItsBotBeforeAdmission(t *testing.T) {
 		t.Fatalf("stored source=%+v err=%v", stored, err)
 	}
 	// Then another bot cannot use that receipt or its preview reference.
-	if foreign, err := r.service.LookupSource(t.Context(), "other", "owned-source"); !errors.Is(err, ErrNotFound) || foreign.ID != "" {
+	if foreign, err := r.service.LookupSource(t.Context(), "other", "owned-source"); !errors.Is(err, ErrSessionNotFound) || foreign.ID != "" {
 		t.Fatalf("foreign source=%+v err=%v", foreign, err)
 	}
 	// Receipt existence is global, but it returns no bot or preview reference.

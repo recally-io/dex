@@ -25,8 +25,7 @@ import (
 )
 
 // fakeTelegram is a Bot API server. Telegram is a system boundary, so the tests use a fake instead
-// of the real service. getUpdates returns every queued update with an ID at or above the offset,
-// as Telegram does.
+// of the real service. getUpdates returns up to 100 queued updates at or above the offset.
 type fakeTelegram struct {
 	reactGate        *reactionGate
 	holdRich         func(context.Context, string)
@@ -302,6 +301,9 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		for _, u := range f.updates {
 			if u["update_id"].(int64) >= params.Offset {
 				updates = append(updates, u)
+				if len(updates) == 100 {
+					break
+				}
 			}
 		}
 		f.mu.Unlock()

@@ -10,6 +10,13 @@ import (
 	"github.com/recally-io/dex/internal/session"
 )
 
+// Album is a sealed batch ready for the collector to deliver as one input.
+type Album struct {
+	Source  string
+	Peer    string
+	Message session.Message
+}
+
 var _ channel.InboundWaker = (*Bot)(nil)
 
 func (b *Bot) submitInput(ctx context.Context, peer, source string, msg session.Message, albumMember bool) error {
