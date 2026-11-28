@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/bot"
+	"github.com/recally-io/dex/internal/vault"
 )
 
 const managedSetupPath = "/api/bots/default/channels/telegram/managed"
@@ -164,14 +164,9 @@ func configureManagedTelegram(t *testing.T, d *dex) {
 	}
 }
 
-func beginAndVerifyManagedTelegram(t *testing.T, d *dex, f *managedTelegramAPI, updateID int64) (string, string) {
+func beginAndVerifyManagedTelegram(t *testing.T, d *dex, f *managedTelegramAPI, base string, updateID int64) (string, string) {
 	t.Helper()
-	return verifyManagedTelegram(t, d, f, managedSetupPath, updateID)
-}
-
-func verifyManagedTelegram(t *testing.T, d *dex, f *managedTelegramAPI, base string, updateID int64) (string, string) {
-	t.Helper()
-	var setup bot.TelegramManagedSetup
+	var setup api.TelegramManagedSetup
 	d.must(t, http.MethodPost, base, nil, &setup)
 	link, err := url.Parse(setup.URL)
 	if err != nil || setup.State != "verify_owner" || link.Host != "t.me" || link.Path != "/DexManagerBot" || link.Query().Get("start") == "" {
@@ -201,7 +196,7 @@ func TestUserConnectsManagedTelegramAndKeepsItAfterReplay(t *testing.T) {
 	d := startDex(t, dir, f.server.URL)
 	d.must(t, http.MethodPut, telegramChannelPath, map[string]any{"token": fakeToken, "allowedUsers": []int64{11}, "options": map[string]bool{"silent": true}}, nil)
 	configureManagedTelegram(t, d)
-	path, username := beginAndVerifyManagedTelegram(t, d, f, 1)
+	path, username := beginAndVerifyManagedTelegram(t, d, f, managedSetupPath, 1)
 
 	// When Telegram confirms creation and delivers the same update twice.
 	f.managed(2, 42, username)
@@ -209,7 +204,7 @@ func TestUserConnectsManagedTelegramAndKeepsItAfterReplay(t *testing.T) {
 	waitManaged(t, func() bool { return f.offset.Load() >= 3 && f.childPolls.Load() > 0 })
 
 	// Then Dex polls the new bot once configured for the verified owner. The API returns no token.
-	var setup bot.TelegramManagedSetup
+	var setup api.TelegramManagedSetup
 	d.must(t, http.MethodGet, path, nil, &setup)
 	if setup.State != "connected" || f.fetched.Load() != 1 {
 		t.Fatalf("setup = %+v, token requests = %d", setup, f.fetched.Load())
@@ -240,13 +235,13 @@ func TestUserConnectsManagedTelegramAndKeepsItAfterReplay(t *testing.T) {
 	waitManaged(t, func() bool { return f.offset.Load() >= 4 && f.childPolls.Load() > priorPolls })
 	assertManagedChannel(d)
 	// A subsequent setup cannot claim the same bot under a different username.
-	path2, username2 := beginAndVerifyManagedTelegram(t, d, f, 4)
+	path2, username2 := beginAndVerifyManagedTelegram(t, d, f, managedSetupPath, 4)
 	if username2 == username {
 		t.Fatal("setup links must have distinct usernames")
 	}
 	f.managed(5, 42, username2)
 	waitManaged(t, func() bool { return f.offset.Load() >= 6 })
-	setup = bot.TelegramManagedSetup{}
+	setup = api.TelegramManagedSetup{}
 	d.must(t, http.MethodGet, path2, nil, &setup)
 	if setup.State != "create_bot" {
 		t.Fatalf("a second setup claimed the same bot: %+v", setup)
@@ -271,7 +266,7 @@ func TestUserKeepsTelegramWebhookWhenConnectingManagedBot(t *testing.T) {
 	}, nil)
 	f.old.nextEvent(t, "setWebhook")
 	configureManagedTelegram(t, d)
-	path, username := beginAndVerifyManagedTelegram(t, d, f, 1)
+	path, username := beginAndVerifyManagedTelegram(t, d, f, managedSetupPath, 1)
 
 	// When Telegram confirms the new bot, the old webhook is removed and the new bot uses its settings.
 	f.managed(2, 42, username)
@@ -281,7 +276,7 @@ func TestUserKeepsTelegramWebhookWhenConnectingManagedBot(t *testing.T) {
 		strings.Contains(view, secret) || strings.Contains(view, managedTestToken) {
 		t.Fatalf("managed channel did not retain a write-only webhook configuration (HTTP %d)", status)
 	}
-	var setup bot.TelegramManagedSetup
+	var setup api.TelegramManagedSetup
 	d.must(t, http.MethodGet, path, nil, &setup)
 	if setup.State != "connected" {
 		t.Fatalf("managed setup = %s", setup.State)
@@ -310,7 +305,8 @@ func TestUserKeepsTelegramWebhookWhenManagedBotCannotRemoveOldRegistration(t *te
 	t.Parallel()
 	// Given a registered webhook that Telegram will not remove.
 	f := fakeManagedTelegram(t, false)
-	d := startDex(t, t.TempDir(), f.server.URL)
+	dir := t.TempDir()
+	d := startDex(t, dir, f.server.URL)
 	d.setModel(t, "echo")
 	const secret = "original-webhook-secret"
 	d.must(t, http.MethodPut, telegramChannelPath, map[string]any{
@@ -322,15 +318,19 @@ func TestUserKeepsTelegramWebhookWhenManagedBotCannotRemoveOldRegistration(t *te
 	f.old.failures["deleteWebhook"] = []platformFailure{{HTTPStatus: http.StatusServiceUnavailable}}
 	f.old.mu.Unlock()
 	configureManagedTelegram(t, d)
-	path, username := beginAndVerifyManagedTelegram(t, d, f, 1)
+	path, username := beginAndVerifyManagedTelegram(t, d, f, managedSetupPath, 1)
 
 	// When Telegram confirms creation, replacement fails and the original bot still answers.
 	f.managed(2, 42, username)
 	waitManaged(t, func() bool { return f.offset.Load() >= 3 })
-	var setup bot.TelegramManagedSetup
+	var setup api.TelegramManagedSetup
 	d.must(t, http.MethodGet, path, nil, &setup)
 	if setup.State != "failed" {
 		t.Fatalf("managed setup = %s, want failed", setup.State)
+	}
+	unused, err := vault.New(dir).Credential("789::vault:" + setup.ID)
+	if err != nil || unused != "" {
+		t.Fatalf("after failed replacement: unused credential kept=%t, read err=%v", unused != "", err)
 	}
 	postChannelHook(t, d, telegramHook, telegramHookMessage(t, 201, 11, "original webhook"),
 		map[string]string{"X-Telegram-Bot-Api-Secret-Token": secret}, http.StatusOK)
@@ -368,7 +368,7 @@ func TestUserKeepsExistingTelegramWhenManagedSetupDoesNotComplete(t *testing.T) 
 			manual := map[string]any{"token": fakeToken, "allowedUsers": []int64{11}}
 			d.must(t, http.MethodPut, telegramChannelPath, manual, nil)
 			configureManagedTelegram(t, d)
-			path, username := beginAndVerifyManagedTelegram(t, d, f, 1)
+			path, username := beginAndVerifyManagedTelegram(t, d, f, managedSetupPath, 1)
 			// When this setup cannot accept the next managed_bot update.
 			switch scenario.name {
 			case "renamed bot":
@@ -395,7 +395,7 @@ func TestUserKeepsExistingTelegramWhenManagedSetupDoesNotComplete(t *testing.T) 
 				waitManaged(t, func() bool { return f.offset.Load() >= 3 })
 			}
 			// Then the existing channel still answers and no rejected update fetches a token.
-			var setup bot.TelegramManagedSetup
+			var setup api.TelegramManagedSetup
 			d.must(t, http.MethodGet, path, nil, &setup)
 			if setup.State != scenario.state || f.fetched.Load() != scenario.fetches {
 				t.Fatalf("setup = %+v, token requests = %d", setup, f.fetched.Load())
@@ -420,7 +420,7 @@ func TestUserCannotConnectPreArchiveManagedTelegramAfterRestore(t *testing.T) {
 	botView := d.createCoder(t)
 	prefix := "/api/bots/" + botView.ID
 	configureManagedTelegram(t, d)
-	path, username := verifyManagedTelegram(t, d, f, prefix+"/channels/telegram/managed", 1)
+	path, username := beginAndVerifyManagedTelegram(t, d, f, prefix+"/channels/telegram/managed", 1)
 	f.managed(2, 42, username)
 	waitManaged(t, func() bool { return f.fetched.Load() == 1 })
 
@@ -433,7 +433,7 @@ func TestUserCannotConnectPreArchiveManagedTelegramAfterRestore(t *testing.T) {
 	waitManaged(t, func() bool { return f.offset.Load() >= 3 })
 
 	// Then the old setup is canceled and the late token does not connect a channel.
-	var setup bot.TelegramManagedSetup
+	var setup api.TelegramManagedSetup
 	d.must(t, http.MethodGet, path, nil, &setup)
 	var channels api.Channels
 	d.must(t, http.MethodGet, prefix+"/channels", nil, &channels)
@@ -449,9 +449,9 @@ func TestUserCannotVerifyOrClaimManagedTelegramAfterArchive(t *testing.T) {
 	d := startDex(t, t.TempDir(), f.server.URL)
 	configureManagedTelegram(t, d)
 	pendingBot, verifiedBot := d.createCoder(t), d.createCoder(t)
-	var pending bot.TelegramManagedSetup
+	var pending api.TelegramManagedSetup
 	d.must(t, http.MethodPost, "/api/bots/"+pendingBot.ID+"/channels/telegram/managed", nil, &pending)
-	_, username := verifyManagedTelegram(t, d, f, "/api/bots/"+verifiedBot.ID+"/channels/telegram/managed", 1)
+	_, username := beginAndVerifyManagedTelegram(t, d, f, "/api/bots/"+verifiedBot.ID+"/channels/telegram/managed", 1)
 
 	// When both bots are archived before Telegram delivers the verification and creation updates.
 	conn := sessionDB(t, d)

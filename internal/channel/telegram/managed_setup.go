@@ -1,4 +1,4 @@
-package bot
+package telegram
 
 import (
 	"context"
@@ -16,10 +16,8 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/vault"
 )
 
 // Keep the account ID before the first colon for existing channel identity queries.
@@ -27,8 +25,8 @@ const telegramVaultMarker = "::vault:"
 
 var telegramTokenPattern = regexp.MustCompile(`^[1-9][0-9]*:[A-Za-z0-9_-]+$`)
 
-// TelegramManagedSetup contains only the state and link for the current step.
-type TelegramManagedSetup struct {
+// ManagedSetup contains only the state and link for the current step.
+type ManagedSetup struct {
 	ID        string `json:"id"`
 	State     string `json:"state"`
 	ExpiresAt int64  `json:"expiresAt"`
@@ -37,16 +35,15 @@ type TelegramManagedSetup struct {
 }
 
 type telegramManager struct {
-	client    *telegram.Manager
+	client    *Manager
 	id        int64
 	username  string
 	checkedAt time.Time
 	stopPoll  context.CancelFunc
 }
 
-// ConfigureTelegramVault opens the service-only credential scope before channels start.
-func (s *Service) ConfigureTelegramVault(ctx context.Context, store *vault.Store) error {
-	s.telegramVault = store
+// LoadManager reads the saved manager credential before channels and jobs start.
+func (s *SetupService) LoadManager(ctx context.Context) error {
 	ref, err := s.q.TelegramManagerCredential(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -54,7 +51,7 @@ func (s *Service) ConfigureTelegramVault(ctx context.Context, store *vault.Store
 	if err != nil {
 		return err
 	}
-	token, err := store.Credential(ref)
+	token, err := s.vault.Credential(ref)
 	if err != nil {
 		return err
 	}
@@ -65,14 +62,14 @@ func (s *Service) ConfigureTelegramVault(ctx context.Context, store *vault.Store
 	return nil
 }
 
-func (s *Service) newTelegramManager(token string) *telegramManager {
+func (s *SetupService) newTelegramManager(token string) *telegramManager {
 	account, _, _ := strings.Cut(token, ":")
 	id, _ := strconv.ParseInt(account, 10, 64)
-	return &telegramManager{id: id, client: telegram.NewManager(s.apiURL, token)}
+	return &telegramManager{id: id, client: NewManager(s.apiURL, token)}
 }
 
-// SetTelegramManager validates the dedicated manager before changing its credential.
-func (s *Service) SetTelegramManager(ctx context.Context, token string) error {
+// SetManager validates the dedicated manager before changing its credential.
+func (s *SetupService) SetManager(ctx context.Context, token string) error {
 	token = strings.TrimSpace(token)
 	var manager *telegramManager
 	if token != "" {
@@ -98,7 +95,7 @@ func (s *Service) SetTelegramManager(ctx context.Context, token string) error {
 			return err
 		}
 		ref = "telegram-manager-" + uuid.NewV7().String()
-		if err := s.telegramVault.EditCredential(ref, &token); err != nil {
+		if err := s.vault.EditCredential(ref, &token); err != nil {
 			return err
 		}
 	}
@@ -137,15 +134,15 @@ func (s *Service) SetTelegramManager(ctx context.Context, token string) error {
 	return nil
 }
 
-func (s *Service) managerStatus() (configured, available bool) {
+func (s *SetupService) managerStatus() (configured, available bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.manager != nil, s.manager != nil && s.manager.username != ""
 }
 
-// TelegramManagerPoll returns the scheduler job for the dedicated account.
+// ManagerPoll returns the scheduler job for the dedicated account.
 // The scheduler calls the job serially and joins it before channel shutdown.
-func (s *Service) TelegramManagerPoll() func(context.Context) {
+func (s *SetupService) ManagerPoll() func(context.Context) {
 	var last *telegramManager
 	var offset int64
 	return func(ctx context.Context) {
@@ -174,7 +171,7 @@ func (s *Service) TelegramManagerPoll() func(context.Context) {
 			var err error
 			offset, err = manager.client.Poll(ctx, offset, func(id string, user int64) error {
 				return s.pairManagedOwner(ctx, manager, id, user)
-			}, func(update telegram.ManagedUpdate) error {
+			}, func(update ManagedUpdate) error {
 				return s.receiveManagedBot(ctx, manager, update)
 			})
 			if err != nil && ctx.Err() == nil {
@@ -184,7 +181,7 @@ func (s *Service) TelegramManagerPoll() func(context.Context) {
 	}
 }
 
-func (s *Service) refreshTelegramManager(ctx context.Context, manager *telegramManager) error {
+func (s *SetupService) refreshTelegramManager(ctx context.Context, manager *telegramManager) error {
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	username, err := manager.client.ManagementIdentity(ctx, manager.id)
@@ -197,20 +194,21 @@ func (s *Service) refreshTelegramManager(ctx context.Context, manager *telegramM
 	return err
 }
 
-func (s *Service) BeginTelegramManagedSetup(ctx context.Context, botID string) (TelegramManagedSetup, error) {
+// BeginManaged starts a setup for the current manager account.
+func (s *SetupService) BeginManaged(ctx context.Context, botID string) (ManagedSetup, error) {
 	s.mu.Lock()
 	manager := s.manager
 	s.mu.Unlock()
 	if manager == nil {
-		return TelegramManagedSetup{}, fmt.Errorf("%w: configure a Telegram manager first", ErrInvalid)
+		return ManagedSetup{}, fmt.Errorf("%w: configure a Telegram manager first", ErrInvalid)
 	}
 	if err := s.refreshTelegramManager(ctx, manager); err != nil {
-		return TelegramManagedSetup{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+		return ManagedSetup{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.manager != manager || manager.username == "" {
-		return TelegramManagedSetup{}, fmt.Errorf("%w: the Telegram manager is not available", ErrInvalid)
+		return ManagedSetup{}, fmt.Errorf("%w: the Telegram manager is not available", ErrInvalid)
 	}
 	// The username is the only per-request value the newbot link can return in an update.
 	// Keep its entropy separate from the private owner verification code.
@@ -219,48 +217,39 @@ func (s *Service) BeginTelegramManagedSetup(ctx context.Context, botID string) (
 	_, _ = rand.Read(secret[:])
 	_, _ = rand.Read(suffix[:])
 	now := time.Now()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return TelegramManagedSetup{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
-	if err = q.PruneTelegramManagedSetups(ctx, now.Add(-24*time.Hour).Unix()); err != nil {
-		return TelegramManagedSetup{}, err
-	}
-	if err = db.RequireActive(ctx, q, botID); err != nil {
-		return TelegramManagedSetup{}, err
-	}
-	if err = q.CancelBotTelegramManagedSetups(ctx, botID); err != nil {
-		return TelegramManagedSetup{}, err
-	}
-	row, err := q.CreateTelegramManagedSetup(ctx, sqlc.CreateTelegramManagedSetupParams{
-		ID: hex.EncodeToString(secret[:]), BotID: botID, ManagerID: manager.id,
-		Username: "dex_" + hex.EncodeToString(suffix[:]) + "_bot", ExpiresAt: now.Add(10 * time.Minute).Unix(),
-	})
-	if err != nil {
-		return TelegramManagedSetup{}, err
-	}
-	if err = tx.Commit(); err != nil {
-		return TelegramManagedSetup{}, err
+	var row sqlc.TelegramManagedSetup
+	if err := db.WriteActiveChannel(ctx, s.db, botID, func(q *sqlc.Queries) error {
+		if err := q.PruneTelegramManagedSetups(ctx, now.Add(-24*time.Hour).Unix()); err != nil {
+			return err
+		}
+		if err := q.CancelBotTelegramManagedSetups(ctx, botID); err != nil {
+			return err
+		}
+		var err error
+		row, err = q.CreateTelegramManagedSetup(ctx, sqlc.CreateTelegramManagedSetupParams{
+			ID: hex.EncodeToString(secret[:]), BotID: botID, ManagerID: manager.id,
+			Username: "dex_" + hex.EncodeToString(suffix[:]) + "_bot", ExpiresAt: now.Add(10 * time.Minute).Unix(),
+		})
+		return err
+	}); err != nil {
+		return ManagedSetup{}, err
 	}
 	return s.managedSetupView(row), nil
 }
 
-func (s *Service) GetTelegramManagedSetup(ctx context.Context, botID, id string) (TelegramManagedSetup, error) {
+// GetManaged returns the current step of a setup for this bot.
+func (s *SetupService) GetManaged(ctx context.Context, botID, id string) (ManagedSetup, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	row, err := s.q.GetTelegramManagedSetup(ctx, sqlc.GetTelegramManagedSetupParams{BotID: botID, ID: id})
-	if errors.Is(err, sql.ErrNoRows) {
-		return TelegramManagedSetup{}, ErrNotFound
-	}
 	if err != nil {
-		return TelegramManagedSetup{}, err
+		return ManagedSetup{}, err
 	}
 	return s.managedSetupView(row), nil
 }
 
-func (s *Service) CancelTelegramManagedSetup(ctx context.Context, botID, id string) error {
+// CancelManaged cancels a pending setup without changing the channel.
+func (s *SetupService) CancelManaged(ctx context.Context, botID, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return db.WriteActiveChannel(ctx, s.db, botID, func(q *sqlc.Queries) error {
@@ -268,9 +257,14 @@ func (s *Service) CancelTelegramManagedSetup(ctx context.Context, botID, id stri
 	})
 }
 
+// CancelManagedSetupsInLocked invalidates pending setups in the restore transaction.
+func (s *SetupService) CancelManagedSetupsInLocked(ctx context.Context, q *sqlc.Queries, botID string) error {
+	return q.CancelBotTelegramManagedSetups(ctx, botID)
+}
+
 // managedSetupView requires mu.
-func (s *Service) managedSetupView(row sqlc.TelegramManagedSetup) TelegramManagedSetup {
-	view := TelegramManagedSetup{ID: row.ID, State: row.State, ExpiresAt: row.ExpiresAt}
+func (s *SetupService) managedSetupView(row sqlc.TelegramManagedSetup) ManagedSetup {
+	view := ManagedSetup{ID: row.ID, State: row.State, ExpiresAt: row.ExpiresAt}
 	if view.State != "pending" {
 		return view
 	}
@@ -294,7 +288,7 @@ func (s *Service) managedSetupView(row sqlc.TelegramManagedSetup) TelegramManage
 	return view
 }
 
-func (s *Service) pairManagedOwner(ctx context.Context, manager *telegramManager, id string, owner int64) error {
+func (s *SetupService) pairManagedOwner(ctx context.Context, manager *telegramManager, id string, owner int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if manager != s.manager || manager.username == "" {
@@ -305,7 +299,7 @@ func (s *Service) pairManagedOwner(ctx context.Context, manager *telegramManager
 	})
 }
 
-func (s *Service) receiveManagedBot(ctx context.Context, manager *telegramManager, u telegram.ManagedUpdate) error {
+func (s *SetupService) receiveManagedBot(ctx context.Context, manager *telegramManager, u ManagedUpdate) error {
 	if u.User.ID <= 0 || u.User.IsBot || u.Bot.ID <= 0 || !u.Bot.IsBot || u.Bot.ID == manager.id {
 		return nil
 	}
@@ -333,7 +327,7 @@ func (s *Service) receiveManagedBot(ctx context.Context, manager *telegramManage
 	if err != nil || !telegramTokenPattern.MatchString(token) || !strings.HasPrefix(token, account+":") {
 		return s.failManagedSetup(ctx, row.ID)
 	}
-	if err := telegram.ValidateManagedToken(ctx, s.apiURL, token, u.Bot.ID); err != nil {
+	if err := ValidateManagedToken(ctx, s.apiURL, token, u.Bot.ID); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -342,13 +336,13 @@ func (s *Service) receiveManagedBot(ctx context.Context, manager *telegramManage
 	return s.connectManagedBot(ctx, manager, row, account, token)
 }
 
-func (s *Service) failManagedSetup(ctx context.Context, id string) error {
+func (s *SetupService) failManagedSetup(ctx context.Context, id string) error {
 	_, err := s.q.FinishTelegramManagedSetup(ctx, sqlc.FinishTelegramManagedSetupParams{ID: id, State: "failed", Now: time.Now().Unix()})
 	return err
 }
 
 // connectManagedBot keeps the saved channel until the new credential and settings are ready.
-func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManager, row sqlc.TelegramManagedSetup, account, token string) error {
+func (s *SetupService) connectManagedBot(ctx context.Context, manager *telegramManager, row sqlc.TelegramManagedSetup, account, token string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if manager != s.manager || manager.username == "" {
@@ -373,12 +367,12 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 		options = "{}"
 	}
 	ref := account + telegramVaultMarker + row.ID
-	cfg := telegram.Config{Token: token, CredentialRef: ref, APIURL: s.apiURL, AllowedUsers: []int64{row.OwnerID}, Pair: s.pairTelegram(row.BotID, ref)}
+	cfg := Config{Token: token, CredentialRef: ref, APIURL: s.apiURL, AllowedUsers: []int64{row.OwnerID}, Pair: s.pairTelegram(row.BotID, ref)}
 	if err := json.Unmarshal([]byte(options), &cfg.Options); err != nil {
 		return err
 	}
-	cfg.Webhook = telegram.WebhookConfig{URL: saved.WebhookUrl, SecretToken: saved.WebhookSecret}
-	if err := s.telegramVault.EditCredential(ref, &token); err != nil {
+	cfg.Webhook = WebhookConfig{URL: saved.WebhookUrl, SecretToken: saved.WebhookSecret}
+	if err := s.vault.EditCredential(ref, &token); err != nil {
 		return s.failManagedSetup(ctx, row.ID)
 	}
 	committed := false
@@ -388,18 +382,18 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 		}
 	}()
 	if saved.WebhookUrl != "" && !strings.HasPrefix(saved.Token, account+":") {
-		old, err := s.TelegramConfig(ctx, row.BotID)
+		old, err := s.Config(ctx, row.BotID)
 		if err != nil {
 			return err
 		}
 		// The callback URL and secret carry over, so the old account must stop sending there.
-		s.onTelegram(row.BotID, nil)
+		s.onChange(row.BotID, nil)
 		defer func() {
 			if !committed && db.CanStartChannel(ctx, s.q, row.BotID) {
-				s.onTelegram(row.BotID, old)
+				s.onChange(row.BotID, old)
 			}
 		}()
-		if err := telegram.DeleteWebhook(ctx, *old); err != nil {
+		if err := DeleteWebhook(ctx, *old); err != nil {
 			return s.failManagedSetup(ctx, row.ID)
 		}
 	}
@@ -425,9 +419,9 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 		return err
 	}
 	committed = true
-	s.onTelegram(row.BotID, nil)
+	s.onChange(row.BotID, nil)
 	if db.CanStartChannel(ctx, s.q, row.BotID) {
-		s.onTelegram(row.BotID, &cfg)
+		s.onChange(row.BotID, &cfg)
 	}
 	if strings.Contains(saved.Token, telegramVaultMarker) {
 		s.forgetTelegramCredential(saved.Token)
@@ -435,7 +429,7 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 	return nil
 }
 
-func (s *Service) checkTelegramAccount(ctx context.Context, botID, account string) error {
+func (s *SetupService) checkTelegramAccount(ctx context.Context, botID, account string) error {
 	owner, err := s.q.TelegramCredentialOwner(ctx, sqlc.TelegramCredentialOwnerParams{Account: account, BotID: botID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -446,9 +440,9 @@ func (s *Service) checkTelegramAccount(ctx context.Context, botID, account strin
 	return fmt.Errorf("%w: telegram is used by bot %q (%s)", ErrCredentialInUse, owner.Name, owner.ID)
 }
 
-func (s *Service) forgetTelegramCredential(ref string) {
+func (s *SetupService) forgetTelegramCredential(ref string) {
 	if ref != "" {
-		if err := s.telegramVault.EditCredential(ref, nil); err != nil {
+		if err := s.vault.EditCredential(ref, nil); err != nil {
 			slog.Warn("telegram: could not remove unused vault credential")
 		}
 	}

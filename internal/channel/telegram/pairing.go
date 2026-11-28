@@ -1,4 +1,4 @@
-package bot
+package telegram
 
 import (
 	"context"
@@ -10,16 +10,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-// CreateTelegramPairing replaces the previous link. The code grants host access.
-func (s *Service) CreateTelegramPairing(ctx context.Context, botID string) (string, int64, error) {
+// CreatePairing replaces the previous link. The code grants host access.
+func (s *SetupService) CreatePairing(ctx context.Context, botID string) (string, int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	cfg, err := s.TelegramConfig(ctx, botID)
+	cfg, err := s.Config(ctx, botID)
 	if err != nil {
 		return "", 0, err
 	}
@@ -29,7 +28,7 @@ func (s *Service) CreateTelegramPairing(ctx context.Context, botID string) (stri
 	if len(cfg.AllowedUsers) != 0 {
 		return "", 0, fmt.Errorf("%w: Telegram already has an owner", ErrInvalid)
 	}
-	username, err := telegram.Username(ctx, *cfg)
+	username, err := Username(ctx, *cfg)
 	if err != nil {
 		return "", 0, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
@@ -45,7 +44,7 @@ func (s *Service) CreateTelegramPairing(ctx context.Context, botID string) (stri
 	return "https://t.me/" + username + "?start=" + value, expires, nil
 }
 
-func (s *Service) pairTelegram(botID, token string) func(context.Context, string, int64) ([]int64, error) {
+func (s *SetupService) pairTelegram(botID, token string) func(context.Context, string, int64) ([]int64, error) {
 	return func(ctx context.Context, code string, user int64) ([]int64, error) {
 		// Never wait: settings changes hold mu while joining this bot.
 		if !s.mu.TryLock() {

@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha256"
-	"encoding/json/v2"
 	"errors"
 	"log/slog"
 	"maps"
@@ -71,13 +70,16 @@ func (s *Service) channelToolRead(ctx context.Context, id, view string) (any, er
 		}
 		return targets, nil
 	}
-	tg, err := s.telegramView(ctx, id)
-	if err != nil {
-		return nil, errors.New("cannot read channel settings")
+	var err error
+	tgState, tgPaired := "off", false
+	if s.telegram != nil {
+		tgState, tgPaired, err = s.telegram.State(ctx, id)
+		if err != nil {
+			return nil, errors.New("cannot read channel settings")
+		}
 	}
 	fsState, fsPaired := "off", false
 	if s.feishu != nil {
-		var err error
 		fsState, fsPaired, err = s.feishu.State(ctx, id)
 		if err != nil {
 			return nil, errors.New("cannot read channel settings")
@@ -91,10 +93,10 @@ func (s *Service) channelToolRead(ctx context.Context, id, view string) (any, er
 		}
 	}
 	if view == "channel_pairing" {
-		return map[string]bool{"telegram": len(tg.AllowedUsers) != 0, "feishu": fsPaired, "wechat": wxPaired}, nil
+		return map[string]bool{"telegram": tgPaired, "feishu": fsPaired, "wechat": wxPaired}, nil
 	}
 	// Provider runtime errors can contain upstream response text. Return states only.
-	return map[string]string{"telegram": tg.Status.State, "feishu": fsState, "wechat": wxState}, nil
+	return map[string]string{"telegram": tgState, "feishu": fsState, "wechat": wxState}, nil
 }
 
 func (s *Service) requestChannelChange(ctx context.Context, caller string, session int64, id, op, target string) (_ any, err error) {
@@ -168,13 +170,12 @@ func (s *Service) requestChannelChange(ctx context.Context, caller string, sessi
 // channelFingerprint detects replacement of the account or pairing before approval.
 // Only the hash stays in the pending request, and it never leaves control.
 func (s *Service) channelFingerprint(ctx context.Context, bot, platform string) ([sha256.Size]byte, error) {
-	var config any
-	var err error
 	switch platform {
 	case "telegram":
-		row, e := s.q.GetTelegramSettings(ctx, bot)
-		row.RetryAt = 0
-		config, err = row, e
+		if s.telegram == nil {
+			return [sha256.Size]byte{}, ErrChannelApproval
+		}
+		return s.telegram.FingerprintLocked(ctx, bot)
 	case "feishu":
 		if s.feishu == nil {
 			return [sha256.Size]byte{}, ErrChannelApproval
@@ -188,11 +189,6 @@ func (s *Service) channelFingerprint(ctx context.Context, bot, platform string) 
 	default:
 		return [sha256.Size]byte{}, ErrChannelApproval
 	}
-	if err != nil {
-		return [sha256.Size]byte{}, err
-	}
-	encoded, err := json.Marshal(config)
-	return sha256.Sum256(encoded), err
 }
 
 func (s *Service) ChannelApproval(id string) (ChannelApproval, error) {
@@ -248,7 +244,7 @@ func (s *Service) applyChannelChange(ctx context.Context, p channelApproval) err
 	case "disconnect":
 		switch p.target {
 		case "telegram":
-			return s.deleteTelegram(ctx, p.BotID)
+			return s.telegram.DisconnectLocked(ctx, p.BotID)
 		case "feishu":
 			return s.feishu.DisconnectLocked(ctx, p.BotID)
 		case "wechat":
@@ -257,8 +253,7 @@ func (s *Service) applyChannelChange(ctx context.Context, p channelApproval) err
 	case "revoke_pairing":
 		switch p.target {
 		case "telegram":
-			// Revoking pairing keeps the current transport and its credentials.
-			return s.setTelegram(ctx, p.BotID, "", nil, nil, "", nil)
+			return s.telegram.RevokePairingLocked(ctx, p.BotID)
 		case "feishu":
 			return s.feishu.RevokePairingLocked(ctx, p.BotID)
 		}

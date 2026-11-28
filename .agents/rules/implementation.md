@@ -26,7 +26,7 @@ The server and native app share the root `go.mod`. The root
 | `internal/background`        | Session Processes, output, wake-ups, and process supervision                        |
 | `internal/channel`           | Channel transport contract, optional capabilities, and frozen delivery values       |
 | `internal/channel/delivery`  | Bot lifecycle, channel commands, feedback previews, and durable reply outbox        |
-| `internal/channel/telegram`  | Telegram polling, pairing, protocol, and media adaptation                           |
+| `internal/channel/telegram`  | Telegram settings, managed setup, pairing, polling, protocol, and media adaptation  |
 | `internal/channel/feishu`    | Feishu/Lark settings, registration, pairing, events, cards, and media adaptation    |
 | `internal/channel/wechat`    | WeChat settings, QR login, polling, protocol, and media adaptation                  |
 | `internal/upload`            | Upload validation, file storage, and bot-scoped paths                               |
@@ -36,7 +36,7 @@ The server and native app share the root `go.mod`. The root
 | `internal/update`            | Release verification, maintenance coordination, and executable replacement          |
 | `internal/mcptest`           | Local MCP test servers; no production execution                                     |
 | `internal/settings`          | Global providers, model checks, 1Password credentials, access token                 |
-| `internal/bot`               | Bot settings, activity, paths, channel approvals, and Telegram settings             |
+| `internal/bot`               | Bot settings, activity, paths, and channel approvals                                |
 | `internal/task`              | Tasks, the source event store, holds, waits, and the `task_*` tools                 |
 | `internal/plugin`            | The seam that optional sources use: hooks, plugin API, jobs, and Task link tools    |
 | `plugins/<name>`             | One optional source, such as `plugins/github`. `internal/app` does not import it    |
@@ -84,8 +84,9 @@ In `apps/native`, `internal/webview` owns platform WebViews and navigation.
 - A new dependency needs the user's approval. Prefer the standard library,
   then a dependency the repository already has.
 - Application settings live in `control.sqlite`. `internal/settings` owns global
-  settings. `internal/bot` owns bot and Telegram settings. `internal/channel/feishu`
-  owns Feishu and Lark settings. `internal/channel/wechat` owns WeChat settings.
+  settings. `internal/bot` owns bot settings. `internal/channel/telegram` owns
+  Telegram settings. `internal/channel/feishu` owns Feishu and Lark settings.
+  `internal/channel/wechat` owns WeChat settings.
   `internal/session` owns session overrides. Do not add an environment variable
   or a file for a setting. Skills and the encrypted secret vault use files.
   MCP declarations stay in `control.sqlite`. The settings service passes

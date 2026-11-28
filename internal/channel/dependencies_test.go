@@ -45,11 +45,11 @@ func TestChannelImportBoundaries(t *testing.T) {
 	}
 }
 
-func TestBotDoesNotImportMigratedChannelAdapters(t *testing.T) {
+func TestBotDoesNotImportChannelAdapters(t *testing.T) {
 	t.Parallel()
 	const bot = "github.com/recally-io/dex/internal/bot"
 	for _, dep := range listPackages(t, "-f", "{{range .Imports}}{{println .}}{{end}}", bot) {
-		for _, platform := range []string{"feishu", "wechat"} {
+		for _, platform := range []string{"feishu", "wechat", "telegram"} {
 			if within(dep, channelPath+"/"+platform) {
 				t.Errorf("%s imports %s; the app must wire %s setup", bot, dep, platform)
 			}

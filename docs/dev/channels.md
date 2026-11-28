@@ -22,6 +22,8 @@ uses these optional capabilities:
 [`telegram.Bot`](../../internal/channel/telegram/telegram.go) is on when the settings
 have a bot token. By default, it reads messages with `getUpdates` long polling,
 so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-webhooks).
+The [Telegram setup service](../../internal/channel/telegram/setup.go) owns saved
+settings, pairing codes, and managed setup. The app connects it to the runtime.
 
 - Paired private chats share Main. The adapter accepts messages, edits, and
   callbacks only from private chats. A token with no allowed user waits for pairing.
@@ -50,9 +52,10 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
   updates for a finished setup do not fetch the token again. The replacement
   keeps the saved transport and webhook settings. Before reusing a webhook URL
   and secret, Dex stops the old receiver and removes its registration. If removal
-  or the local commit fails, Dex restarts the saved receiver. Cancellation,
-  expiry, failure, or a manual channel save leaves the saved settings unchanged
-  by that setup. Only a confirmed setup starts the channel with the new bot and
+  or the local commit fails, Dex restarts the saved receiver only if the bot is
+  still active. A canceled, expired, or failed setup does not change saved
+  settings. A manual save cancels the pending setup. Only a confirmed setup
+  starts the channel with the new bot and
   its verified owner as sole sender.
   A crash before the SQLite commit can leave an unused encrypted credential.
 - The bot registers `/menu`, `/status`, `/settings`, `/sessions`, `/workflows`,
@@ -289,9 +292,10 @@ WeChat runtime state is keyed by bot ID and owner.
 
 The app shares one channel settings lock across all bots and platforms. An
 archive stops channels after the archive transaction commits. Restore cancels
-pending Feishu registrations and WeChat logins. It starts the saved channels
-under the settings lock. If an archive callback gets the lock after restore,
-it leaves the channels running.
+pending Telegram managed setups, Feishu registrations, and WeChat logins.
+The restore transaction cancels managed setups before the bot becomes active.
+Restore starts the saved channels under the settings lock. If an archive
+callback gets the lock after restore, it leaves the channels running.
 
 [`delivery.Manager`](../../internal/channel/delivery/manager.go) owns bot lifetime,
 commands, and reply delivery. Settings changes stop the old bot

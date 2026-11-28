@@ -33,8 +33,8 @@ func (s *Service) StopChannels(ctx context.Context, id string) error {
 		err = nil
 	}
 	// Also stop when the read fails, so an archived bot does not keep its channels.
-	if s.onTelegram != nil {
-		s.onTelegram(id, nil)
+	if s.telegram != nil {
+		s.telegram.StopLocked(id)
 	}
 	if s.feishu != nil {
 		s.feishu.StopLocked(id)
@@ -59,7 +59,11 @@ func (s *Service) RestoreBot(ctx context.Context, id string) error {
 	if s.wechat != nil {
 		s.wechat.CancelLoginLocked(id)
 	}
-	tg, errTG := s.TelegramConfig(ctx, id)
+	var startTelegram func(context.Context)
+	var errTG error
+	if s.telegram != nil {
+		startTelegram, errTG = s.telegram.PrepareStartLocked(ctx, id)
+	}
 	var startFeishu func(context.Context)
 	var errFS error
 	if s.feishu != nil {
@@ -73,8 +77,8 @@ func (s *Service) RestoreBot(ctx context.Context, id string) error {
 	if err := errors.Join(errTG, errFS, errWX); err != nil {
 		return err
 	}
-	if s.onTelegram != nil && (tg == nil || db.CanStartChannel(ctx, s.q, id)) {
-		s.onTelegram(id, tg)
+	if startTelegram != nil {
+		startTelegram(ctx)
 	}
 	if startFeishu != nil {
 		startFeishu(ctx)
@@ -101,8 +105,10 @@ func (s *Service) restoreBotLocked(ctx context.Context, id string) error {
 	}
 	// Restore and cancellation must commit together. The manager can replay a
 	// pre-archive setup even if this process never received the stop callback.
-	if err := q.CancelBotTelegramManagedSetups(ctx, id); err != nil {
-		return err
+	if s.telegram != nil {
+		if err := s.telegram.CancelManagedSetupsInLocked(ctx, q, id); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

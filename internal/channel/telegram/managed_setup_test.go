@@ -1,4 +1,4 @@
-package bot_test
+package telegram_test
 
 import (
 	"io"
@@ -9,7 +9,7 @@ import (
 	"testing"
 	"uuid"
 
-	"github.com/recally-io/dex/internal/bot"
+	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/vault"
 )
 
@@ -23,11 +23,8 @@ func TestUserDoesNotKeepAnUncommittedTelegramManagerCredential(t *testing.T) {
 		_, _ = io.WriteString(w, `{"ok":true,"result":{"id":456,"username":"DexManagerBot","is_bot":true,"can_manage_bots":true}}`)
 	}))
 	t.Cleanup(api.Close)
-	s := bot.New(q, conn, new(sync.Mutex), nil, api.URL, nil)
-	if err := s.ConfigureTelegramVault(ctx, store); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.SetTelegramManager(ctx, "456:old"); err != nil {
+	s := telegram.NewSetup(q, conn, new(sync.Mutex), api.URL, store, nil, nil)
+	if err := s.SetManager(ctx, "456:old"); err != nil {
 		t.Fatal(err)
 	}
 	oldRef, err := q.TelegramManagerCredential(ctx)
@@ -39,7 +36,7 @@ func TestUserDoesNotKeepAnUncommittedTelegramManagerCredential(t *testing.T) {
 		BEGIN SELECT RAISE(ABORT, NEW.credential_ref); END`); err != nil {
 		t.Fatal(err)
 	}
-	saveErr := s.SetTelegramManager(ctx, "456:new")
+	saveErr := s.SetManager(ctx, "456:new")
 	if saveErr == nil {
 		t.Fatal("expected the replacement to fail")
 	}

@@ -1,4 +1,4 @@
-package bot_test
+package telegram_test
 
 import (
 	"database/sql"
@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -26,23 +25,23 @@ func TestUserCannotSaveTelegramSettingsAfterArchiveCommit(t *testing.T) {
 	}
 	var started bool
 	var archiveErr error
-	s := bot.New(sqlc.New(writer), writer, new(sync.Mutex), nil, "", func(_ string, cfg *telegram.Config) {
+	s := telegram.NewSetup(sqlc.New(writer), writer, new(sync.Mutex), "", nil, func(_ string, cfg *telegram.Config) {
 		if cfg != nil {
 			started = true
 			return
 		}
 		// Commit the archive as the old account stops, before the settings write.
 		archiveErr = db.ArchiveBot(t.Context(), q, id, time.Now())
-	})
+	}, nil)
 
 	// When the save continues after the archive commits.
-	saveErr := s.SetTelegram(t.Context(), id, "456:new", nil, nil, "", nil)
+	saveErr := s.Set(t.Context(), id, "456:new", nil, nil, "", nil)
 	if archiveErr != nil {
 		t.Fatal(archiveErr)
 	}
 
 	// Then the old credentials remain and no runtime starts.
-	cfg, err := s.TelegramConfig(t.Context(), id)
+	cfg, err := s.Config(t.Context(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +53,7 @@ func TestUserCannotSaveTelegramSettingsAfterArchiveCommit(t *testing.T) {
 
 func TestUserCannotPairTelegramAfterArchiveCommit(t *testing.T) {
 	t.Parallel()
-	// Given an archived bot with still-valid a pairing code and a runtime that has not stopped yet.
+	// Given an archived bot with a valid pairing code and a runtime that has not stopped yet.
 	q, writer, id := archiveRaceDB(t)
 	ctx := t.Context()
 	if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: id, Token: "123:secret", Options: "{}"}); err != nil {
@@ -63,8 +62,8 @@ func TestUserCannotPairTelegramAfterArchiveCommit(t *testing.T) {
 	if err := q.SetTelegramPairing(ctx, sqlc.SetTelegramPairingParams{BotID: id, PairingCode: "code", PairingExpires: time.Now().Add(time.Minute).Unix()}); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, writer, new(sync.Mutex), nil, "", nil)
-	tg, err := s.TelegramConfig(ctx, id)
+	s := telegram.NewSetup(q, writer, new(sync.Mutex), "", nil, nil, nil)
+	tg, err := s.Config(ctx, id)
 	if err != nil || tg == nil {
 		t.Fatalf("read initial Telegram settings: configured=%t err=%v", tg != nil, err)
 	}
@@ -92,17 +91,21 @@ func TestUserCannotDeleteTelegramAfterArchiveCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	var archiveErr error
+	archive := sync.OnceFunc(func() { archiveErr = db.ArchiveBot(ctx, q, id, time.Now()) })
 	var started bool
-	s := bot.New(q, writer, new(sync.Mutex), nil, "", func(_ string, cfg *telegram.Config) {
-		if cfg == nil && archiveErr == nil {
-			archiveErr = db.ArchiveBot(ctx, q, id, time.Now())
-		} else if cfg != nil {
+	s := telegram.NewSetup(q, writer, new(sync.Mutex), "", nil, func(_ string, cfg *telegram.Config) {
+		if cfg == nil {
+			archive()
+		} else {
 			started = true
 		}
-	})
+	}, nil)
 
 	// When the disconnect continues, then the archived bot keeps its settings.
-	deleteErr := s.DeleteTelegram(ctx, id)
+	deleteErr := s.Delete(ctx, id)
+	if archiveErr != nil {
+		t.Fatal(archiveErr)
+	}
 	row, err := q.GetTelegramSettings(ctx, id)
 	if !errors.Is(deleteErr, db.ErrBotArchived) || err != nil || row.Token != "123:old" || started {
 		t.Fatalf("after archive: disconnect err=%v read err=%v old credentials kept=%t start requested=%t", deleteErr, err, row.Token == "123:old", started)
@@ -126,10 +129,10 @@ func TestUserCannotCreateTelegramPairingLinkAfterArchiveCommit(t *testing.T) {
 		_, _ = io.WriteString(w, `{"ok":true,"result":{"username":"example_bot"}}`)
 	}))
 	t.Cleanup(api.Close)
-	s := bot.New(q, writer, new(sync.Mutex), nil, api.URL, nil)
+	s := telegram.NewSetup(q, writer, new(sync.Mutex), api.URL, nil, nil, nil)
 
 	// When link creation continues, then the archived bot does not get a code.
-	link, _, linkErr := s.CreateTelegramPairing(ctx, id)
+	link, _, linkErr := s.CreatePairing(ctx, id)
 	row, err := q.GetTelegramSettings(ctx, id)
 	if !errors.Is(linkErr, db.ErrBotArchived) || err != nil || link != "" || row.PairingCode != "" {
 		t.Fatalf("after archive: link err=%v read err=%v link returned=%t code saved=%t", linkErr, err, link != "", row.PairingCode != "")
