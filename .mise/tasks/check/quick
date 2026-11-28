@@ -19,7 +19,7 @@ touched() { $all || grep -qE "$1" <<<"$changed"; }
 
 # go build and golangci-lint need the embedded web assets, so build them before the parallel step.
 if touched '^apps/(web|assets)/' || [[ ! -f apps/web/dist/index.html ]]; then
-  (cd apps/web && bunx --no-install vp build)
+  mise run build:web
 fi
 
 logs="$(mktemp -d)"
@@ -46,16 +46,17 @@ if touched '^apps/web/'; then
 fi
 job go-lint bash -c 'golangci-lint fmt --diff && golangci-lint run && go build ./...'
 
-# The Apple client is a separate Go module. Its WebKit tests need macOS.
-# Skip apple:test's build:web dependency because apps/web/dist was already built above;
-# rebuilding it here would wipe dist/ while parallel go-lint and go-test embed it.
-if [[ $(uname -s) == Darwin ]] && grep -qE '^apps/(native|assets)/' <<<"$changed"; then
+# apple:test runs the headless client suite and the WebKit tests on macOS.
+# Rebuilding the web assets here would race with go-lint and go-test.
+apple_tests=false
+if [[ $(uname -s) == Darwin ]] && touched '^(apps/(native|assets|web)/|go\.(mod|sum)$|internal/(app|localdex|plugin)/|plugins/)'; then
   job apple-test mise run --skip-deps apple:test
+  apple_tests=true
 fi
 
 packages=()
 while IFS= read -r dir; do
-  [[ "$dir" == apps/native || "$dir" == apps/native/* ]] && continue
+  if $apple_tests && [[ "$dir" == apps/native || "$dir" == apps/native/* ]]; then continue; fi
   if [[ "$dir" != internal/app && -n "$(find "$dir" -maxdepth 1 -name '*.go' -print -quit 2>/dev/null)" ]]; then
     packages+=("./$dir")
   fi

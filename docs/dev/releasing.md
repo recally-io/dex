@@ -22,11 +22,13 @@ jobs save their JSON timings as a seven-day artifact. The jobs share the main
 Go cache without saving duplicate archives. Before the save on `main`, the Go
 and native jobs delete the cache entries that they did not use, so the cache
 does not grow on each run.
-The native job builds darwin and linux for amd64 and arm64 without cgo.
+The native job builds the server for darwin and linux on amd64 and arm64
+without cgo. It also checks that the native app compiles on Linux amd64 and
+that the server does not link NSGo.
 When you add a step to `check` in `mise.toml`, add it to the workflow too.
 
-The [Apple client workflow](../../.github/workflows/apple-client.yml) tests the separate
-client module on macOS when client inputs change. It builds development apps for
+The [Apple client workflow](../../.github/workflows/apple-client.yml) runs the
+client tests on macOS when client inputs change. It builds development apps for
 Apple silicon and iOS Simulator. It does not use signing credentials or publish apps.
 See the [Apple client guide](../../apps/native/README.md) for device and distribution builds.
 

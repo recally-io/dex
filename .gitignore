@@ -3,6 +3,7 @@
 /dist/
 /apps/web/dist/
 node_modules/
+.nsgo/
 
 .env
 .local/

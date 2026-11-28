@@ -5,6 +5,12 @@ on:
     paths:
       - apps/native/**
       - apps/assets/**
+      - apps/web/**
+      - internal/**
+      - plugins/**
+      - go.mod
+      - go.sum
+      - mise.toml
       - .mise/tasks/android/**
       - .github/workflows/android-client.yml
       - .github/workflows/release.yml
@@ -13,6 +19,12 @@ on:
     paths:
       - apps/native/**
       - apps/assets/**
+      - apps/web/**
+      - internal/**
+      - plugins/**
+      - go.mod
+      - go.sum
+      - mise.toml
       - .mise/tasks/android/**
       - .github/workflows/android-client.yml
   workflow_dispatch:
@@ -29,5 +41,5 @@ jobs:
       - uses: jdx/mise-action@v5.3.0
         with:
           install: false
-      - run: mise run install:web
+      - run: mise run install
       - run: mise run android:build

@@ -18,10 +18,11 @@ See [Tasks](tasks.md#sources-and-held-events) for routing, waits, and holds.
 | `internal/app`    | Builds the plugins, reads `enabled_plugins`, and mounts the enabled ones  |
 | `plugins/<name>`  | One source: hooks, API, migrations, queries, jobs, tools, event parsing   |
 | `internal/task`   | The event store, routing, holds, waits, links, and Task alerts            |
-| `cmd/dex`         | The list of plugins in this build (`app.Config.Plugins`)                  |
+| `plugins/builtin` | The list of factories for the server and the local workspace              |
 
-The core in `internal/` never imports a package in `plugins/`. A plugin can
-import the core, but not another plugin. Shared code that two plugins need goes
+`cmd/dex` and `internal/localdex` pass this list to `internal/app`. The app
+package does not import plugin implementations. A plugin implementation can
+import the core, but not another plugin implementation. Shared code that two plugins need goes
 into `internal/plugin`. A plugin gets only `plugin.Deps`: the control database
 and the Task event store. It writes Task state only through
 `internal/task`, so every source shares one set of routing, hold, and
@@ -124,8 +125,8 @@ target back to `agents` when the core table changes its name.
    `plugin_<name>_` tables, embed it, and set `Migrations`. Add its queries in
    `plugins/<name>/queries` and a `sqlc.yaml` target. Its package tests call
    `plugin.Migrate` after `db.Open`.
-4. Add the factory to `cmd/dex` and to the default list in the app test
-   helper. Do not add an `enabled_plugins` row, so the plugin starts off.
+4. Add the factory to `plugins/builtin` and to the default list in the app
+   test helper. Do not add an `enabled_plugins` row, so the plugin starts off.
 5. Run `mise run generate:api` and `mise run generate:db`. The drift checks
    cover every `plugins/*` directory.
 6. Add an E2E test that turns the plugin on, restarts dex, and uses its hook or

@@ -11,11 +11,12 @@ import (
 	"github.com/nsgo-dev/nsgo"
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/ui"
+	"github.com/recally-io/dex/apps/native/internal/webview"
 	"github.com/recally-io/dex/apps/native/locales"
 )
 
 const savedOriginKey = "dex.origin"
-const workspaceSettingsURL = "dex-workspace://settings"
+const localWorkspaceTarget = webview.LocalTarget
 
 type connectionPhase uint8
 
@@ -28,7 +29,7 @@ const (
 	online
 )
 
-func main() { nsgo.Run(root, dexWebViewOptions()...) }
+func main() { nsgo.Run(root, webview.Options()...) }
 
 func root(cx *core.Scope) core.Node {
 	cx.SetTheme(dexTheme())
@@ -36,7 +37,7 @@ func root(cx *core.Scope) core.Node {
 	mac := cx.Env().OS() == core.OSMacOS
 	store := cx.Storage()
 	stored, _ := store.GetItem(savedOriginKey)
-	if origin, ok := canonicalOrigin(stored, mac); stored != localWorkspaceTarget && (!ok || origin != stored) {
+	if origin, ok := webview.CanonicalOrigin(stored, mac); stored != localWorkspaceTarget && (!ok || origin != stored) {
 		stored = ""
 		store.RemoveItem(savedOriginKey)
 	}
@@ -93,7 +94,7 @@ func root(cx *core.Scope) core.Node {
 	clearSignIn := func(done func()) {
 		phase.Set(clearingSignIn)
 		message.Set(nil)
-		clearDexWebView(cx, storeOwner.Get(), func(err error) {
+		webview.ClearSiteData(cx, storeOwner.Get(), func(err error) {
 			if err != nil {
 				message.Set(locales.ClearFailed)
 				showForm()
@@ -181,7 +182,7 @@ func root(cx *core.Scope) core.Node {
 		if busy() {
 			return
 		}
-		target, ok := canonicalOrigin(draft.Get(), mac)
+		target, ok := webview.CanonicalOrigin(draft.Get(), mac)
 		if !ok {
 			message.Set(locales.InvalidAddress)
 			return
@@ -221,7 +222,7 @@ func root(cx *core.Scope) core.Node {
 
 	// A system link also opens settings when an older server has no settings link.
 	cx.OnOpenLinks(func(links []string) {
-		if !slices.Contains(links, workspaceSettingsURL) {
+		if !slices.Contains(links, webview.SettingsURL) {
 			return
 		}
 		switch phase.Get() {
@@ -229,6 +230,7 @@ func root(cx *core.Scope) core.Node {
 			requestedSettings = true
 		case online:
 			phase.Set(switchWorkspace)
+		case editAddress, switchWorkspace, clearingSignIn, offline:
 		}
 	})
 
@@ -300,6 +302,7 @@ func root(cx *core.Scope) core.Node {
 				return locales.Offline(cx) + " " + locales.LocalOffline(cx)
 			}
 			return locales.Offline(cx)
+		case editAddress, switchWorkspace, online:
 		}
 		return ""
 	})
@@ -312,11 +315,12 @@ func root(cx *core.Scope) core.Node {
 			When: func() bool { return phase.Get() == online },
 			Then: func(view *core.Scope) core.Node {
 				target, id := attempt.Get(), mount
-				return dexWebView(view, target, localHandler, func(next connectionPhase) {
+				leave := func(next connectionPhase) {
 					if phase.Get() == online && id == mount {
 						phase.Set(next)
 					}
-				})
+				}
+				return webview.View(view, target, localHandler, func() { leave(offline) }, func() { leave(switchWorkspace) })
 			},
 			Else: func(*core.Scope) core.Node {
 				return core.Scroll{

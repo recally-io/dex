@@ -5,6 +5,12 @@ on:
     paths:
       - apps/assets/**
       - apps/native/**
+      - apps/web/**
+      - internal/**
+      - plugins/**
+      - go.mod
+      - go.sum
+      - mise.toml
       - .mise/tasks/apple/**
       - .github/workflows/apple-client.yml
       - .github/workflows/release.yml
@@ -14,6 +20,12 @@ on:
     paths:
       - apps/assets/**
       - apps/native/**
+      - apps/web/**
+      - internal/**
+      - plugins/**
+      - go.mod
+      - go.sum
+      - mise.toml
       - .mise/tasks/apple/**
       - .github/workflows/apple-client.yml
       - .github/workflows/release.yml
@@ -36,7 +48,7 @@ jobs:
       - uses: jdx/mise-action@v5.3.0
         with:
           install: false
-      - run: mise run install:web
+      - run: mise run install
       - run: mise run apple:test
       - run: mise run apple:build
       - run: mise run release:mac-app

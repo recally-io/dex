@@ -11,8 +11,11 @@ import (
 
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/nsgotest"
-	"github.com/recally-io/dex/localdex"
+	"github.com/recally-io/dex/apps/native/internal/webview"
+	"github.com/recally-io/dex/internal/localdex"
 )
+
+func TestMain(m *testing.M) { nsgotest.Main(m) }
 
 func TestUserOnPhoneCannotSaveAnHTTPAddress(t *testing.T) {
 	t.Parallel()
@@ -68,10 +71,10 @@ func TestUserChoosesAndForgetsLocalWorkspace(t *testing.T) {
 		t.Fatalf("saved workspace = %q, want local", got)
 	}
 
-	app.OpenLinks(workspaceSettingsURL)
+	app.OpenLinks(webview.SettingsURL)
 	app.Press("role:button Back to workspace")
 	app.Find("id:dex-workspace")
-	app.OpenLinks(workspaceSettingsURL)
+	app.OpenLinks(webview.SettingsURL)
 	app.Press("role:button Forget local selection")
 	app.WaitUntil(15*time.Second, func() bool {
 		_, saved := app.Storage().GetItem(savedOriginKey)
@@ -149,7 +152,7 @@ func TestUserEntersServerOrigin(t *testing.T) {
 		{"https://dex.example.com\\.invalid", false, ""},
 		{"dex.example.com", false, ""},
 	} {
-		got, ok := canonicalOrigin(tc.input, tc.mac)
+		got, ok := webview.CanonicalOrigin(tc.input, tc.mac)
 		if got != tc.want || ok != (tc.want != "") {
 			t.Errorf("canonicalOrigin(%q, %v) = %q, %v; want %q", tc.input, tc.mac, got, ok, tc.want)
 		}

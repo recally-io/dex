@@ -1,4 +1,4 @@
-package main
+package bridge
 
 import (
 	"bytes"
@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/localdex"
+	"github.com/recally-io/dex/internal/localdex"
 )
 
 func TestUserLocalWorkspaceServesUIAndFiles(t *testing.T) {
 	t.Parallel()
 	bridge := startTestBridge(t)
-	page, err := bridge.ServeStatic(t.Context(), http.MethodGet, localAppleOrigin+"/", nil)
+	page, err := bridge.serveStatic(t.Context(), http.MethodGet, AppleOrigin+"/", nil)
 	if err != nil || page.Status != http.StatusOK || !bytes.Contains(page.Body, []byte(`id="root"`)) {
 		t.Fatalf("open workspace: status %d, error %v", page.Status, err)
 	}
@@ -25,12 +25,12 @@ func TestUserLocalWorkspaceServesUIAndFiles(t *testing.T) {
 	if len(asset) != 2 {
 		t.Fatal("workspace did not include its script")
 	}
-	android, err := bridge.ServeStatic(t.Context(), http.MethodGet, localAndroidOrigin+"/", nil)
+	android, err := bridge.serveStatic(t.Context(), http.MethodGet, localAndroidOrigin+"/", nil)
 	shim, module := bytes.Index(android.Body, []byte(localBridgeJS)), bytes.Index(android.Body, asset[0])
 	if err != nil || android.Status != http.StatusOK || shim < 0 || module < shim || bytes.Contains(page.Body, []byte(localBridgeJS)) {
 		t.Fatalf("Android must run the shim before the app; Apple uses WKUserScript (status %d, error %v)", android.Status, err)
 	}
-	js, err := bridge.ServeStatic(t.Context(), http.MethodGet, localAndroidOrigin+string(asset[1]), nil)
+	js, err := bridge.serveStatic(t.Context(), http.MethodGet, localAndroidOrigin+string(asset[1]), nil)
 	if err != nil || js.Status != http.StatusOK || !strings.Contains(js.Headers.Get("Content-Type"), "javascript") || len(js.Body) == 0 {
 		t.Fatalf("load script: status %d, headers %v, error %v", js.Status, js.Headers, err)
 	}
@@ -57,7 +57,7 @@ func TestUserLocalWorkspaceServesUIAndFiles(t *testing.T) {
 	if err := json.Unmarshal(result.Body, &upload); err != nil || upload.ID == "" {
 		t.Fatalf("upload response: %s, %v", result.Body, err)
 	}
-	got, err := bridge.ServeStatic(t.Context(), http.MethodGet, path+"/"+upload.ID, nil)
+	got, err := bridge.serveStatic(t.Context(), http.MethodGet, path+"/"+upload.ID, nil)
 	if err != nil || got.Status != http.StatusOK || !bytes.Equal(got.Body, data) {
 		t.Fatalf("download upload: status %d, body %q, error %v", got.Status, got.Body, err)
 	}
@@ -71,7 +71,7 @@ func TestUserEditsLocalWorkspaceAndReceivesEvents(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	chunks, ended := make(chan string, 8), make(chan error, 1)
-	if err := bridge.OpenSSE(ctx, "tasks", "/api/tasks/events", "0", func(chunk []byte) {
+	if err := bridge.openSSE(ctx, "tasks", "/api/tasks/events", "0", func(chunk []byte) {
 		select {
 		case chunks <- string(chunk):
 		case <-ctx.Done():
@@ -79,7 +79,7 @@ func TestUserEditsLocalWorkspaceAndReceivesEvents(t *testing.T) {
 	}, func(err error) { ended <- err }); err != nil {
 		t.Fatal(err)
 	}
-	defer bridge.CloseSSE("tasks")
+	defer bridge.closeSSE("tasks")
 	wait := func(want string) {
 		t.Helper()
 		for {
@@ -108,7 +108,7 @@ func TestUserEditsLocalWorkspaceAndReceivesEvents(t *testing.T) {
 	if !bytes.Contains(patch.Body, []byte(`"New title"`)) {
 		t.Fatalf("patch task: %s", patch.Body)
 	}
-	bridge.CloseSSE("tasks")
+	bridge.closeSSE("tasks")
 	select {
 	case err := <-ended:
 		if err != nil || ctx.Err() != nil {
@@ -119,7 +119,7 @@ func TestUserEditsLocalWorkspaceAndReceivesEvents(t *testing.T) {
 	}
 }
 
-func startTestBridge(t *testing.T) *localBridge {
+func startTestBridge(t *testing.T) *Bridge {
 	t.Helper()
 	instance, err := localdex.Start(t.Context(), localdex.Config{DataDir: t.TempDir(), Mobile: true})
 	if err != nil {
@@ -130,12 +130,12 @@ func startTestBridge(t *testing.T) *localBridge {
 			t.Error(err)
 		}
 	})
-	return &localBridge{handler: instance.Handler()}
+	return New(instance.Handler())
 }
 
-func fetchLocal(t *testing.T, bridge *localBridge, method, path string, body []byte, contentType string, want int) localResponse {
+func fetchLocal(t *testing.T, bridge *Bridge, method, path string, body []byte, contentType string, want int) Response {
 	t.Helper()
-	response, err := bridge.Fetch(t.Context(), localRequest{Method: method, URL: path, Body: body, Header: http.Header{
+	response, err := bridge.fetch(t.Context(), localRequest{Method: method, URL: path, Body: body, Header: http.Header{
 		"Content-Type": {contentType}, "Origin": {"null"}, "Sec-Fetch-Site": {"cross-site"},
 	}})
 	if err != nil || response.Status != want {
@@ -144,7 +144,7 @@ func fetchLocal(t *testing.T, bridge *localBridge, method, path string, body []b
 	return response
 }
 
-func localTestBot(t *testing.T, bridge *localBridge) string {
+func localTestBot(t *testing.T, bridge *Bridge) string {
 	t.Helper()
 	result := fetchLocal(t, bridge, http.MethodGet, "/api/bots", nil, "", http.StatusOK)
 	var list struct {

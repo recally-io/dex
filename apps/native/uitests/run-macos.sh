@@ -40,7 +40,7 @@ id="io.recally.dex.qa.mac.$(uuidgen | tr '[:upper:]' '[:lower:]')"
 (
   cd "$source/.."
   unset NSGO_NOTARY_KEY
-  mise exec go@1.27.3 -- go tool nsgo build -target macos_arm64 -id "$id" \
+  mise exec -- go tool nsgo build -target macos_arm64 -id "$id" \
     -channel none -installers=false -open=false -sign=- -notarize= -output "$work/build"
 ) > "$output/mac-build.log" 2>&1
 app=$(find "$work/build" -type d -name Dex.app -print -quit)

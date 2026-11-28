@@ -4,10 +4,13 @@ Read this before you change code, dependencies, native execution, or stored data
 
 ## Modules
 
+The server and native app share the root Go 1.27.3 module.
+
 | Path                        | Owns                                                                                |
 | --------------------------- | ----------------------------------------------------------------------------------- |
 | `cmd/dex`                   | Process entry: data directory, address, HTTP server                                 |
 | `internal/app`              | Wiring: business storage, engine, session service, HTTP, channels                   |
+| `internal/localdex`         | In-process workspace runtime with no HTTP listener                                  |
 | `internal/session`          | Input intents, business receipts, child session turns and results, source state     |
 | `internal/engine`           | PiG Harnesses, execution storage, model access, tool runtime, transcript projection |
 | `internal/db`               | `control.sqlite`, goose migrations, sqlc queries                                    |
@@ -34,8 +37,13 @@ Read this before you change code, dependencies, native execution, or stored data
 | `internal/bot`              | Bot settings, activity, paths, channel configuration                                |
 | `internal/task`             | Tasks, the source event store, holds, waits, and the `task_*` tools                 |
 | `internal/plugin`           | The seam that optional sources use: hooks, plugin API, jobs, and Task link tools    |
-| `plugins/<name>`            | One optional source, such as `plugins/github`. The core does not import it          |
+| `plugins/<name>`            | One optional source, such as `plugins/github`. `internal/app` does not import it    |
+| `plugins/builtin`           | Plugin factories for the server and the local workspace                             |
 | `apps/web`                  | React UI, built into `apps/web/dist` and embedded                                   |
+| `apps/native`               | Native app entry, theme, and workspace selection                                    |
+
+In `apps/native`, `internal/webview` owns platform WebViews and navigation.
+`internal/bridge` serves local requests and streams SSE.
 
 ## Rules
 

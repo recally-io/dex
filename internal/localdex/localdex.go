@@ -8,11 +8,8 @@ import (
 	"sync"
 
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/sysops"
-	"github.com/recally-io/dex/plugins/email"
-	"github.com/recally-io/dex/plugins/github"
-	"github.com/recally-io/dex/plugins/webhook"
+	"github.com/recally-io/dex/plugins/builtin"
 )
 
 // Config selects the workspace data, version, and tool environment.
@@ -41,7 +38,7 @@ func Start(ctx context.Context, cfg Config) (*Instance, error) {
 		DataDir:      cfg.DataDir,
 		Version:      cfg.Version,
 		Logs:         sysops.NewLogBuffer(0),
-		Plugins:      []plugin.Factory{github.New, webhook.New, email.New},
+		Plugins:      builtin.Factories(),
 	}
 	if cfg.Mobile {
 		config.Home = cfg.DataDir

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/recally-io/dex/localdex"
+	"github.com/recally-io/dex/internal/localdex"
 )
 
 func TestUserOpensLocalWorkspaceWithoutAServer(t *testing.T) {

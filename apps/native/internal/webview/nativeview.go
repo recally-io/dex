@@ -1,22 +1,31 @@
-package main
+// Package webview hosts the Dex workspace in a native view.
+package webview
 
 import (
 	"net/http"
 	"net/url"
 
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/recally-io/dex/apps/native/internal/bridge"
 	"github.com/recally-io/dex/apps/native/locales"
 )
 
 const dexWebComponent = "DexWorkspaceWebView"
 
-func dexWebView(cx *core.Scope, origin string, handler http.Handler, leave func(connectionPhase)) core.Node {
+// LocalTarget identifies the local workspace in the saved workspace selection.
+const LocalTarget = "local"
+
+// SettingsURL opens the app's workspace settings.
+const SettingsURL = "dex-workspace://settings"
+
+// View opens a workspace. Only LocalTarget uses the local handler.
+func View(cx *core.Scope, origin string, handler http.Handler, onFailure, onSettings func()) core.Node {
 	active, alert := true, false
 	cx.Cleanup(func() { active = false })
 	ref := new(core.Ref)
-	var bridge *localBridge
-	if origin == localWorkspaceTarget {
-		bridge = &localBridge{handler: handler}
+	var local *bridge.Bridge
+	if origin == LocalTarget {
+		local = bridge.New(handler)
 	}
 	ctx := cx.Context()
 	send := func(command string, value any) {
@@ -34,15 +43,15 @@ func dexWebView(cx *core.Scope, origin string, handler http.Handler, leave func(
 			}
 			switch event {
 			case "localMessage", "localStatic":
-				if raw, ok := data.(string); ok && bridge != nil {
-					bridge.handleMessage(ctx, raw, event == "localStatic", send)
+				if raw, ok := data.(string); ok && local != nil {
+					local.HandleMessage(ctx, raw, event == "localStatic", send)
 				}
 				return
 			case "failure":
-				leave(offline)
+				onFailure()
 				return
 			case "settings":
-				leave(switchWorkspace)
+				onSettings()
 				return
 			}
 			if alert {
@@ -61,7 +70,7 @@ func dexWebView(cx *core.Scope, origin string, handler http.Handler, leave func(
 				}
 				title, message, target = locales.NavExternalTitle(cx), locales.NavExternalMessage(cx, u.Host), link
 			case "blocked":
-				if bridge != nil {
+				if local != nil {
 					return
 				}
 				title, message, target = locales.NavBlockedTitle(cx), locales.NavBlockedMessage(cx), origin

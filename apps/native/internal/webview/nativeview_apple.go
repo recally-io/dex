@@ -1,6 +1,6 @@
 //go:build darwin && !tvos && !watchos
 
-package main
+package webview
 
 import (
 	"crypto/sha256"
@@ -19,9 +19,11 @@ import (
 	"github.com/ebitengine/purego/objc"
 	"github.com/nsgo-dev/nsgo"
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/recally-io/dex/apps/native/internal/bridge"
 )
 
-func dexWebViewOptions() []nsgo.Option {
+// Options returns the NSGo registration for the workspace view.
+func Options() []nsgo.Option {
 	return []nsgo.Option{nsgo.Component(dexWebComponent, func(cx *core.NativeContext) core.NativeComponent {
 		class := "NSView"
 		if runtime.GOOS == "ios" {
@@ -31,9 +33,10 @@ func dexWebViewOptions() []nsgo.Option {
 	})}
 }
 
-func clearDexWebView(cx *core.Scope, oldOrigin string, done func(error)) {
+// ClearSiteData removes the previous workspace's sign-in data.
+func ClearSiteData(cx *core.Scope, oldOrigin string, done func(error)) {
 	answer := func(err error) { cx.Post(func() { done(err) }) }
-	canonical, ok := canonicalOrigin(oldOrigin, runtime.GOOS == "darwin")
+	canonical, ok := CanonicalOrigin(oldOrigin, runtime.GOOS == "darwin")
 	if !ok || canonical != oldOrigin {
 		answer(errors.New("cannot clear the Dex data store without its origin"))
 		return
@@ -208,9 +211,9 @@ func (h *dexWorkspaceHost) SetProp(name string, value any) {
 		return
 	}
 	raw, _ := value.(string)
-	address, storeID := localAppleOrigin, dexStoreID(localWorkspaceTarget)
-	if raw != localWorkspaceTarget {
-		canonical, ok := canonicalOrigin(raw, runtime.GOOS == "darwin")
+	address, storeID := bridge.AppleOrigin, dexStoreID(LocalTarget)
+	if raw != LocalTarget {
+		canonical, ok := CanonicalOrigin(raw, runtime.GOOS == "darwin")
 		if !ok || canonical != raw {
 			h.emit("failure", nil)
 			return
@@ -309,7 +312,7 @@ func newDexAppleWebView(origin dexOrigin, id uuid.UUID, emit func(string, any)) 
 		w.local = &dexAppleLocal{controller: controller, tasks: make(map[string]objc.ID)}
 		config.Send(dexSel("setURLSchemeHandler:forURLScheme:"), w.delegate, dexNSString(origin.scheme))
 		controller.Send(dexSel("addScriptMessageHandler:name:"), w.delegate, dexNSString("dexLocal"))
-		script := dexClass("WKUserScript").Send(dexSel("alloc")).Send(dexSel("initWithSource:injectionTime:forMainFrameOnly:"), dexNSString(localBridgeJS), 0, true)
+		script := dexClass("WKUserScript").Send(dexSel("alloc")).Send(dexSel("initWithSource:injectionTime:forMainFrameOnly:"), dexNSString(bridge.Script()), 0, true)
 		controller.Send(dexSel("addUserScript:"), script)
 		script.Send(dexSel("release"))
 	}
@@ -384,16 +387,13 @@ func dexStartSchemeTask(self objc.ID, _ objc.SEL, _, task objc.ID) {
 	}
 	w.local.sequence++
 	id := strconv.FormatUint(w.local.sequence, 10)
-	msg := localMessage{Op: "static", ID: id, localRequest: localRequest{
-		Method: dexGoString(request.Send(dexSel("HTTPMethod"))), URL: raw,
-		Header: make(http.Header),
-	}}
+	headers := make(http.Header)
 	fields := request.Send(dexSel("allHTTPHeaderFields"))
 	keys := fields.Send(dexSel("keyEnumerator"))
 	for key := keys.Send(dexSel("nextObject")); key != 0; key = keys.Send(dexSel("nextObject")) {
-		msg.Header.Set(dexGoString(key), dexGoString(fields.Send(dexSel("objectForKey:"), key)))
+		headers.Set(dexGoString(key), dexGoString(fields.Send(dexSel("objectForKey:"), key)))
 	}
-	body, err := json.Marshal(msg)
+	body, err := bridge.EncodeStaticRequest(id, dexGoString(request.Send(dexSel("HTTPMethod"))), raw, headers)
 	if err != nil {
 		dexFailSchemeTask(task)
 		return
@@ -442,7 +442,7 @@ func (w *dexAppleWebView) localCommand(name, raw string) {
 	case "eval":
 		w.view.Send(dexSel("evaluateJavaScript:completionHandler:"), dexNSString(raw), objc.ID(0))
 	case "staticResult":
-		var result localStaticResult
+		var result bridge.StaticResult
 		if err := json.Unmarshal([]byte(raw), &result); err != nil {
 			return
 		}
@@ -469,7 +469,7 @@ func (w *dexAppleWebView) localCommand(name, raw string) {
 		task.Send(dexSel("didReceiveResponse:"), response)
 		response.Send(dexSel("release"))
 		if body := result.Response.Body; len(body) != 0 {
-			data := dexClass("NSData").Send(dexSel("dataWithBytes:length:"), unsafe.SliceData(body), len(body))
+			data := dexClass("NSData").Send(dexSel("dataWithBytes:length:"), unsafe.SliceData(body), len(body)) //nolint:gosec // NSData copies the bytes before this call returns.
 			runtime.KeepAlive(body)
 			task.Send(dexSel("didReceiveData:"), data)
 		}
@@ -492,7 +492,7 @@ func dexNavigationAction(self objc.ID, _ objc.SEL, view, action, decision objc.I
 		dexDecide(decision, true)
 		return
 	}
-	settings := target != 0 && main && raw == workspaceSettingsURL
+	settings := target != 0 && main && raw == SettingsURL
 	external := main && origin != w.origin && u != nil && origin.scheme == "https" && (w.local != nil || !strings.ContainsAny(raw, "?#"))
 	activated := (settings || external) &&
 		dexGoString(request.Send(dexSel("HTTPMethod"))) == "GET" &&
@@ -506,11 +506,12 @@ func dexNavigationAction(self objc.ID, _ objc.SEL, view, action, decision objc.I
 	}
 	// Never let WebKit create a popup. Do not replay the original request.
 	dexDecide(decision, false)
-	if activated && settings {
+	switch {
+	case activated && settings:
 		w.emit("settings", nil)
-	} else if activated && external {
+	case activated && external:
 		w.emit("external", raw)
-	} else if main && origin != w.origin {
+	case main && origin != w.origin:
 		w.emit("blocked", nil)
 	}
 }
@@ -539,9 +540,9 @@ func dexNavigationFailure(self objc.ID, _ objc.SEL, _, _, err objc.ID) {
 // Objective-C supplied this block. objc.Block.Invoke works only on Go blocks.
 func dexDecide(block objc.ID, allow bool) {
 	type blockHeader struct {
-		isa             uintptr
-		flags, reserved int32
-		invoke          uintptr
+		_      uintptr // isa
+		_, _   int32   // flags, reserved
+		invoke uintptr
 	}
 	header := objc.Send[*blockHeader](block, dexSel("self"))
 	policy := uintptr(0)

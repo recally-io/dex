@@ -1,6 +1,6 @@
 //go:build darwin && !tvos && !watchos
 
-package main
+package webview
 
 import (
 	"context"
@@ -15,6 +15,8 @@ import (
 	"github.com/ebitengine/purego/objc"
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/nsgotest"
+	"github.com/recally-io/dex/apps/native/internal/bridge"
+	"github.com/recally-io/dex/internal/localdex"
 )
 
 func TestMain(m *testing.M) { nsgotest.Main(m) }
@@ -132,7 +134,16 @@ func TestUserOpensLocalWorkspaceInWebKit(t *testing.T) {
 	if nsgotest.Target() == "" {
 		t.Skip("A native Apple run is required")
 	}
-	bridge := startTestBridge(t)
+	instance, err := localdex.Start(t.Context(), localdex.Config{DataDir: t.TempDir(), Mobile: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := instance.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	local := bridge.New(instance.Handler())
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	nsgotest.Start(t, func(*core.Scope) core.Node { return core.Text{Content: "Local workspace fixture"} })
@@ -150,11 +161,11 @@ func TestUserOpensLocalWorkspaceInWebKit(t *testing.T) {
 	var hostErr error
 	loaded := make(chan string, 4)
 	if err := dexOnAppleMain(func() {
-		origin, _ := dexParseOrigin(localAppleOrigin)
+		origin, _ := dexParseOrigin(bridge.AppleOrigin)
 		page, hostErr = newDexAppleWebView(origin, uuid.Nil(), func(event string, data any) {
 			switch event {
 			case "localMessage", "localStatic":
-				bridge.handleMessage(ctx, data.(string), event == "localStatic", func(command string, value any) {
+				local.HandleMessage(ctx, data.(string), event == "localStatic", func(command string, value any) {
 					if err := dexOnAppleMain(func() {
 						if ctx.Err() == nil {
 							page.localCommand(command, value.(string))
@@ -169,7 +180,7 @@ func TestUserOpensLocalWorkspaceInWebKit(t *testing.T) {
 		})
 		loaded <- "created"
 		if hostErr == nil {
-			page.load(localAppleOrigin, http.MethodGet)
+			page.load(bridge.AppleOrigin, http.MethodGet)
 		}
 	}); err != nil {
 		t.Fatal(err)

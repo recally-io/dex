@@ -16,13 +16,10 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/service"
 	"github.com/recally-io/dex/internal/sysops"
 	"github.com/recally-io/dex/internal/update"
-	"github.com/recally-io/dex/plugins/email"
-	"github.com/recally-io/dex/plugins/github"
-	"github.com/recally-io/dex/plugins/webhook"
+	"github.com/recally-io/dex/plugins/builtin"
 	"golang.org/x/mod/module"
 )
 
@@ -83,7 +80,7 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 			}
 		},
 		// The plugins of this build. The owner turns each one on or off in the settings.
-		Plugins: []plugin.Factory{github.New, webhook.New, email.New},
+		Plugins: builtin.Factories(),
 	})
 	if err != nil {
 		return err

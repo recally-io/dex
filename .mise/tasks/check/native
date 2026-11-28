@@ -7,10 +7,12 @@ if git ls-files worker internal/worker internal/workerbin | rg .; then
   echo "The native runtime must not retain worker sources or embedded worker binaries." >&2
   exit 1
 fi
-if go list -deps ./cmd/dex | rg 'github.com/(recally-io/dex/internal/worker|MichaelKinsy/PiG/(tui|coding/extension/host))'; then
-  echo "The server must not link the worker or terminal extension host." >&2
+server_deps=$(go list -deps ./cmd/dex)
+if rg 'github.com/(recally-io/dex/internal/worker|MichaelKinsy/PiG/(tui|coding/extension/host)|nsgo-dev/nsgo)' <<<"$server_deps"; then
+  echo "The server must not link the worker, terminal extension host, or NSGo." >&2
   exit 1
 fi
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./apps/native/...
 mkdir -p .local/native-builds
 for native_target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64; do
   native_os="${native_target%/*}"
