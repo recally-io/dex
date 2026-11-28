@@ -208,7 +208,7 @@ func transition(task sqlc.Task, to string) (Action, bool) {
 	case to == StatusInReview:
 		return ActionSubmitReview, from == StatusInProgress
 	case to == StatusDone:
-		return ActionTransition, from == StatusInProgress && task.ReviewerKind == ""
+		return ActionComplete, from == StatusInProgress && task.ReviewerKind == ""
 	case to == StatusBacklog || to == StatusReady || to == StatusInProgress:
 		return ActionTransition, from != to && from != StatusInReview
 	default:
