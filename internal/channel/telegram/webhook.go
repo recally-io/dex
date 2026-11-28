@@ -36,6 +36,8 @@ func (c WebhookConfig) validate() error {
 	return nil
 }
 
+var _ channel.WebhookReceiver = (*Bot)(nil)
+
 // InboundWebhook returns nil when this integration uses long polling.
 func (b *Bot) InboundWebhook() *channel.Webhook {
 	config := b.cfg.Webhook

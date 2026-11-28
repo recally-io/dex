@@ -8,7 +8,21 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/db"
+	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/session"
 )
+
+// ReactionAllowed checks the current owner, app ID, and reaction setting before a status reaction.
+func ReactionAllowed(ctx context.Context, q *sqlc.Queries, botID, peer string, source session.ChannelContext) bool {
+	if db.RequireActive(ctx, q, botID) != nil {
+		return false
+	}
+	cfg, err := q.GetFeishuSettings(ctx, botID)
+	return err == nil && cfg.OwnerID != "" && peer == "feishu:"+cfg.OwnerID &&
+		source.SenderID == cfg.OwnerID && source.AccountID == cfg.AppID &&
+		(!cfg.Reactions.Valid || cfg.Reactions.Int64 == 1)
+}
 
 func (b *Bot) ReactionsEnabled(peer string) bool {
 	return strings.HasPrefix(peer, "feishu:") && (b.cfg.Reactions == nil || *b.cfg.Reactions)

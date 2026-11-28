@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/session"
 )
@@ -18,6 +17,10 @@ const (
 	reactionTimeout    = 5 * time.Second
 	reactionPoll       = 150 * time.Millisecond
 )
+
+// ReactionAuthorizer checks current access before a status reaction. If the
+// platform has no authorizer, the manager does not send reactions.
+type ReactionAuthorizer func(ctx context.Context, peer string, source session.ChannelContext) bool
 
 type reactionWatch struct {
 	peer, id string
@@ -76,6 +79,10 @@ func (m *Manager) ReactionAdmission(peer, id string, sub *engine.Submission) {
 }
 
 func (m *Manager) watchReaction(ctx context.Context, platform string, bot channel.Reactor, watch *reactionWatch) {
+	allow := m.reactionAllowed[platform]
+	if allow == nil {
+		return
+	}
 	last := channel.Reaction(0)
 	previous := ""
 	status := channel.ReactionQueued
@@ -95,12 +102,7 @@ func (m *Manager) watchReaction(ctx context.Context, platform string, bot channe
 	for {
 		if status > last {
 			callCtx, cancel := context.WithTimeout(ctx, reactionTimeout)
-			var allowed bool
-			if policy != nil {
-				allowed = policy.ReactionAllowed(callCtx, watch.peer, watch.source)
-			} else {
-				allowed = m.defaultReactionAllowed(callCtx, platform, watch)
-			}
+			allowed := allow(callCtx, watch.peer, watch.source)
 			var err error
 			if allowed {
 				previous, err = bot.React(callCtx, watch.peer, watch.source.MessageID, previous, status)
@@ -126,16 +128,6 @@ func (watch *reactionWatch) nativeQueued(ctx context.Context) (queued, published
 		return err == nil && queued, true
 	}
 	return false, false
-}
-
-func (m *Manager) defaultReactionAllowed(ctx context.Context, platform string, watch *reactionWatch) bool {
-	if platform != "feishu" || db.RequireActive(ctx, m.q, m.botID) != nil {
-		return false
-	}
-	cfg, err := m.q.GetFeishuSettings(ctx, m.botID)
-	return err == nil && cfg.OwnerID != "" && watch.peer == "feishu:"+cfg.OwnerID &&
-		watch.source.SenderID == cfg.OwnerID && watch.source.AccountID == cfg.AppID &&
-		(!cfg.Reactions.Valid || cfg.Reactions.Int64 == 1)
 }
 
 func (m *Manager) reactionState(ctx context.Context, watch *reactionWatch, last channel.Reaction) channel.Reaction {

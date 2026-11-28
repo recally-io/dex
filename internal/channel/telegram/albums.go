@@ -6,8 +6,11 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/session"
 )
+
+var _ channel.InboundWaker = (*Bot)(nil)
 
 func (b *Bot) submitInput(ctx context.Context, peer, source string, msg session.Message, albumMember bool) error {
 	if !albumMember {
