@@ -1,4 +1,4 @@
-# Dex for Apple
+# Dex native apps
 
 The app opens the workspace from an existing Dex server. It does not start Dex, bundle the web UI, or store the Dex access token in the app shell.
 
@@ -8,10 +8,16 @@ Find `Dex-<tag>-macOS-arm64.zip` and `checksums.txt` on the same [GitHub Release
 
 The app has an ad hoc signature. Apple has not notarized it. macOS can block it on first launch because it cannot verify the developer. See [Apple's guide to opening downloaded apps](https://support.apple.com/en-us/102445). The release does not include an installable iPhone app.
 
+## Download the Android app
+
+On a 64-bit ARM phone with Android 9 or later, download `Dex-<tag>-Android-arm64.apk` from the same GitHub Release as `checksums.txt`. Check the SHA-256 digest before installation. If Android asks, allow the browser or file manager to install this APK. You can turn off that permission after installation. Install later releases over the existing app to keep the selected server. Debug builds use another key and cannot update a release install.
+
+The app uses Android System WebView. Keep it up to date; older versions can lack the browser features your server uses. There is no Play Store release or on-device Dex server.
+
 ## Connect to Dex
 
 - **Mac:** The initial address is `http://127.0.0.1:8787`. Use the port of your existing server if it differs. Plain HTTP is limited to `127.0.0.1` on macOS.
-- **iPhone and iOS Simulator:** Enter a reachable HTTPS origin, such as `https://dex.example.com`. The app has no default address. An origin contains a scheme, host, and optional port. Do not include a path, query, fragment, or credentials.
+- **iPhone and Android:** Enter a reachable HTTPS origin, such as `https://dex.example.com`. The app has no default address. An origin contains a scheme, host, and optional port. Do not include a path, query, fragment, or credentials.
 - **Remote access:** Follow [Deploy an HTTPS entry point](../../README.md#deploy-an-https-entry-point). The server must require a Dex token even when the reverse proxy uses a loopback upstream. Use a certificate the client trusts. Do not disable certificate checks or expose a plain HTTP listener to the network.
 
 To change servers, open **Settings → General → Workspace → Switch workspace**. The sign-in page has the same link if you do not have the token for the selected server. If an older server does not show the link, open `dex-workspace://settings` on the device to open the app's connection screen. Opening the screen keeps the current login. If the server is offline, the app opens this screen directly.
@@ -42,9 +48,13 @@ xcrun simctl install "${SIM_UDID:?Set the simulator ID}" "${SIM_APP:?Set the sim
 xcrun simctl launch "$SIM_UDID" "$(plutil -extract CFBundleIdentifier raw -o - "$SIM_APP/Info.plist")"
 ```
 
+### Android development build
+
+Install a JDK, Android SDK Platform 35, and Build Tools 35.0.0. Set `ANDROID_HOME` to the SDK directory. From the repository root, run `mise run android:build`. This task compiles the Java view, builds the ARM64 APK with the pinned NSGo version, and verifies its signature. Install `.local/android/Dex-android_arm64.apk` on a test device. The task uses a local debug key unless you supply a release tag. For release signing, see [Release artifacts](../../docs/dev/releasing.md#release-artifacts).
+
 ## Check the client
 
-Run `mise run apple:test` for the connection rules and the macOS WebKit navigation and cookie checks. Follow [Apple UI acceptance](uitests/README.md) to run the app against disposable Dex services. Never use a production Dex with these tests.
+Run `mise run apple:test` for the connection rules and the macOS WebKit navigation and cookie checks. Follow [Apple UI acceptance](uitests/README.md) to run the app against disposable Dex services. For Android, follow the [Android smoke test](uitests/README.md#android-emulator). Never use a production Dex with these tests.
 
 ## Build a signed IPA for a physical iPhone
 

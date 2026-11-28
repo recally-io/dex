@@ -85,9 +85,42 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+  android-app:
+    name: Package Android app
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.3.0
+        with:
+          install: false
+      - name: Build with the distribution key
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          KEYSTORE_B64: ${{ secrets.DEX_ANDROID_KEYSTORE_B64 }}
+          NSGO_KEYSTORE_PASSWORD: ${{ secrets.DEX_ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_CERT_SHA256: ${{ vars.DEX_ANDROID_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          export DEX_ANDROID_KEYSTORE="$RUNNER_TEMP/dex.p12"
+          trap 'rm -f "$DEX_ANDROID_KEYSTORE"' EXIT
+          printf '%s' "${KEYSTORE_B64:?Missing release key}" | base64 --decode > "$DEX_ANDROID_KEYSTORE"
+          unset KEYSTORE_B64
+          mise run android:build "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: android-app
+          path: .local/release/${{ needs.prepare.outputs.tag }}/Dex-${{ needs.prepare.outputs.tag }}-Android-arm64.apk
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+
   goreleaser:
     name: GoReleaser
-    needs: [prepare, check, mac-app]
+    needs: [prepare, check, mac-app, android-app]
     if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -118,6 +151,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name mac-app --dir ".local/release/$RELEASE_TAG"
+      - name: Get the verified Android APK from this workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name android-app --dir ".local/release/$RELEASE_TAG"
       - name: Extract release notes from CHANGELOG.md
         run: bash .mise/tasks/release/notes "$RELEASE_TAG" > /tmp/release-notes.md
       # The release is a draft until the smoke tests pass.
@@ -157,6 +194,15 @@ jobs:
           grep " dex-agent_${RELEASE_TAG}_${{ matrix.target }}.tar.gz$" checksums.txt | shasum -a 256 -c
           tar -xzf dex_*.tar.gz dex
           tar -xzf dex-agent_*.tar.gz dex-agent
+      - name: Verify the Android APK from the draft release
+        if: matrix.target == 'linux_amd64'
+        env:
+          ANDROID_CERT_SHA256: ${{ vars.DEX_ANDROID_CERT_SHA256 }}
+        run: |
+          archive="Dex-${RELEASE_TAG}-Android-arm64.apk"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$archive"
+          awk -v name="$archive" '$2 == name' checksums.txt | sha256sum -c -
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$archive" | grep -Fx "Signer #1 certificate SHA-256 digest: ${ANDROID_CERT_SHA256:?}"
       - name: Verify the Mac app from the draft release
         if: matrix.target == 'darwin_arm64'
         run: |

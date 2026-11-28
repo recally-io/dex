@@ -23,7 +23,7 @@ export function scheduleText(schedule: Schedule, timeZone: string) {
     case "once":
       return `Once on ${runTime(schedule.at!, timeZone)}`;
     case "weekly": {
-      const days = schedule.days!.toSorted((a, b) => a - b);
+      const days = [...schedule.days!].sort((a, b) => a - b);
 
       const label =
         days.length === 5 && days.every((day, i) => day === i + 1)

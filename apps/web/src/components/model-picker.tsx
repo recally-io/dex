@@ -32,20 +32,25 @@ const byName = (a: { name: string; id: string }, b: { name: string; id: string }
 // Every saved provider gets a group, also one without models. Models of a provider that is not
 // saved (the faux provider in tests) get a group too. Groups and models sort by name, then ID.
 function groups(settings: Settings, models: Model[]): Group[] {
-  const byProvider = Object.groupBy(models, (m) => m.provider);
+  const byProvider = new Map<string, Group>();
 
-  const saved = settings.providers.map((p) => ({
-    id: p.id,
-    name: p.name,
-    error: p.error,
-    models: byProvider[p.id] ?? [],
-  }));
+  for (const { id, name, error } of settings.providers) byProvider.set(id, { id, name, error, models: [] });
 
-  const other = Object.entries(byProvider)
-    .filter(([id]) => !settings.providers.some((p) => p.id === id))
-    .map(([id, list]) => ({ id, name: id, models: list ?? [] }));
+  for (const model of models) {
+    const id = model.provider;
+    let group = byProvider.get(id);
 
-  return [...saved, ...other].map((g) => ({ ...g, models: g.models.toSorted(byName) })).toSorted(byName);
+    if (!group) {
+      group = { id, name: id, models: [] };
+      byProvider.set(id, group);
+    }
+
+    group.models.push(model);
+  }
+
+  for (const group of byProvider.values()) group.models.sort(byName);
+
+  return [...byProvider.values()].sort(byName);
 }
 
 // A provider that matches by name or ID keeps all its models. Otherwise only the models that

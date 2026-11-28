@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Install the signed ARM64 Android APK to connect to an existing HTTPS Dex server. Chat, reopen the workspace, and switch servers from Settings.
 - Connect the Mac or iPhone app to an existing Dex server. Switch servers from Settings or the sign-in page. Mac releases include an ad hoc signed Apple silicon app; iPhone builds still require Xcode (#382, #383, #384).
 
 ### Fixed

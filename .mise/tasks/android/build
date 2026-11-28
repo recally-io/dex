@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#MISE description="Build an Android APK; require the release keystore when a tag is supplied"
+set -euo pipefail
+cd "${MISE_PROJECT_ROOT:?}/apps/native"
+sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:?Set ANDROID_HOME to the Android SDK directory}}
+tools="$sdk/build-tools/35.0.0"
+platform="$sdk/platforms/android-35/android.jar"
+target=${DEX_ANDROID_TARGET:-android_arm64}
+case "$target" in android_arm64|android_x64) ;; *) echo 'Unsupported Android target' >&2; exit 1;; esac
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+mkdir -p "$work/classes" .nsgo/android
+javac --release 8 -classpath "$platform" -d "$work/classes" android/WorkspaceView.java
+"$tools/d8" --min-api 28 --lib "$platform" --output "$work/WorkspaceView.jar" "$work/classes/io/recally/dex/"*.class
+mv "$work/WorkspaceView.jar" .nsgo/android/
+args=(-channel none -target "$target" -output "$work/build")
+if [[ $# == 0 ]]; then
+  out="$MISE_PROJECT_ROOT/.local/android/Dex-$target.apk"
+else
+  tag=$1
+  [[ $# == 1 && "$tag" == "v$(<../../VERSION)" && "$target" == android_arm64 ]]
+  if [[ ! -s ${DEX_ANDROID_KEYSTORE:-} || -z ${NSGO_KEYSTORE_PASSWORD:-} || -z ${GITHUB_RUN_NUMBER:-} || -z ${ANDROID_CERT_SHA256:-} ]]; then
+    echo 'Release signing requires the keystore, password, build number, and certificate digest.' >&2
+    exit 1
+  fi
+  args+=(-keystore "$DEX_ANDROID_KEYSTORE" -version "${tag#v}" -build-number "$GITHUB_RUN_NUMBER")
+  out="$MISE_PROJECT_ROOT/.local/release/$tag/Dex-$tag-Android-arm64.apk"
+fi
+mise exec go@1.27.3 -- go tool nsgo build "${args[@]}"
+shopt -s nullglob
+apks=("$work/build"/*-"$target"/*.apk)
+[[ ${#apks[@]} == 1 ]]
+"$tools/apksigner" verify --verbose --print-certs "${apks[0]}" > "$work/signer"
+if [[ $# == 1 ]]; then
+  grep -Fx "Signer #1 certificate SHA-256 digest: $ANDROID_CERT_SHA256" "$work/signer"
+  "$tools/aapt" dump badging "${apks[0]}" > "$work/badging"
+  grep -F "package: name='io.recally.dex' versionCode='$GITHUB_RUN_NUMBER' versionName='${tag#v}'" "$work/badging"
+  grep -Fx "native-code: 'arm64-v8a'" "$work/badging"
+fi
+mkdir -p "$(dirname "$out")"
+mv "${apks[0]}" "$out"
+printf '%s\n' "$out"

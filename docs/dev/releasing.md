@@ -52,8 +52,8 @@ Prepare and tag releases on a `release/*` branch. On `main`, `VERSION` tracks th
 5. Push the updated release branch. Start
    [Release](../../.github/workflows/release.yml) with
    `gh workflow run release.yml --ref <release-branch>`. The workflow reads the
-   branch's `VERSION` and requires a nonempty changelog section for the exact tag. For a stable tag, it also checks `origin/main` for matching notes and a stable version at least as new. It then runs Check and packages the Apple silicon app on macOS.
-   Once both jobs pass, it creates the `v<VERSION>` tag on the tested commit
+   branch's `VERSION` and requires a nonempty changelog section for the exact tag. For a stable tag, it also checks `origin/main` for matching notes and a stable version at least as new. It then runs Check and packages the Apple silicon and Android ARM64 apps.
+   Once all three jobs pass, it creates the `v<VERSION>` tag on the tested commit
    and runs [GoReleaser](../../.goreleaser.yaml) on Ubuntu.
 6. For fixes that are not yet on `main`, start a separate branch from `main`,
    cherry-pick the fix commits with `git cherry-pick -x`, and open a pull request
@@ -70,6 +70,10 @@ the tag. The workflow also accepts a `v*` tag push. Use the release-branch
 procedure above for planned releases and patches.
 
 Starting with the v0.21.0 series, both candidate and stable releases include `Dex-<tag>-macOS-arm64.zip`. The published v0.20.0 release predates the Mac app. GoReleaser adds the Mac ZIP to the draft and includes its SHA-256 in `checksums.txt`. The Mac smoke job downloads that ZIP, verifies its checksum, extracts `Dex.app`, and checks the code signature, architecture and version before publication. The app uses an ad hoc signature; the release does not need Apple credentials. This workflow does not publish iPhone or simulator builds.
+
+Starting with the v0.21.0 series, each release also includes `Dex-<tag>-Android-arm64.apk` for Android 9 and later. GoReleaser includes the APK in `checksums.txt`. Before it creates the tag, the workflow checks the APK signature, certificate digest, ABI, version name, and build number. Before publication it downloads the APK from the draft and verifies its checksum and signature again.
+
+Keep the Android distribution key and a recovery copy outside Git. Updates must use the same key. Configure repository secrets `DEX_ANDROID_KEYSTORE_B64` (base64 of a single-key RSA PKCS#12 file) and `DEX_ANDROID_KEYSTORE_PASSWORD` (store and key password). Set the repository variable `DEX_ANDROID_CERT_SHA256` to the signing certificate's lowercase SHA-256 digest without separators. The release task stops if any value is missing or the certificate does not match. It never uses the debug key for release. The release workflow run number supplies the Android `versionCode`; do not reset it across upgrades.
 
 On an Apple silicon Mac, run `mise run release:mac-app` to build the same ZIP without creating a tag or publishing a release. The task reads `VERSION` by default, or accepts a tag such as `v1.2.3`. Find the ZIP in `.local/release/<tag>/`. The filename keeps the full tag. The app uses the numeric part for `CFBundleShortVersionString` and the workflow run number (locally, `1`) for `CFBundleVersion`.
 
