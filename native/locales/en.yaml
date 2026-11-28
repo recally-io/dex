@@ -3,7 +3,7 @@ connection: Connect to Dex
 address: Server address
 addressPlaceholder: https://dex.example.com
 connect: Connect
-changeAddress: Change address
+backToWorkspace: Back to workspace
 retry: Retry
 forget: Forget server
 connecting: Connecting…

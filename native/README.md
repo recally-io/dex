@@ -14,6 +14,8 @@ The app has an ad hoc signature. Apple has not notarized it. macOS can block it 
 - **iPhone and iOS Simulator:** Enter a reachable HTTPS origin, such as `https://dex.example.com`. The app has no default address. An origin contains a scheme, host, and optional port. Do not include a path, query, fragment, or credentials.
 - **Remote access:** Follow [Deploy an HTTPS entry point](../README.md#deploy-an-https-entry-point). The server must require a Dex token even when the reverse proxy uses a loopback upstream. Use a certificate the client trusts. Do not disable certificate checks or expose a plain HTTP listener to the network.
 
+To change servers, open **Settings → General → Workspace → Switch workspace**. The sign-in page has the same link if you do not have the token for the selected server. If an older server does not show the link, open `dex-workspace://settings` on the device to open the app's connection screen. Opening the screen keeps the current login. If the server is offline, the app opens this screen directly.
+
 Enter the access token on the Dex login page when it asks for one. The web view keeps its own login data across retries and restarts. Switching to another origin or using **Forget** clears that data. The web view blocks navigation outside the configured scheme, host, and port. If this blocks an OAuth flow, open the Dex origin in your browser and start the flow again there.
 
 ## Build for local development

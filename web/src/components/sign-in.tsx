@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { createSessionMutation } from "../api/generated/@tanstack/react-query.gen";
 import { Button } from "./ui/button";
 import { Field, Input } from "./form";
+import { WorkspaceSettings } from "./workspace-settings";
 import { FramedPage, Section } from "./page";
 import { errorText } from "../lib/queries";
 
@@ -50,6 +51,7 @@ export function SignIn() {
           </div>
         </form>
       </Section>
+      <WorkspaceSettings />
     </FramedPage>
   );
 }

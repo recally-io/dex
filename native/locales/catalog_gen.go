@@ -64,7 +64,7 @@ const (
 	textAddress
 	textAddressPlaceholder
 	textConnect
-	textChangeAddress
+	textBackToWorkspace
 	textRetry
 	textForget
 	textConnecting
@@ -93,7 +93,7 @@ var keyOfText = [numTexts]string{
 	"address",
 	"addressPlaceholder",
 	"connect",
-	"changeAddress",
+	"backToWorkspace",
 	"retry",
 	"forget",
 	"connecting",
@@ -120,7 +120,7 @@ var textsEn = i18n.NewTexts(""+
 	"Server address"+
 	"https://dex.example.com"+
 	"Connect"+
-	"Change address"+
+	"Back to workspace"+
 	"Retry"+
 	"Forget server"+
 	"Connecting…"+
@@ -144,7 +144,7 @@ var textsEn = i18n.NewTexts(""+
 		14,
 		23,
 		7,
-		14,
+		17,
 		5,
 		13,
 		13,
@@ -267,12 +267,12 @@ func Connect(cx *core.Scope) string { return For(cx).Connect() }
 // Connect is the package's Connect in the language of msgs.
 func (msgs Messages) Connect() string { return msgs.text(textConnect) }
 
-// ChangeAddress says "Change address"
+// BackToWorkspace says "Back to workspace"
 // in the language the app shows under cx.
-func ChangeAddress(cx *core.Scope) string { return For(cx).ChangeAddress() }
+func BackToWorkspace(cx *core.Scope) string { return For(cx).BackToWorkspace() }
 
-// ChangeAddress is the package's ChangeAddress in the language of msgs.
-func (msgs Messages) ChangeAddress() string { return msgs.text(textChangeAddress) }
+// BackToWorkspace is the package's BackToWorkspace in the language of msgs.
+func (msgs Messages) BackToWorkspace() string { return msgs.text(textBackToWorkspace) }
 
 // Retry says "Retry"
 // in the language the app shows under cx.

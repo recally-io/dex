@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/nsgo-dev/nsgo"
@@ -11,11 +12,13 @@ import (
 )
 
 const savedOriginKey = "dex.origin"
+const workspaceSettingsURL = "dex-workspace://settings"
 
 type connectionPhase uint8
 
 const (
 	editAddress connectionPhase = iota
+	switchWorkspace
 	checkingServer
 	clearingSignIn
 	offline
@@ -47,7 +50,7 @@ func root(cx *core.Scope) core.Node {
 	message := core.NewSignalFunc(cx, (func(*core.Scope) string)(nil), func(a, b func(*core.Scope) string) bool {
 		return a == nil && b == nil
 	})
-	var confirmAttempt bool
+	var confirmAttempt, requestedSettings bool
 	var mount uint64
 
 	clearSignIn := func(done func()) {
@@ -71,6 +74,11 @@ func root(cx *core.Scope) core.Node {
 		go func() {
 			err := probeDex(ctx, target, mac, nil)
 			cx.Post(func() {
+				if requestedSettings {
+					requestedSettings = false
+					phase.Set(editAddress)
+					return
+				}
 				if err != nil {
 					if errors.Is(err, errDexAuthRequired) {
 						message.Set(locales.AuthRequired)
@@ -135,6 +143,19 @@ func root(cx *core.Scope) core.Node {
 		connect(initial, false)
 	}
 
+	// A system link also opens settings when an older server has no settings link.
+	cx.OnOpenLinks(func(links []string) {
+		if !slices.Contains(links, workspaceSettingsURL) {
+			return
+		}
+		switch phase.Get() {
+		case checkingServer:
+			requestedSettings = true
+		case online:
+			phase.Set(switchWorkspace)
+		}
+	})
+
 	label := func(text func(*core.Scope) string) func() string { return func() string { return text(cx) } }
 	buttonSize := core.Style{MinHeight: core.Pt(44)}
 	return core.View{
@@ -144,21 +165,11 @@ func root(cx *core.Scope) core.Node {
 			When: func() bool { return phase.Get() == online },
 			Then: func(view *core.Scope) core.Node {
 				target, id := attempt.Get(), mount
-				return core.View{
-					Style: core.Style{FlexGrow: 1, FlexShrink: 1},
-					Children: []core.Node{
-						core.View{Style: core.Style{Padding: core.Symmetric(4, 12), AlignItems: core.AlignEnd}, Children: []core.Node{
-							ui.Button{TextFunc: label(locales.ChangeAddress), Style: buttonSize, Variant: ui.ButtonSecondary, OnPress: func() {
-								phase.Set(editAddress)
-							}},
-						}},
-						dexWebView(view, target, func() {
-							if phase.Get() == online && id == mount {
-								phase.Set(offline)
-							}
-						}),
-					},
-				}
+				return dexWebView(view, target, func(next connectionPhase) {
+					if phase.Get() == online && id == mount {
+						phase.Set(next)
+					}
+				})
 			},
 			Else: func(*core.Scope) core.Node {
 				return core.Scroll{
@@ -186,7 +197,15 @@ func root(cx *core.Scope) core.Node {
 								KeyboardType: core.KeyboardURL, AutoCapitalize: core.AutoCapitalizeNone, NoAutoCorrect: true, ReturnKeyType: core.ReturnKeyGo,
 								Style: core.Style{Height: core.Pt(44), FontSize: 16}, TestID: "server-address"},
 							ui.Button{TextFunc: label(locales.Connect), OnPress: submit, Disabled: busy, Style: buttonSize},
-							core.Show{When: func() bool { return attempt.Get() != "" && !busy() }, Then: func(*core.Scope) core.Node {
+							core.Show{When: func() bool { return phase.Get() == switchWorkspace }, Then: func(*core.Scope) core.Node {
+								return ui.Button{TextFunc: label(locales.BackToWorkspace), Variant: ui.ButtonSecondary, Style: buttonSize, OnPress: func() {
+									draft.Set(attempt.Get())
+									message.Set(nil)
+									mount++
+									phase.Set(online)
+								}}
+							}},
+							core.Show{When: func() bool { return phase.Get() == offline }, Then: func(*core.Scope) core.Node {
 								return ui.Button{TextFunc: label(locales.Retry), OnPress: retry, Variant: ui.ButtonSecondary, Style: buttonSize}
 							}},
 							core.Show{When: func() bool { return storeOwner.Get() != "" && !busy() }, Then: func(*core.Scope) core.Node {

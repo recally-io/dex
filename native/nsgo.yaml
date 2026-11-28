@@ -1,6 +1,7 @@
 name: Dex
 id: io.recally.dex
 version: 0.1.0
+url_schemes: [dex-workspace]
 
 icon:
   png: ../shared/assets/dex.png
