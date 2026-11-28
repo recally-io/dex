@@ -239,3 +239,11 @@ func (h *handler) runnerView(env settings.Runner) (api.Runner, error) {
 	}
 	return out, nil
 }
+
+func (h *handler) ListBotRunners(ctx context.Context, _ api.ListBotRunnersRequestObject) (api.ListBotRunnersResponseObject, error) {
+	list, err := h.Settings.SessionRunners(ctx, botID(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return api.ListBotRunners200JSONResponse{Runners: list}, nil
+}
