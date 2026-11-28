@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -249,3 +250,6 @@ func (h *handler) machineRelease(w http.ResponseWriter, r *http.Request) {
 	// The name is one of the fixed development archives, or the checksum file.
 	http.ServeFile(w, r, filepath.Join(h.DataDir, "machine-release", name)) //nolint:gosec // See above.
 }
+
+//go:embed install-machine.sh
+var machineInstaller []byte

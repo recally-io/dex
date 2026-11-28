@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/host/sysops"
@@ -186,4 +187,33 @@ func (h *handler) GetSystemLogs(_ context.Context, req api.GetSystemLogsRequestO
 		out = append(out, item)
 	}
 	return api.GetSystemLogs200JSONResponse{Entries: out}, nil
+}
+
+func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (api.GetHealthResponseObject, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	ready := h.Engine != nil && h.Engine.Health(ctx) == nil
+	plugins := make([]string, 0, len(h.Plugins))
+	for _, p := range h.Plugins {
+		plugins = append(plugins, p.Name)
+	}
+	var startedAt int64
+	if h.System != nil {
+		startedAt = h.System.StartedAt()
+	}
+	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, StartedAt: startedAt, DataDir: h.DataDir, RuntimeReady: ready, Plugins: plugins}, nil
+}
+func (h *handler) AcquireMaintenance(ctx context.Context, _ api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := h.Sessions.AcquireMaintenance(ctx); err != nil {
+		return nil, err
+	}
+	return api.AcquireMaintenance200JSONResponse(ok), nil
+}
+func (h *handler) ReleaseMaintenance(ctx context.Context, _ api.ReleaseMaintenanceRequestObject) (api.ReleaseMaintenanceResponseObject, error) {
+	if err := h.Sessions.ReleaseMaintenance(ctx); err != nil {
+		return nil, err
+	}
+	return api.ReleaseMaintenance200JSONResponse(ok), nil
 }
