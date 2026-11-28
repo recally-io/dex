@@ -24,7 +24,7 @@ func (w androidWorkspace) ViewEvent(name string, args []any) {
 	switch name {
 	case "settings", "failure", "blocked":
 		w.emit(name, nil)
-	case "external":
+	case "external", "localMessage", "localStatic":
 		if len(args) == 1 {
 			w.emit(name, args[0])
 		}

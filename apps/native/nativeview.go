@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"net/url"
 
 	"github.com/nsgo-dev/nsgo/core"
@@ -9,12 +10,22 @@ import (
 
 const dexWebComponent = "DexWorkspaceWebView"
 
-func dexWebView(cx *core.Scope, origin string, leave func(connectionPhase)) core.Node {
+func dexWebView(cx *core.Scope, origin string, handler http.Handler, leave func(connectionPhase)) core.Node {
 	active, alert := true, false
 	cx.Cleanup(func() { active = false })
+	ref := new(core.Ref)
+	var bridge *localBridge
+	if origin == localWorkspaceTarget {
+		bridge = &localBridge{handler: handler}
+	}
+	ctx := cx.Context()
+	send := func(command string, value any) {
+		cx.Post(func() { ref.Command(command, value) })
+	}
 	return core.Native{
 		Component: dexWebComponent,
 		Props:     map[string]any{"origin": origin},
+		Ref:       ref,
 		TestID:    "dex-workspace",
 		Style:     core.Style{FlexGrow: 1, FlexShrink: 1},
 		OnEvent: func(event string, data any) {
@@ -22,6 +33,11 @@ func dexWebView(cx *core.Scope, origin string, leave func(connectionPhase)) core
 				return
 			}
 			switch event {
+			case "localMessage", "localStatic":
+				if raw, ok := data.(string); ok && bridge != nil {
+					bridge.handleMessage(ctx, raw, event == "localStatic", send)
+				}
+				return
 			case "failure":
 				leave(offline)
 				return
@@ -45,6 +61,9 @@ func dexWebView(cx *core.Scope, origin string, leave func(connectionPhase)) core
 				}
 				title, message, target = locales.NavExternalTitle(cx), locales.NavExternalMessage(cx, u.Host), link
 			case "blocked":
+				if bridge != nil {
+					return
+				}
 				title, message, target = locales.NavBlockedTitle(cx), locales.NavBlockedMessage(cx), origin
 			default:
 				return

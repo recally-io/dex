@@ -8,12 +8,65 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/recally-io/dex/localdex"
 )
 
 const macDefaultOrigin = "http://127.0.0.1:8787"
+
+// The lock also lets root cleanup wait for a startup that has not yet posted
+// its result to the UI. All other starts and stops run off the UI goroutine.
+type localWorkspace struct {
+	mu       sync.Mutex
+	instance *localdex.Instance
+}
+
+func (w *localWorkspace) start(ctx context.Context, appDir, version string, mac bool) (*localdex.Instance, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if w.instance != nil {
+		return w.instance, nil
+	}
+	dir := filepath.Join(appDir, "dex")
+	if mac {
+		dir = os.Getenv("DEX_DATA_DIR")
+		if dir == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return nil, err
+			}
+			dir = filepath.Join(home, ".dex")
+		}
+	} else if appDir == "" {
+		return nil, errors.New("app data directory is not available")
+	}
+	instance, err := localdex.Start(ctx, localdex.Config{DataDir: dir, Version: version, Mobile: !mac})
+	if err != nil {
+		return nil, err
+	}
+	w.instance = instance
+	return instance, nil
+}
+
+func (w *localWorkspace) close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.instance == nil {
+		return nil
+	}
+	instance := w.instance
+	w.instance = nil
+	return instance.Close()
+}
 
 func canonicalOrigin(input string, mac bool) (string, bool) {
 	input = strings.TrimSpace(input)

@@ -1,28 +1,37 @@
 # Dex native apps
 
-The app opens the workspace from an existing Dex server. It does not start Dex, bundle the web UI, or store the Dex access token in the app shell.
+The app can run a local Dex workspace or open a workspace on an existing Dex server. The app shell does not store remote Dex access tokens.
 
 ## Download the Mac app
 
-Find `Dex-<tag>-macOS-arm64.zip` and `checksums.txt` on the same [GitHub Release](https://github.com/vaayne/dex/releases). The archive contains `Dex.app` for Apple silicon and macOS 14 or later. It does not include the Dex server. Unzip the archive and move `Dex.app` to Applications.
+Find `Dex-<tag>-macOS-arm64.zip` and `checksums.txt` on the same [GitHub Release](https://github.com/vaayne/dex/releases). The archive contains `Dex.app` for Apple silicon and macOS 14 or later. Unzip the archive and move `Dex.app` to Applications.
 
 The app has an ad hoc signature. Apple has not notarized it. macOS can block it on first launch because it cannot verify the developer. See [Apple's guide to opening downloaded apps](https://support.apple.com/en-us/102445). The release does not include an installable iPhone app.
 
 ## Download the Android app
 
-On a 64-bit ARM phone with Android 9 or later, download `Dex-<tag>-Android-arm64.apk` from the same GitHub Release as `checksums.txt`. Check the SHA-256 digest before installation. If Android asks, allow the browser or file manager to install this APK. You can turn off that permission after installation. Install later releases over the existing app to keep the selected server. Debug builds use another key and cannot update a release install.
+On a 64-bit ARM phone with Android 9 or later, download `Dex-<tag>-Android-arm64.apk` from the same GitHub Release as `checksums.txt`. Check the SHA-256 digest before installation. If Android asks, allow the browser or file manager to install this APK. You can turn off that permission after installation. Install later releases over the existing app to keep your workspace data and selection. Debug builds use another key and cannot update a release install.
 
-The app uses Android System WebView. Keep it up to date; older versions can lack the browser features your server uses. There is no Play Store release or on-device Dex server.
+The app uses Android System WebView. Keep it up to date; older versions can lack the browser features your server uses. There is no Play Store release.
 
-## Connect to Dex
+## Open a local workspace
 
-- **Mac:** The initial address is `http://127.0.0.1:8787`. Use the port of your existing server if it differs. Plain HTTP is limited to `127.0.0.1` on macOS.
+On the connection screen, select **Open Local Workspace**. Dex starts in the app process and opens the embedded web UI. The WebView sends requests directly to Dex through a native bridge. Local mode does not start an HTTP server, open a TCP port, or use loopback. It does not require a Dex access token.
+
+- **Mac:** Dex uses `DEX_DATA_DIR` if set, or `~/.dex`. Stop an existing Dex service before you open its data directory in the app. To keep both running, give them different data directories.
+- **iPhone and Android:** Dex stores the workspace in `dex` under the app's private data directory. Mobile tools do not inherit a login shell environment. Shell tools and stdio MCP servers need executables and process support from the device OS.
+
+The app saves your workspace choice and reopens it on launch. Local mode can make outbound requests to model and channel providers. Other devices cannot connect to a local workspace, and inbound webhooks need a separate Dex server.
+
+## Connect to an existing server
+
+- **Mac:** If no workspace is saved, the app tries the existing service at `http://127.0.0.1:8787`. If that service is offline, the app shows the connection screen. Use the port of your existing server if it differs. Plain HTTP is limited to `127.0.0.1` on macOS.
 - **iPhone and Android:** Enter a reachable HTTPS origin, such as `https://dex.example.com`. The app has no default address. An origin contains a scheme, host, and optional port. Do not include a path, query, fragment, or credentials.
 - **Remote access:** Follow [Deploy an HTTPS entry point](../../README.md#deploy-an-https-entry-point). The server must require a Dex token even when the reverse proxy uses a loopback upstream. Use a certificate the client trusts. Do not disable certificate checks or expose a plain HTTP listener to the network.
 
-To change servers, open **Settings → General → Workspace → Switch workspace**. The sign-in page has the same link if you do not have the token for the selected server. If an older server does not show the link, open `dex-workspace://settings` on the device to open the app's connection screen. Opening the screen keeps the current login. If the server is offline, the app opens this screen directly.
+To switch between local and remote workspaces, open **Settings → General → Workspace → Switch workspace**. The sign-in page has the same link if you do not have the token for the selected server. If an older server does not show the link, open `dex-workspace://settings` on the device to open the app's connection screen. Opening the screen keeps the current login. If the server is offline, the app opens this screen directly.
 
-Enter the access token on the Dex login page when it asks for one. The web view keeps its own login data across retries and restarts. Switching to another origin or using **Forget** clears that data. The web view blocks navigation outside the configured scheme, host, and port. If this blocks an OAuth flow, open the Dex origin in your browser and start the flow again there.
+Enter the access token on the Dex login page when it asks for one. The web view keeps its own login data across retries and restarts. Switching away from a remote workspace or selecting **Forget server** clears its sign-in data. **Forget local selection** leaves local workspace files in place. The web view blocks navigation outside the configured scheme, host, and port. If this blocks an OAuth flow, open the Dex origin in your browser and start the flow again there.
 
 ## Build for local development
 
@@ -32,6 +41,7 @@ From the repository root:
 
 ```sh
 mise install go@1.27.3
+mise run install:web
 xcodebuild -version
 xcrun simctl list runtimes
 mise run apple:build
@@ -50,7 +60,7 @@ xcrun simctl launch "$SIM_UDID" "$(plutil -extract CFBundleIdentifier raw -o - "
 
 ### Android development build
 
-Install a JDK, Android SDK Platform 35, and Build Tools 35.0.0. Set `ANDROID_HOME` to the SDK directory. From the repository root, run `mise run android:build`. This task compiles the Java view, builds the ARM64 APK with the pinned NSGo version, and verifies its signature. Install `.local/android/Dex-android_arm64.apk` on a test device. The task uses a local debug key unless you supply a release tag. For release signing, see [Release artifacts](../../docs/dev/releasing.md#release-artifacts).
+Install a JDK, Android SDK Platform 35, and Build Tools 35.0.0. Set `ANDROID_HOME` to the SDK directory. From the repository root, run `mise run android:build`. Run `mise run install:web` first. The build task compiles the Java view, builds the ARM64 APK with the pinned NSGo version, and verifies its signature. Install `.local/android/Dex-android_arm64.apk` on a test device. The task uses a local debug key unless you supply a release tag. For release signing, see [Release artifacts](../../docs/dev/releasing.md#release-artifacts).
 
 ## Check the client
 
@@ -58,7 +68,7 @@ Run `mise run apple:test` for the connection rules and the macOS WebKit navigati
 
 ## Build a signed IPA for a physical iPhone
 
-Run the remaining build commands from `apps/native/`. Keep all signing values local. Do not add team IDs, profile paths, profiles, certificates, private keys, or passwords to the repository.
+Run `mise run build:web` before you call the NSGo tool directly. Run the remaining build commands from `apps/native/`. Keep all signing values local. Do not add team IDs, profile paths, profiles, certificates, private keys, or passwords to the repository.
 
 Use a valid Apple Development signing identity with its private key in an unlocked keychain. Obtain an iOS development provisioning profile from the same team. The profile must authorize the bundle ID from `nsgo.yaml`, the signing certificate, and each test iPhone's UDID. For an Ad Hoc distribution IPA, use the matching Ad Hoc profile and Apple Distribution identity instead. Set `IOS_PROFILE` to the absolute path of the applicable `.mobileprovision` file. Set `IOS_SIGN_ID` to the exact identity name or SHA-1 fingerprint.
 

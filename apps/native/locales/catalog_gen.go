@@ -43,6 +43,7 @@ func For(cx *core.Scope) Messages {
 // its method, for the TSX declarations of the messages
 // (tsx.RegisterMessages).
 var Parameters = map[string][]string{
+	"LocalStartFailed":   {"reason"},
 	"NavExternalMessage": {"host"},
 }
 
@@ -52,6 +53,7 @@ var Parameters = map[string][]string{
 // catalog.
 type Translation struct {
 	Texts              map[string]string
+	LocalStartFailed   func(reason string) string
 	NavExternalMessage func(host string) string
 }
 
@@ -61,6 +63,11 @@ var supplied = map[string]Translation{}
 const (
 	textAppName = iota
 	textConnection
+	textOpenLocal
+	textOpeningLocal
+	textClosingLocal
+	textForgetLocal
+	textLocalViewFailed
 	textAddress
 	textAddressPlaceholder
 	textConnect
@@ -90,6 +97,11 @@ const (
 var keyOfText = [numTexts]string{
 	"appName",
 	"connection",
+	"openLocal",
+	"openingLocal",
+	"closingLocal",
+	"forgetLocal",
+	"localViewFailed",
 	"address",
 	"addressPlaceholder",
 	"connect",
@@ -117,6 +129,11 @@ var keyOfText = [numTexts]string{
 var textsEn = i18n.NewTexts(""+
 	"Dex"+
 	"Connect to Dex"+
+	"Open Local Workspace"+
+	"Opening local workspace…"+
+	"Closing local workspace…"+
+	"Forget local selection"+
+	"Could not open the local workspace. Try again."+
 	"Server address"+
 	"https://dex.example.com"+
 	"Connect"+
@@ -131,7 +148,7 @@ var textsEn = i18n.NewTexts(""+
 	"Use an HTTPS address or Dex on this Mac at 127.0.0.1."+
 	"Enter a server address with no sign-in details, path, query, or fragment."+
 	"Could not clear the WebView sign-in. Try again."+
-	"Could not save the server address. Try again."+
+	"Could not save the workspace selection. Try again."+
 	"Clearing sign-in…"+
 	"Open Link in Browser?"+
 	"Open Browser"+
@@ -141,6 +158,11 @@ var textsEn = i18n.NewTexts(""+
 	[]uint16{
 		3,
 		14,
+		20,
+		26,
+		26,
+		22,
+		46,
 		14,
 		23,
 		7,
@@ -155,7 +177,7 @@ var textsEn = i18n.NewTexts(""+
 		53,
 		73,
 		47,
-		45,
+		50,
 		19,
 		21,
 		12,
@@ -216,6 +238,9 @@ func Supply(lang string, t Translation) {
 		}
 	}
 	s := supplied[lang]
+	if t.LocalStartFailed != nil {
+		s.LocalStartFailed = t.LocalStartFailed
+	}
 	if t.NavExternalMessage != nil {
 		s.NavExternalMessage = t.NavExternalMessage
 	}
@@ -245,6 +270,61 @@ func Connection(cx *core.Scope) string { return For(cx).Connection() }
 
 // Connection is the package's Connection in the language of msgs.
 func (msgs Messages) Connection() string { return msgs.text(textConnection) }
+
+// OpenLocal says "Open Local Workspace"
+// in the language the app shows under cx.
+func OpenLocal(cx *core.Scope) string { return For(cx).OpenLocal() }
+
+// OpenLocal is the package's OpenLocal in the language of msgs.
+func (msgs Messages) OpenLocal() string { return msgs.text(textOpenLocal) }
+
+// OpeningLocal says "Opening local workspace…"
+// in the language the app shows under cx.
+func OpeningLocal(cx *core.Scope) string { return For(cx).OpeningLocal() }
+
+// OpeningLocal is the package's OpeningLocal in the language of msgs.
+func (msgs Messages) OpeningLocal() string { return msgs.text(textOpeningLocal) }
+
+// ClosingLocal says "Closing local workspace…"
+// in the language the app shows under cx.
+func ClosingLocal(cx *core.Scope) string { return For(cx).ClosingLocal() }
+
+// ClosingLocal is the package's ClosingLocal in the language of msgs.
+func (msgs Messages) ClosingLocal() string { return msgs.text(textClosingLocal) }
+
+// ForgetLocal says "Forget local selection"
+// in the language the app shows under cx.
+func ForgetLocal(cx *core.Scope) string { return For(cx).ForgetLocal() }
+
+// ForgetLocal is the package's ForgetLocal in the language of msgs.
+func (msgs Messages) ForgetLocal() string { return msgs.text(textForgetLocal) }
+
+// LocalStartFailed says "Could not start the local workspace: {reason}"
+// in the language the app shows under cx.
+func LocalStartFailed(cx *core.Scope, reason string) string { return For(cx).LocalStartFailed(reason) }
+
+// LocalStartFailed is the package's LocalStartFailed in the language of msgs.
+func (msgs Messages) LocalStartFailed(reason string) string {
+	if i18n.IsPseudo(msgs.lang) {
+		return i18n.Pseudo(msgs.lang, Messages{lang: Source, mark: true}.LocalStartFailed(reason))
+	}
+	for lang := msgs.lang; ; lang = i18n.Parent(lang) {
+		if f := supplied[lang].LocalStartFailed; f != nil {
+			return f(reason)
+		}
+		switch lang {
+		case "", "en":
+			return "Could not start the local workspace: " + msgs.arg(reason)
+		}
+	}
+}
+
+// LocalViewFailed says "Could not open the local workspace. Try again."
+// in the language the app shows under cx.
+func LocalViewFailed(cx *core.Scope) string { return For(cx).LocalViewFailed() }
+
+// LocalViewFailed is the package's LocalViewFailed in the language of msgs.
+func (msgs Messages) LocalViewFailed() string { return msgs.text(textLocalViewFailed) }
 
 // Address says "Server address"
 // in the language the app shows under cx.
@@ -344,7 +424,7 @@ func ClearFailed(cx *core.Scope) string { return For(cx).ClearFailed() }
 // ClearFailed is the package's ClearFailed in the language of msgs.
 func (msgs Messages) ClearFailed() string { return msgs.text(textClearFailed) }
 
-// SaveFailed says "Could not save the server address. Try again."
+// SaveFailed says "Could not save the workspace selection. Try again."
 // in the language the app shows under cx.
 func SaveFailed(cx *core.Scope) string { return For(cx).SaveFailed() }
 

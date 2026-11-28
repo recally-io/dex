@@ -73,6 +73,7 @@ jobs:
       - uses: jdx/mise-action@v5.3.0
         with:
           install: false
+      - run: mise run install:web
       - run: mise run apple:test
       - run: mise run release:mac-app "$RELEASE_TAG"
         env:
@@ -96,6 +97,7 @@ jobs:
       - uses: jdx/mise-action@v5.3.0
         with:
           install: false
+      - run: mise run install:web
       - name: Build with the distribution key
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}

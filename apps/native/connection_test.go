@@ -4,11 +4,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/nsgotest"
+	"github.com/recally-io/dex/localdex"
 )
 
 func TestUserOnPhoneCannotSaveAnHTTPAddress(t *testing.T) {
@@ -30,6 +33,56 @@ func TestUserOnPhoneCannotSaveAnHTTPAddress(t *testing.T) {
 	}
 	if _, ok := app.Storage().GetItem(savedOriginKey); ok {
 		t.Fatal("a phone must not save a cleartext origin")
+	}
+}
+
+func TestUserChoosesAndForgetsLocalWorkspace(t *testing.T) {
+	t.Parallel()
+	if nsgotest.Target() != "" {
+		t.Skip("This test uses an isolated headless iPhone environment.")
+	}
+	var dir string
+	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+		dir = cx.DataDir()
+		return root(cx)
+	}, nsgotest.Environment(core.Environment{OS: core.OSIOS}))
+	app.Find("role:button Connect")
+	if dir == "" {
+		t.Fatal("test did not provide an app data directory")
+	}
+	// A workspace already in use must not be opened by this app.
+	config := localdex.Config{DataDir: filepath.Join(dir, "dex"), Version: "test", Mobile: true}
+	inUse, err := localdex.Start(t.Context(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = inUse.Close() })
+	app.Press("role:button Open Local Workspace")
+	app.WaitFor("text:Could not start the local workspace: workspace is already open in Dex", 15*time.Second)
+	if err := inUse.Close(); err != nil {
+		t.Fatal(err)
+	}
+	app.Press("role:button Retry")
+	app.WaitFor("id:dex-workspace", 15*time.Second)
+	if got, _ := app.Storage().GetItem(savedOriginKey); got != localWorkspaceTarget {
+		t.Fatalf("saved workspace = %q, want local", got)
+	}
+
+	app.OpenLinks(workspaceSettingsURL)
+	app.Press("role:button Back to workspace")
+	app.Find("id:dex-workspace")
+	app.OpenLinks(workspaceSettingsURL)
+	app.Press("role:button Forget local selection")
+	app.WaitUntil(15*time.Second, func() bool {
+		_, saved := app.Storage().GetItem(savedOriginKey)
+		return !saved
+	})
+	reopened, err := localdex.Start(t.Context(), config)
+	if err != nil {
+		t.Fatalf("reopen %s after forgetting: %v", config.DataDir, err)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

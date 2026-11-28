@@ -12,6 +12,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/ebitengine/purego/objc"
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/nsgotest"
 )
@@ -123,6 +124,125 @@ func TestUserWorkspaceStaysOnItsOrigin(t *testing.T) {
 	wait("finished")
 	if got := arrivals.Load(); got != 0 {
 		t.Fatalf("outside origin received %d requests, want zero", got)
+	}
+}
+
+func TestUserOpensLocalWorkspaceInWebKit(t *testing.T) {
+	t.Parallel()
+	if nsgotest.Target() == "" {
+		t.Skip("A native Apple run is required")
+	}
+	bridge := startTestBridge(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	nsgotest.Start(t, func(*core.Scope) core.Node { return core.Text{Content: "Local workspace fixture"} })
+	await := func(result <-chan string) string {
+		t.Helper()
+		select {
+		case value := <-result:
+			return value
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+			return ""
+		}
+	}
+	var page *dexAppleWebView
+	var hostErr error
+	loaded := make(chan string, 4)
+	if err := dexOnAppleMain(func() {
+		origin, _ := dexParseOrigin(localAppleOrigin)
+		page, hostErr = newDexAppleWebView(origin, uuid.Nil(), func(event string, data any) {
+			switch event {
+			case "localMessage", "localStatic":
+				bridge.handleMessage(ctx, data.(string), event == "localStatic", func(command string, value any) {
+					if err := dexOnAppleMain(func() {
+						if ctx.Err() == nil {
+							page.localCommand(command, value.(string))
+						}
+					}); err != nil {
+						t.Error(err)
+					}
+				})
+			default:
+				loaded <- event
+			}
+		})
+		loaded <- "created"
+		if hostErr == nil {
+			page.load(localAppleOrigin, http.MethodGet)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := await(loaded); got != "created" || hostErr != nil {
+		t.Fatalf("create local WebView: %s, %v", got, hostErr)
+	}
+	t.Cleanup(func() {
+		done := make(chan struct{})
+		if err := dexOnAppleMain(func() { page.close(); close(done) }); err != nil {
+			t.Error(err)
+			return
+		}
+		<-done
+	})
+	if got := await(loaded); got != "finished" {
+		t.Fatalf("load local WebView: %s", got)
+	}
+
+	// The embedded React module must boot, and the document-start shim must
+	// handle a Request and deliver a named SSE event before the stream ends.
+	script := `(() => {
+		window.localTestResult = "started";
+		fetch(new Request("/api/health")).then(async response => {
+			if (!response.ok) throw new Error("health status " + response.status);
+			window.localTestResult = "health ok";
+			const path = "/api/bots/default/uploads";
+			const form = new FormData();
+			form.append("file", new Blob([new Uint8Array([0, 255, 128])]), "test.bin");
+			const uploaded = await fetch(path, { method: "POST", body: form });
+			if (uploaded.status !== 201) throw new Error("upload status " + uploaded.status);
+			const downloaded = await fetch(path + "/" + (await uploaded.json()).id);
+			if (String(new Uint8Array(await downloaded.arrayBuffer())) !== "0,255,128") throw new Error("wrong file bytes");
+			const source = new EventSource("/api/tasks/events");
+			source.addEventListener("task_ready", event => {
+				source.close();
+				window.localTestResult = "sse " + event.lastEventId;
+			});
+			source.onerror = () => { window.localTestResult = "sse failed"; };
+		}).catch(error => { window.localTestResult = String(error); });
+	})()`
+	if err := dexOnAppleMain(func() { page.localCommand("eval", script) }); err != nil {
+		t.Fatal(err)
+	}
+	query := func() string {
+		result := make(chan string, 1)
+		if err := dexOnAppleMain(func() {
+			block := objc.NewBlock(func(_ objc.Block, value, err objc.ID) {
+				if err != 0 {
+					result <- dexGoString(err.Send(dexSel("localizedDescription")))
+					return
+				}
+				result <- dexGoString(value)
+			})
+			defer block.Release()
+			page.view.Send(dexSel("evaluateJavaScript:completionHandler:"), dexNSString(`window.localTestResult + "|" + !!document.querySelector("#root > *")`), block)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return await(result)
+	}
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		got := query()
+		if got == "sse 0|true" {
+			return
+		}
+		select {
+		case <-tick.C:
+		case <-ctx.Done():
+			t.Fatalf("local WebView did not load React, fetch, and stream: %q", got)
+		}
 	}
 }
 
