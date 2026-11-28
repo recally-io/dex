@@ -386,7 +386,7 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 		// The callback URL and secret carry over, so the old account must stop sending there.
 		s.onTelegram(row.BotID, nil)
 		defer func() {
-			if !committed && s.canStartChannel(ctx, row.BotID) {
+			if !committed && db.CanStartChannel(ctx, s.q, row.BotID) {
 				s.onTelegram(row.BotID, old)
 			}
 		}()
@@ -425,7 +425,7 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 	}
 	committed = true
 	s.onTelegram(row.BotID, nil)
-	if s.canStartChannel(ctx, row.BotID) {
+	if db.CanStartChannel(ctx, s.q, row.BotID) {
 		s.onTelegram(row.BotID, &cfg)
 	}
 	if strings.Contains(saved.Token, telegramVaultMarker) {

@@ -71,15 +71,23 @@ func (s *Service) channelToolRead(ctx context.Context, id, view string) (any, er
 		}
 		return targets, nil
 	}
-	channels, err := s.channels(ctx, id)
+	tg, wx, err := s.channelViews(ctx, id)
 	if err != nil {
 		return nil, errors.New("cannot read channel settings")
 	}
+	fsState, fsPaired := "off", false
+	if s.feishu != nil {
+		var err error
+		fsState, fsPaired, err = s.feishu.State(ctx, id)
+		if err != nil {
+			return nil, errors.New("cannot read channel settings")
+		}
+	}
 	if view == "channel_pairing" {
-		return map[string]bool{"telegram": len(channels.Telegram.AllowedUsers) != 0, "feishu": channels.Feishu.Paired, "wechat": channels.Wechat.Enabled}, nil
+		return map[string]bool{"telegram": len(tg.AllowedUsers) != 0, "feishu": fsPaired, "wechat": wx.Enabled}, nil
 	}
 	// Provider runtime errors can contain upstream response text. Return states only.
-	return map[string]string{"telegram": channels.Telegram.Status.State, "feishu": channels.Feishu.Status, "wechat": channels.Wechat.Status.State}, nil
+	return map[string]string{"telegram": tg.Status.State, "feishu": fsState, "wechat": wx.Status.State}, nil
 }
 
 func (s *Service) requestChannelChange(ctx context.Context, caller string, session int64, id, op, target string) (_ any, err error) {
@@ -162,12 +170,10 @@ func (s *Service) channelFingerprint(ctx context.Context, bot, platform string) 
 		row.RetryAt = 0
 		config, err = row, e
 	case "feishu":
-		row, e := s.q.GetFeishuSettings(ctx, bot)
-		var setup string
-		if session != nil {
-			setup = session.feishuSessionID
+		if s.feishu == nil {
+			return [sha256.Size]byte{}, ErrChannelApproval
 		}
-		config, err = []any{row, setup}, e
+		return s.feishu.FingerprintLocked(ctx, bot)
 	case "wechat":
 		row, e := s.q.GetWechatSettings(ctx, bot)
 		var setup string
@@ -240,7 +246,7 @@ func (s *Service) applyChannelChange(ctx context.Context, p channelApproval) err
 		case "telegram":
 			return s.deleteTelegram(ctx, p.BotID)
 		case "feishu":
-			return s.deleteFeishu(ctx, p.BotID)
+			return s.feishu.DisconnectLocked(ctx, p.BotID)
 		case "wechat":
 			return s.deleteWechat(ctx, p.BotID)
 		}
@@ -250,7 +256,7 @@ func (s *Service) applyChannelChange(ctx context.Context, p channelApproval) err
 			// Revoking pairing keeps the current transport and its credentials.
 			return s.setTelegram(ctx, p.BotID, "", nil, nil, "", nil)
 		case "feishu":
-			return s.revokeFeishuPairing(ctx, p.BotID)
+			return s.feishu.RevokePairingLocked(ctx, p.BotID)
 		}
 	}
 	return ErrChannelApproval

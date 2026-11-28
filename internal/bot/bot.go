@@ -18,7 +18,6 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
@@ -52,19 +51,17 @@ type Service struct {
 	onTelegram      func(string, *telegram.Config)
 	telegramVault   *vault.Store
 	manager         *telegramManager
-	feishuAPIURL    string
-	feishuRegistrar feishu.Registrar
-	onFeishu        func(string, *feishu.Config)
+	feishu          feishuSetup
 	// One lock orders credential checks, saves, runtime changes, and setup sessions
 	// across bots. Model checks take the settings lock; settings never takes this lock.
-	mu               sync.Mutex
+	mu               *sync.Mutex
 	sessions         map[string]*channelSession
 	channelApprovals map[string]channelApproval
 }
 
-// New connects storage, model validation, and Telegram runtime changes.
-func New(q *sqlc.Queries, conn *sql.DB, checkModel func(context.Context, string, string) error, telegramAPIURL string, onTelegram func(string, *telegram.Config)) *Service {
-	return &Service{q: q, db: conn, checkModel: checkModel, apiURL: telegramAPIURL, onTelegram: onTelegram}
+// New connects storage, the shared channel lock, model validation, and Telegram runtime changes.
+func New(q *sqlc.Queries, conn *sql.DB, mu *sync.Mutex, checkModel func(context.Context, string, string) error, telegramAPIURL string, onTelegram func(string, *telegram.Config)) *Service {
+	return &Service{q: q, db: conn, mu: mu, checkModel: checkModel, apiURL: telegramAPIURL, onTelegram: onTelegram}
 }
 
 // Activity summarizes one bot for the bot list.
@@ -387,7 +384,7 @@ func (s *Service) setTelegram(ctx context.Context, botID, token string, allowedU
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	if err := s.checkCredential(ctx, botID, "telegram", cfg.Token); err != nil {
+	if err := s.checkTelegramAccount(ctx, botID, account); err != nil {
 		return err
 	}
 	users := make([]string, len(allowedUsers))
@@ -401,7 +398,7 @@ func (s *Service) setTelegram(ctx context.Context, botID, token string, allowedU
 	s.onTelegram(botID, nil)
 	committed := false
 	defer func() {
-		if !committed && saved != nil && s.canStartChannel(ctx, botID) {
+		if !committed && saved != nil && db.CanStartChannel(ctx, s.q, botID) {
 			s.onTelegram(botID, saved)
 		}
 	}()
@@ -414,7 +411,7 @@ func (s *Service) setTelegram(ctx context.Context, botID, token string, allowedU
 			return err
 		}
 	}
-	if err := s.writeActiveChannel(ctx, botID, func(q *sqlc.Queries) error {
+	if err := db.WriteActiveChannel(ctx, s.db, botID, func(q *sqlc.Queries) error {
 		var err error
 		cfg.RetryAt, err = q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: botID,
 			Token: key, AllowedUsers: strings.Join(users, ","), Options: string(encoded),
@@ -425,7 +422,7 @@ func (s *Service) setTelegram(ctx context.Context, botID, token string, allowedU
 		return err
 	}
 	committed = true
-	if s.canStartChannel(ctx, botID) {
+	if db.CanStartChannel(ctx, s.q, botID) {
 		s.onTelegram(botID, &cfg)
 	}
 	if saved != nil && saved.CredentialRef != cfg.CredentialRef {
@@ -449,14 +446,14 @@ func (s *Service) deleteTelegram(ctx context.Context, botID string) error {
 	s.onTelegram(botID, nil)
 	if saved != nil && saved.Webhook.URL != "" {
 		if err := telegram.DeleteWebhook(ctx, *saved); err != nil {
-			if s.canStartChannel(ctx, botID) {
+			if db.CanStartChannel(ctx, s.q, botID) {
 				s.onTelegram(botID, saved)
 			}
 			return err
 		}
 	}
 	if err := s.q.DeleteTelegramSettings(ctx, botID); err != nil {
-		if saved != nil && s.canStartChannel(ctx, botID) {
+		if saved != nil && db.CanStartChannel(ctx, s.q, botID) {
 			s.onTelegram(botID, saved)
 		}
 		return err

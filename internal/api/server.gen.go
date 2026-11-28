@@ -1508,7 +1508,7 @@ type BoundaryItemStatus string
 type ChannelStatus = channel.Status
 
 // Channels defines model for Channels.
-type Channels = bot.Channels
+type Channels = bot.Channels[Feishu]
 
 // ChildEvent Current state of this session or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
 type ChildEvent struct {
@@ -1568,7 +1568,7 @@ type ErrorItem struct {
 type ErrorItemKind string
 
 // Feishu defines model for Feishu.
-type Feishu = bot.Feishu
+type Feishu = feishu.Feishu
 
 // FeishuBrand defines model for FeishuBrand.
 type FeishuBrand struct {
@@ -1600,7 +1600,7 @@ type FeishuPoll struct {
 }
 
 // FeishuSetup defines model for FeishuSetup.
-type FeishuSetup = bot.FeishuSetup
+type FeishuSetup = feishu.Setup
 
 // FeishuWebhookInput defines model for FeishuWebhookInput.
 type FeishuWebhookInput = feishu.WebhookConfig

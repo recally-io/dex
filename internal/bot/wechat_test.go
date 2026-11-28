@@ -47,7 +47,7 @@ func TestUserWechatCanceledActivationRetainsCandidate(t *testing.T) {
 	if err := q.SetWechatSettings(t.Context(), sqlc.SetWechatSettingsParams{BotID: "default", Token: "old", BaseUrl: srv.URL, WechatBotID: "previous", Owner: "owner"}); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, conn, nil, "", nil)
+	s := bot.New(q, conn, new(sync.Mutex), nil, "", nil)
 	var running *wechat.Config
 	s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, func(_ string, cfg *wechat.Config) {
 		running = cfg
@@ -105,7 +105,7 @@ func TestUserWechatNewLoginAndDeleteInvalidateWaitingStart(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = conn.Close() }()
-			s := bot.New(sqlc.New(conn), conn, nil, "", nil)
+			s := bot.New(sqlc.New(conn), conn, new(sync.Mutex), nil, "", nil)
 			s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, func(string, *wechat.Config) {})
 			done := make(chan error, 1)
 			go func() { _, err := s.BeginWechatLogin(t.Context(), "default"); done <- err }()
@@ -158,7 +158,7 @@ func TestUserWechatDeletionStopsBeforeForgettingCredentials(t *testing.T) {
 	if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{BotID: "default", Token: "old", BaseUrl: "https://example.com", WechatBotID: "bot", Owner: "owner"}); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, conn, nil, "", nil)
+	s := bot.New(q, conn, new(sync.Mutex), nil, "", nil)
 	var stoppedWithOwner string
 	s.ConfigureWechat(wechat.Options{}, func(_ string, cfg *wechat.Config) {
 		if cfg == nil {
@@ -198,7 +198,7 @@ func TestUserWechatDeleteFailureRestartsAccount(t *testing.T) {
 	if _, err := conn.ExecContext(ctx, `CREATE TRIGGER fail_wechat_delete BEFORE DELETE ON wechat_settings BEGIN SELECT RAISE(ABORT, 'test failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, conn, nil, "", nil)
+	s := bot.New(q, conn, new(sync.Mutex), nil, "", nil)
 	var running *wechat.Config
 	s.ConfigureWechat(wechat.Options{}, func(_ string, cfg *wechat.Config) { running = cfg })
 	// When deletion fails, the previous account remains usable.

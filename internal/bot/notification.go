@@ -80,15 +80,16 @@ func (s *Service) notificationTargets(ctx context.Context, botID string) (Notifi
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return NotificationTargets{}, err
 	}
-	fs, err := s.q.GetFeishuSettings(ctx, botID)
-	if err == nil {
-		if fs.OwnerID != "" {
-			if err = add("feishu", fs.AppID, "feishu:"+fs.OwnerID); err != nil {
+	if s.feishu != nil {
+		account, owner, err := s.feishu.Owner(ctx, botID)
+		if err != nil {
+			return NotificationTargets{}, err
+		}
+		if owner != "" {
+			if err := add("feishu", account, "feishu:"+owner); err != nil {
 				return NotificationTargets{}, err
 			}
 		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return NotificationTargets{}, err
 	}
 	wx, err := s.q.GetWechatSettings(ctx, botID)
 	if err == nil {

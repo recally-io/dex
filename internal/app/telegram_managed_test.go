@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/bot"
 )
 
@@ -156,7 +157,7 @@ func (f *managedTelegramAPI) managed(id, owner int64, username string) {
 func configureManagedTelegram(t *testing.T, d *dex) {
 	t.Helper()
 	d.must(t, http.MethodPut, telegramManagerPath, map[string]string{"token": managerTestToken}, nil)
-	var channels bot.Channels
+	var channels api.Channels
 	d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &channels)
 	if !channels.Telegram.ManagedCreationAvailable {
 		t.Fatal("managed creation is not available")
@@ -209,7 +210,7 @@ func TestUserConnectsManagedTelegramAndKeepsItAfterReplay(t *testing.T) {
 		t.Fatalf("setup = %+v, token requests = %d", setup, f.fetched.Load())
 	}
 	assertManagedChannel := func(d *dex) {
-		var channels bot.Channels
+		var channels api.Channels
 		d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &channels)
 		if tg := channels.Telegram; tg.BotID != "789" || len(tg.AllowedUsers) != 1 || tg.AllowedUsers[0] != 42 || !tg.Options.Silent {
 			t.Fatalf("wrong managed channel %+v", tg)

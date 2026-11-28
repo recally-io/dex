@@ -287,6 +287,12 @@ and Feishu app IDs cannot be assigned to multiple bots. A duplicate returns 409 
 bot that owns the credential. QR login and registration sessions are also per bot.
 WeChat runtime state is keyed by bot ID and owner.
 
+The app shares one channel settings lock across all bots and platforms. An
+archive stops channels after the archive transaction commits. Restore cancels
+pending Feishu registrations and WeChat logins. It starts the saved channels
+under the settings lock. If an archive callback gets the lock after restore,
+it leaves the channels running.
+
 [`delivery.Manager`](../../internal/channel/delivery/manager.go) owns bot lifetime,
 commands, and reply delivery. Settings changes stop the old bot
 before they start its replacement. Settings expose runtime status: `off`,
@@ -439,14 +445,16 @@ cannot approve a request. The request belongs to its originating session and
 expires after 10 minutes. Control consumes it once and checks that the session,
 bots, and target are still valid. A notification destination must still map to
 the peer shown on the page. Changed credentials or pairing make an earlier
-request invalid. A restart clears requests that are still pending.
+request invalid. A new Feishu registration also invalidates an earlier request
+to revoke pairing or disconnect Feishu. A restart clears all pending requests.
 
-Control uses the same channel settings service as the web UI. It logs the
-outcome of applied and denied mutations with the verified bot and operation
-when available. It omits credentials, raw arguments, remote peer IDs, and
-approval links. The approval link is a bearer capability given to the model.
-The link does not isolate the owner on a no-token install or from code that
-runs as the dex OS user.
+Control uses the same channel settings operations as the web UI. It holds the
+settings lock from approval consumption through the fingerprint check and the
+change. It logs the outcome of applied and denied changes with the verified bot
+and operation when available. It omits credentials, raw arguments, remote peer
+IDs, and approval links. The approval link is a bearer capability given to
+the model. The link does not isolate the owner on a no-token install or from
+code that runs as the dex OS user.
 
 ## Feishu and Lark
 
@@ -478,9 +486,11 @@ user changes it. QR setup requests `im:message`, `im:message.p2p_msg:readonly`, 
 `im.message.receive_v1` event. The server keeps the device code in a session
 until approval or expiry. Registration requests release the settings lock
 while they wait for the accounts service. Cancellation or replacement rejects
-late responses. Lark tenants use the Lark accounts service. Setup
-saves the creator's `open_id` with the app credentials through `bot.Service`. Manual setup requires a one-time code sent in a private
-message. The code expires after 10 minutes. A credential change clears owner
+late responses. Lark tenants use the Lark accounts service. The
+[Feishu setup service](../../internal/channel/feishu/setup.go) owns credentials,
+registration, and pairing. It saves the creator's `open_id` with the app
+credentials. Manual setup requires a one-time code sent in a private message.
+The code expires after 10 minutes. A credential change clears owner
 authorization. The settings API never returns the saved app secret.
 
 Private status reactions are on unless `reactions` is explicitly false. The

@@ -64,11 +64,16 @@ func (h *handler) UpdateBot(ctx context.Context, req api.UpdateBotRequestObject)
 }
 
 func (h *handler) GetChannels(ctx context.Context, _ api.GetChannelsRequestObject) (api.GetChannelsResponseObject, error) {
-	channels, err := h.Bots.Channels(ctx, botID(ctx))
+	id := botID(ctx)
+	tg, wx, err := h.Bots.ChannelViews(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return api.GetChannels200JSONResponse(channels), nil
+	fs, err := h.Feishu.View(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetChannels200JSONResponse{Telegram: tg, Wechat: wx, Feishu: fs}, nil
 }
 
 func (h *handler) ListArchivedBots(ctx context.Context, _ api.ListArchivedBotsRequestObject) (api.ListArchivedBotsResponseObject, error) {
