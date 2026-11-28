@@ -71,7 +71,7 @@ func (s *Service) channelToolRead(ctx context.Context, id, view string) (any, er
 		}
 		return targets, nil
 	}
-	tg, wx, err := s.channelViews(ctx, id)
+	tg, err := s.telegramView(ctx, id)
 	if err != nil {
 		return nil, errors.New("cannot read channel settings")
 	}
@@ -83,11 +83,18 @@ func (s *Service) channelToolRead(ctx context.Context, id, view string) (any, er
 			return nil, errors.New("cannot read channel settings")
 		}
 	}
+	wxState, wxPaired := "off", false
+	if s.wechat != nil {
+		wxState, wxPaired, err = s.wechat.State(ctx, id)
+		if err != nil {
+			return nil, errors.New("cannot read channel settings")
+		}
+	}
 	if view == "channel_pairing" {
-		return map[string]bool{"telegram": len(tg.AllowedUsers) != 0, "feishu": fsPaired, "wechat": wx.Enabled}, nil
+		return map[string]bool{"telegram": len(tg.AllowedUsers) != 0, "feishu": fsPaired, "wechat": wxPaired}, nil
 	}
 	// Provider runtime errors can contain upstream response text. Return states only.
-	return map[string]string{"telegram": tg.Status.State, "feishu": fsState, "wechat": wx.Status.State}, nil
+	return map[string]string{"telegram": tg.Status.State, "feishu": fsState, "wechat": wxState}, nil
 }
 
 func (s *Service) requestChannelChange(ctx context.Context, caller string, session int64, id, op, target string) (_ any, err error) {
@@ -163,7 +170,6 @@ func (s *Service) requestChannelChange(ctx context.Context, caller string, sessi
 func (s *Service) channelFingerprint(ctx context.Context, bot, platform string) ([sha256.Size]byte, error) {
 	var config any
 	var err error
-	session := s.sessions[bot]
 	switch platform {
 	case "telegram":
 		row, e := s.q.GetTelegramSettings(ctx, bot)
@@ -175,12 +181,10 @@ func (s *Service) channelFingerprint(ctx context.Context, bot, platform string) 
 		}
 		return s.feishu.FingerprintLocked(ctx, bot)
 	case "wechat":
-		row, e := s.q.GetWechatSettings(ctx, bot)
-		var setup string
-		if session != nil {
-			setup = session.loginID
+		if s.wechat == nil {
+			return [sha256.Size]byte{}, ErrChannelApproval
 		}
-		config, err = []any{row, setup}, e
+		return s.wechat.FingerprintLocked(ctx, bot)
 	default:
 		return [sha256.Size]byte{}, ErrChannelApproval
 	}
@@ -248,7 +252,7 @@ func (s *Service) applyChannelChange(ctx context.Context, p channelApproval) err
 		case "feishu":
 			return s.feishu.DisconnectLocked(ctx, p.BotID)
 		case "wechat":
-			return s.deleteWechat(ctx, p.BotID)
+			return s.wechat.DisconnectLocked(ctx, p.BotID)
 		}
 	case "revoke_pairing":
 		switch p.target {

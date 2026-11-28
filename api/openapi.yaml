@@ -5086,9 +5086,9 @@ components:
         error: { type: string }
 
     Wechat:
-      x-go-type: bot.Wechat
+      x-go-type: wechat.Wechat
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/bot
+        path: github.com/recally-io/dex/internal/channel/wechat
       type: object
       required: [enabled, status]
       properties:

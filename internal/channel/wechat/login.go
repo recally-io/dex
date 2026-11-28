@@ -19,8 +19,8 @@ type LoginView struct {
 	Reason    string `json:"reason,omitempty"`
 }
 
-// Login is one temporary QR session. The settings service owns the current session.
-type Login struct {
+// qrLogin is one temporary QR session. The setup service owns the current session.
+type qrLogin struct {
 	mu        sync.Mutex
 	client    *client
 	view      LoginView
@@ -31,15 +31,15 @@ type Login struct {
 	failure   error
 }
 
-// BeginLogin requests the first QR code. At most three replacements are used in one session.
-func BeginLogin(ctx context.Context, id string, options Options) (*Login, LoginView, error) {
+// beginLogin requests the first QR code. A login can refresh three times.
+func beginLogin(ctx context.Context, id string, options Options) (*qrLogin, LoginView, error) {
 	c := newClient(options)
-	l := &Login{client: c, pollURL: c.options.APIURL, view: LoginView{ID: id, Status: "wait", Active: true}}
+	l := &qrLogin{client: c, pollURL: c.options.APIURL, view: LoginView{ID: id, Status: "wait", Active: true}}
 	err := l.refresh(ctx)
 	return l, l.view, err
 }
 
-func (l *Login) refresh(ctx context.Context) error {
+func (l *qrLogin) refresh(ctx context.Context) error {
 	if l.attempts >= 4 {
 		l.view.Active = false
 		l.view.Reason = "All three QR refreshes were used. Start again."
@@ -63,10 +63,8 @@ func (l *Login) refresh(ctx context.Context) error {
 	return nil
 }
 
-// Poll waits for one protocol state. Activation publishes local confirmation.
-func (l *Login) Poll(ctx context.Context, verifyCode string) (LoginView, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+// pollLocked waits for one protocol state. The caller holds the login lock.
+func (l *qrLogin) pollLocked(ctx context.Context, verifyCode string) (LoginView, error) {
 	if !l.view.Active || l.candidate != nil {
 		return l.view, l.failure
 	}
@@ -125,18 +123,10 @@ func (l *Login) Poll(ctx context.Context, verifyCode string) (LoginView, error) 
 	return l.view, nil
 }
 
-// Activate retains candidate credentials until settings and runtime activation succeed.
-func (l *Login) Activate(save func(*Config) error) (LoginView, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.candidate == nil {
-		return l.view, l.failure
-	}
-	if err := save(l.candidate); err != nil {
-		return l.view, err
-	}
+// confirmLocked ends the login after the setup service saves the candidate.
+func (l *qrLogin) confirmLocked() LoginView {
 	l.candidate = nil
 	l.view.Status = "confirmed"
 	l.view.Active = false
-	return l.view, nil
+	return l.view
 }

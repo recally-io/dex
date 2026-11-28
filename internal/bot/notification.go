@@ -91,13 +91,16 @@ func (s *Service) notificationTargets(ctx context.Context, botID string) (Notifi
 			}
 		}
 	}
-	wx, err := s.q.GetWechatSettings(ctx, botID)
-	if err == nil {
-		if err = add("wechat", wx.WechatBotID, "wechat:"+wx.Owner); err != nil {
+	if s.wechat != nil {
+		account, owner, err := s.wechat.Owner(ctx, botID)
+		if err != nil {
 			return NotificationTargets{}, err
 		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return NotificationTargets{}, err
+		if owner != "" {
+			if err := add("wechat", account, "wechat:"+owner); err != nil {
+				return NotificationTargets{}, err
+			}
+		}
 	}
 	return out, nil
 }

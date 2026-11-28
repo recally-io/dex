@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/channel/wechat"
 )
 
 var ErrCredentialInUse = errors.New("channel credential already in use")
@@ -29,47 +28,45 @@ type feishuSetup interface {
 // BindFeishu connects channel coordination before the service starts.
 func (s *Service) BindFeishu(setup feishuSetup) { s.feishu = setup }
 
-type channelSession struct {
-	login   *wechat.Login
-	loginID string
+// wechatSetup is the WeChat capability that bot needs until channel coordination moves out.
+type wechatSetup interface {
+	State(ctx context.Context, botID string) (state string, paired bool, err error)
+	Owner(ctx context.Context, botID string) (account, owner string, err error)
+	FingerprintLocked(ctx context.Context, botID string) ([sha256.Size]byte, error)
+	DisconnectLocked(ctx context.Context, botID string) error
+	PrepareStartLocked(ctx context.Context, botID string) (func(context.Context), error)
+	CancelLoginLocked(botID string)
+	StopLocked(botID string)
 }
 
-// channelSession requires the bot lock.
-func (s *Service) channelSession(botID string) *channelSession {
-	if s.sessions == nil {
-		s.sessions = make(map[string]*channelSession)
-	}
-	if s.sessions[botID] == nil {
-		s.sessions[botID] = &channelSession{}
-	}
-	return s.sessions[botID]
-}
+// BindWechat connects channel coordination before the service starts.
+func (s *Service) BindWechat(setup wechatSetup) { s.wechat = setup }
 
-// ChannelViews returns the public views that bot owns.
-func (s *Service) ChannelViews(ctx context.Context, botID string) (Telegram, Wechat, error) {
-	tg, wx, err := s.channelViews(ctx, botID)
+// TelegramView returns public Telegram settings and web setup capability.
+func (s *Service) TelegramView(ctx context.Context, botID string) (Telegram, error) {
+	tg, err := s.telegramView(ctx, botID)
 	if err == nil {
 		tg.ManagerConfigured, tg.ManagedCreationAvailable = s.managerStatus()
 	}
-	return tg, wx, err
+	return tg, err
 }
 
-// channelViews leaves out the web setup capability so callers can hold the settings lock.
-func (s *Service) channelViews(ctx context.Context, botID string) (Telegram, Wechat, error) {
+// telegramView leaves out the web setup capability so callers can hold the settings lock.
+func (s *Service) telegramView(ctx context.Context, botID string) (Telegram, error) {
 	tg := Telegram{AllowedUsers: []int64{}, Status: channel.Status{State: "off"}, Transport: "polling"}
 	row, err := s.q.GetTelegramSettings(ctx, botID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return Telegram{}, Wechat{}, err
+		return Telegram{}, err
 	}
 	if err == nil {
 		tg.Enabled = true
 		tg.BotID, _, _ = strings.Cut(row.Token, ":")
 		tg.AllowedUsers, err = parseUsers(row.AllowedUsers)
 		if err != nil {
-			return Telegram{}, Wechat{}, err
+			return Telegram{}, err
 		}
 		if err := json.Unmarshal([]byte(row.Options), &tg.Options); err != nil {
-			return Telegram{}, Wechat{}, err
+			return Telegram{}, err
 		}
 		if row.WebhookUrl != "" {
 			tg.Transport, tg.WebhookURL = "webhook", row.WebhookUrl
@@ -78,6 +75,5 @@ func (s *Service) channelViews(ctx context.Context, botID string) (Telegram, Wec
 	if s.ChannelStatus != nil {
 		tg.Status = s.ChannelStatus(botID, "telegram")
 	}
-	wx, err := s.wechatView(ctx, botID)
-	return tg, wx, err
+	return tg, nil
 }

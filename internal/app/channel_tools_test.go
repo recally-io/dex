@@ -321,6 +321,73 @@ func TestUserCannotApproveFeishuChangeAfterReplacement(t *testing.T) {
 	complete(newSetup)
 }
 
+func TestUserCannotApproveWechatDisconnectAfterReplacement(t *testing.T) {
+	t.Parallel()
+	// Given a connected WeChat account and an owner who can review changes.
+	f := newFakeWechat(t)
+	d := startWechat(t, f, t.TempDir())
+	connectWechat(t, d)
+	session := d.newSession(t).ID
+	const base = "/api/bots/default/channels"
+	request := func() string {
+		return channelApprovalPath(t, taskTool(t, d, session, "channel_request_change", map[string]string{"operation": "disconnect", "target": "wechat"}))
+	}
+	begin := func() wechatLogin {
+		var login wechatLogin
+		d.must(t, http.MethodPost, base+"/wechat/login", nil, &login)
+		return login
+	}
+	complete := func(login wechatLogin) {
+		d.must(t, http.MethodPost, base+"/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
+		if login.Status != "confirmed" || login.Active {
+			t.Fatalf("replacement login did not complete: %+v", login)
+		}
+	}
+	assertReplacement := func() {
+		var view struct {
+			Wechat struct {
+				Enabled bool   `json:"enabled"`
+				BotID   string `json:"botId"`
+			} `json:"wechat"`
+		}
+		d.must(t, http.MethodGet, base, nil, &view)
+		if !view.Wechat.Enabled || view.Wechat.BotID != "replacement" {
+			t.Fatalf("replacement binding was changed: %+v", view.Wechat)
+		}
+	}
+	confirmReplacement := func() {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.statuses = append(f.statuses, map[string]any{
+			"status": "confirmed", "bot_token": "new-token", "ilink_bot_id": "replacement", "ilink_user_id": "new-owner", "baseurl": f.srv.URL,
+		})
+	}
+
+	// When the owner replaces the binding, then an older approval cannot disconnect it.
+	oldBinding := request()
+	confirmReplacement()
+	complete(begin())
+	reviewChannelChange(t, d, d.srv.Client(), http.MethodPost, oldBinding, "", http.StatusConflict)
+	assertReplacement()
+
+	// When the owner reopens login without changing credentials, then a pending approval cannot cancel it.
+	oldLogin := begin()
+	oldApproval := request()
+	newLogin := begin()
+	if newLogin.ID == "" || newLogin.ID == oldLogin.ID {
+		t.Fatal("reopening login did not return a new ID")
+	}
+	reviewChannelChange(t, d, d.srv.Client(), http.MethodPost, oldApproval, "", http.StatusConflict)
+	assertReplacement()
+
+	// Saving the same credentials still ends that live login and invalidates its approval.
+	beforeSave := request()
+	confirmReplacement()
+	complete(newLogin)
+	reviewChannelChange(t, d, d.srv.Client(), http.MethodPost, beforeSave, "", http.StatusConflict)
+	assertReplacement()
+}
+
 func TestUserCanRequestChannelChangesFromPrivateSessionButNotFromAChild(t *testing.T) {
 	t.Parallel()
 	// Given a paired Telegram sender and an owner who can delegate work.

@@ -14,7 +14,7 @@ import (
 
 func TestArchiveInvalidatesInflightWechatLogin(t *testing.T) {
 	t.Parallel()
-	for _, mode := range []string{"archive", "restore", "db_archive"} {
+	for _, mode := range []string{"archive", "restore", "db_archive", "restore_before_stop"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Parallel()
 			// Given a WeChat login whose QR status poll waits at the remote service.
@@ -51,10 +51,14 @@ func TestArchiveInvalidatesInflightWechatLogin(t *testing.T) {
 			case "restore":
 				archiveCoder(t, d)
 				d.must(t, http.MethodDelete, prefix+"/archive", nil, nil)
-			case "db_archive":
+			case "db_archive", "restore_before_stop":
 				conn := sessionDB(t, d)
 				if _, err := conn.ExecContext(t.Context(), "UPDATE bots SET archived_at = 1 WHERE id = ?", bot.ID); err != nil {
 					t.Fatal(err)
+				}
+				if mode == "restore_before_stop" {
+					// Restore without waiting for an archive callback to cancel the login.
+					d.must(t, http.MethodDelete, prefix+"/archive", nil, nil)
 				}
 			}
 			release()
@@ -63,7 +67,7 @@ func TestArchiveInvalidatesInflightWechatLogin(t *testing.T) {
 			if got.status == http.StatusOK {
 				t.Fatalf("the login finished after the archive: %s", got.body)
 			}
-			if mode != "restore" {
+			if mode == "archive" || mode == "db_archive" {
 				d.must(t, http.MethodDelete, prefix+"/archive", nil, nil)
 			}
 			if _, body := d.call(t, http.MethodGet, prefix+"/channels", nil); strings.Contains(body, `"owner":"owner"`) {

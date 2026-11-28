@@ -1,12 +1,8 @@
 package bot_test
 
 import (
-	"context"
 	"database/sql"
 	"errors"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -14,90 +10,9 @@ import (
 
 	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel/telegram"
-	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
-
-func TestUserCannotReplaceWechatAccountAfterArchiveCommit(t *testing.T) {
-	t.Parallel()
-	// Given a connected account and a QR login that would replace it.
-	q, writer, id := archiveRaceDB(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/ilink/bot/get_bot_qrcode":
-			_, _ = io.WriteString(w, `{"qrcode":"code","qrcode_img_content":"QR"}`)
-		case "/ilink/bot/get_qrcode_status":
-			_, _ = io.WriteString(w, `{"status":"confirmed","bot_token":"new-token","ilink_bot_id":"new-bot","ilink_user_id":"new-owner","baseurl":"https://example.com"}`)
-		default:
-			t.Errorf("unexpected WeChat request: %s", r.URL.Path)
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(server.Close)
-	if err := q.SetWechatSettings(t.Context(), sqlc.SetWechatSettingsParams{BotID: id, Token: "old-token", BaseUrl: server.URL, WechatBotID: "old-bot", Owner: "old-owner"}); err != nil {
-		t.Fatal(err)
-	}
-	s := bot.New(q, writer, new(sync.Mutex), nil, "", nil)
-	var started bool
-	s.ConfigureWechat(wechat.Options{APIURL: server.URL}, func(_ string, cfg *wechat.Config) { started = started || cfg != nil })
-	login, err := s.BeginWechatLogin(t.Context(), id)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// When the archive commits while the login waits for its writer.
-	var status string
-	saveErr := archiveBeforeChannelWrite(t, writer, id, func(ctx context.Context) error {
-		view, err := s.PollWechatLogin(ctx, id, login.ID, "")
-		status = view.Status
-		return err
-	})
-
-	// Then the previous credentials remain, and neither account starts.
-	cfg, err := s.WechatConfig(t.Context(), id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, runtimeErr := q.GetWechatRuntime(t.Context(), sqlc.GetWechatRuntimeParams{BotID: "new-bot", Owner: "new-owner"})
-	account := ""
-	if cfg != nil {
-		account = cfg.BotID
-	}
-	if !errors.Is(saveErr, db.ErrBotArchived) || status == "confirmed" || account != "old-bot" || started || !errors.Is(runtimeErr, sql.ErrNoRows) {
-		t.Fatalf("after archive: status=%q err=%v account=%q start requested=%t replacement runtime err=%v", status, saveErr, account, started, runtimeErr)
-	}
-}
-
-func TestUserCannotDisconnectWechatAfterArchiveCommit(t *testing.T) {
-	t.Parallel()
-	// Given a connected account, archive the bot as the runtime stops.
-	q, writer, id := archiveRaceDB(t)
-	ctx := t.Context()
-	if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{BotID: id, Token: "old-token", BaseUrl: "https://example.com", WechatBotID: "old-bot", Owner: "old-owner"}); err != nil {
-		t.Fatal(err)
-	}
-	var archiveErr error
-	var started bool
-	s := bot.New(q, writer, new(sync.Mutex), nil, "", nil)
-	s.ConfigureWechat(wechat.Options{}, func(_ string, cfg *wechat.Config) {
-		if cfg == nil {
-			archiveErr = db.ArchiveBot(ctx, q, id, time.Now())
-		} else {
-			started = true
-		}
-	})
-
-	// When disconnect continues after the archive, then credentials stay saved and the runtime stays stopped.
-	disconnectErr := s.DeleteWechat(ctx, id)
-	if archiveErr != nil {
-		t.Fatal(archiveErr)
-	}
-	cfg, err := s.WechatConfig(ctx, id)
-	if !errors.Is(disconnectErr, db.ErrBotArchived) || err != nil || cfg == nil || cfg.BotID != "old-bot" || started {
-		t.Fatalf("after archive: disconnect err=%v saved credentials=%t read err=%v start requested=%t", disconnectErr, cfg != nil, err, started)
-	}
-}
 
 func TestUserCannotSaveTelegramSettingsAfterArchiveCommit(t *testing.T) {
 	t.Parallel()
@@ -184,42 +99,4 @@ func archiveRaceDB(t *testing.T) (*sqlc.Queries, *sql.DB, string) {
 	writer := open()
 	writer.SetMaxOpenConns(1)
 	return q, writer, id
-}
-
-func archiveBeforeChannelWrite(t *testing.T, writer *sql.DB, id string, save func(context.Context) error) error {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	tx, err := writer.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := db.ArchiveBot(ctx, sqlc.New(tx), id, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	// The only connection in this pool is reserved. WAL readers can still see the active bot.
-	waitCount := writer.Stats().WaitCount
-	done := make(chan error, 1)
-	go func() { done <- save(ctx) }()
-	tick := time.Tick(time.Millisecond)
-	for writer.Stats().WaitCount == waitCount {
-		select {
-		case err := <-done:
-			t.Fatalf("request returned before reaching the writer: %v", err)
-		case <-ctx.Done():
-			t.Fatal("request did not reach the writer")
-		case <-tick:
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		t.Fatal("request did not finish after the archive")
-		return nil
-	}
 }

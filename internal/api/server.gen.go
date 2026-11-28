@@ -2866,7 +2866,7 @@ type WakeItem struct {
 type WakeItemKind string
 
 // Wechat defines model for Wechat.
-type Wechat = bot.Wechat
+type Wechat = wechat.Wechat
 
 // WechatLogin defines model for WechatLogin.
 type WechatLogin = wechat.LoginView

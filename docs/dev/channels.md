@@ -446,8 +446,9 @@ cannot approve a request. The request belongs to its originating session and
 expires after 10 minutes. Control consumes it once and checks that the session,
 bots, and target are still valid. A notification destination must still map to
 the peer shown on the page. Changed credentials or pairing make an earlier
-request invalid. A new Feishu registration also invalidates an earlier request
-to revoke pairing or disconnect Feishu. A restart clears all pending requests.
+request invalid. A new Feishu registration invalidates an earlier request to
+revoke pairing or disconnect Feishu. A new WeChat login invalidates an earlier
+request to disconnect WeChat. A restart clears all pending requests.
 
 Control uses the same channel settings operations as the web UI. It holds the
 settings lock from approval consumption through the fingerprint check and the
@@ -539,13 +540,19 @@ at most three replacements per login attempt. The backend queries QR status only
 when the page requests a poll. Closing the page stops new polls; an in-flight
 request ends within 35 s. There is no fixed deadline for the whole login attempt.
 
-Only a confirmed result with a bot token, bot ID, base URL, and owner ID can
-activate the bot. Invalid confirmation stays failed on later polls. Valid
-candidate credentials remain available if local activation fails. Activation
-stops and joins the old bot before it changes shared runtime state. It saves
-credentials and runtime initialization in one transaction. A scan for the same bot and owner keeps the same destination. Dex starts the replacement and then reports
-`confirmed`. If the transaction fails, it restores the previous
-bot. A new login ID or delete invalidates an older login request.
+The [WeChat setup service](../../internal/channel/wechat/setup.go) owns saved
+credentials and QR login state. It releases the settings lock during remote QR
+requests. Only a confirmed result with a bot token, bot ID, base URL, and owner
+ID can activate the bot. Invalid confirmation stays failed on later polls.
+Valid candidate credentials remain available if local activation fails.
+
+Activation stops and joins the old bot before it changes shared runtime state.
+It checks credential ownership, saves credentials, initializes the runtime row,
+and clears the runtime pause in one transaction. A scan for the same bot and
+owner keeps the same destination. If the write fails, the service restarts the
+previous account only if the bot is still active. A successful save ends the
+live login. A repeated poll can read its confirmation without saving again.
+A new login, disconnect, archive, or restore invalidates older requests.
 
 The bot ignores other senders, group messages, bot echoes, and unfinished
 messages. It stores the owner's latest context token before it admits a
