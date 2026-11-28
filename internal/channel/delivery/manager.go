@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -15,11 +16,6 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/session"
 )
-
-// TelegramHooks provides optional Telegram operations used by the durable sender.
-type TelegramHooks interface {
-	WakeMedia()
-}
 
 type runtime struct {
 	ctx             context.Context
@@ -46,11 +42,12 @@ type Manager struct {
 	mu       sync.Mutex
 	commands map[string]chan struct{} // source key to active command owner
 	bots     map[string]*runtime
+	policies map[string]Policy // fixed for the manager's lifetime
 }
 
-// New creates a manager. Close it before closing the database.
-func New(ctx context.Context, db *sql.DB, sessions *session.Service, botID string) *Manager {
-	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), sessions: sessions, botID: botID, commands: make(map[string]chan struct{}), bots: make(map[string]*runtime)}
+// New creates a manager with optional policies keyed by platform. Close it before closing the database.
+func New(ctx context.Context, db *sql.DB, sessions *session.Service, botID string, policies map[string]Policy) *Manager {
+	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), sessions: sessions, botID: botID, commands: make(map[string]chan struct{}), bots: make(map[string]*runtime), policies: maps.Clone(policies)}
 }
 
 // Set stops the old bot and waits for it before starting its replacement.
@@ -137,19 +134,14 @@ func (m *Manager) Notify(key string) {
 		if key != session.MainKey && platform != name {
 			continue
 		}
-		if media, ok := r.bot.(TelegramHooks); ok {
-			media.WakeMedia()
+		if inbound, ok := r.bot.(interface{ WakeInbound() }); ok {
+			inbound.WakeInbound()
 		}
 		select {
 		case r.wake <- struct{}{}:
 		default:
 		}
 	}
-}
-
-// SetTelegramRetryAt persists a FloodWait retry deadline for Telegram polling.
-func (m *Manager) SetTelegramRetryAt(ctx context.Context, token string, until int64) error {
-	return m.q.SetTelegramRetryAt(ctx, sqlc.SetTelegramRetryAtParams{BotID: m.botID, Token: token, RetryAt: until})
 }
 
 // ReceivedSource reports stored platform input, including input received by a previous bot.

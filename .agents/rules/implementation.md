@@ -45,6 +45,8 @@ The server and native app share the root Go 1.27.3 module.
 In `apps/native`, `internal/webview` owns platform WebViews and navigation.
 `internal/bridge` serves local requests and streams SSE.
 
+`internal/channel/telegram/policy` owns Telegram channel business rules.
+
 ## Rules
 
 - Go code: follow the `use-modern-go` skill in `.agents/skills/`. New JSON

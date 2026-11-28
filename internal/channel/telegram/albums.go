@@ -16,12 +16,12 @@ func (b *Bot) submitInput(ctx context.Context, peer, source string, msg session.
 	if err := b.chats.StoreTelegramAlbum(ctx, peer, source, msg); err != nil {
 		return err
 	}
-	b.WakeMedia()
+	b.WakeInbound()
 	return nil
 }
 
-// WakeMedia wakes collection after a stored member, a scope reset or native delivery.
-func (b *Bot) WakeMedia() {
+// WakeInbound wakes album collection after a stored member, a scope reset or native delivery.
+func (b *Bot) WakeInbound() {
 	select {
 	case b.albumWake <- struct{}{}:
 	default:

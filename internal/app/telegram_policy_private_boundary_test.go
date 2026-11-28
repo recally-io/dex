@@ -1,4 +1,4 @@
-package delivery_test
+package app
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -15,6 +14,7 @@ import (
 )
 
 func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
+	t.Parallel()
 	// Given real business services and native execution, without an exposed owner-control route.
 	directory := t.TempDir()
 	conn, err := db.Open(t.Context(), filepath.Join(directory, "control.sqlite"))
@@ -40,7 +40,7 @@ func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
 	done := make(chan struct{})
 	go func() { defer close(done); service.Run(ctx) }()
 	defer func() { cancel(); <-done }()
-	manager := delivery.New(ctx, conn, service, "bot")
+	manager := newBotChannels(ctx, conn, service, "bot")
 	defer manager.Close()
 	// When a group or malformed peer sends a command with valid-looking actor IDs.
 	for _, peer := range []string{"telegram:-100", "telegram:042", "telegram:0"} {

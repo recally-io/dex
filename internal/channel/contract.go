@@ -65,15 +65,6 @@ func IsFeedbackCommand(text string) bool {
 	return name == FeedbackCommand
 }
 
-// IsCommand reports whether trimmed channel text is a command rather than input for the model.
-func IsCommand(text string) bool {
-	switch text {
-	case "/clear", "/new", "/stop", "/help", "/menu", "/status", "/settings", "/sessions", "/workflows", "/question":
-		return true
-	}
-	return IsFeedbackCommand(text) || strings.HasPrefix(text, "/run ") || strings.HasPrefix(text, "/answer ")
-}
-
 // Reaction is the observable state of an input on its original message.
 type Reaction uint8
 

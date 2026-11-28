@@ -74,6 +74,7 @@ func (c Config) botID() string {
 type inbound interface {
 	channel.WebhookInbox
 	Receive(ctx context.Context, peer, source string, msg session.Message) error
+	IsCommand(text string) bool
 	QueueChannelNotice(ctx context.Context, peer, source string, identity session.ChannelContext, body string) error
 	ReceivedSource(ctx context.Context, source string) (bool, error)
 	Source(ctx context.Context, source string) (session.SourceReceipt, error)
@@ -84,7 +85,6 @@ type inbound interface {
 	SpeechInput(ctx context.Context, source string) (*session.Message, bool, error)
 	Transcribe(ctx context.Context, peer, source string, msg session.Message, duration int, options speech.Options, resolve speech.Resolve, store *upload.Store) (session.Message, error)
 	FinishSpeechInput(ctx context.Context, source string, album bool) error
-	KnownTelegramAlbum(ctx context.Context, peer string, identity session.ChannelContext) (bool, error)
 	StoreTelegramAlbum(ctx context.Context, peer, source string, msg session.Message) error
 	ReadyTelegramAlbums(ctx context.Context) ([]session.TelegramAlbum, time.Duration, error)
 	FinishTelegramAlbum(ctx context.Context, source string) error
@@ -319,7 +319,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if err := b.chats.FinishSpeechInput(ctx, source, m.MediaGroupID != ""); err != nil {
 		return err
 	}
-	if !channel.IsCommand(content) && m.MediaGroupID == "" {
+	if !b.chats.IsCommand(content) && m.MediaGroupID == "" {
 		b.showTyping(ctx, source, m.Chat.ID)
 	}
 	return nil

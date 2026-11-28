@@ -281,10 +281,15 @@ before they start its replacement. Settings expose runtime status: `off`,
 `running`, `error` with a reason, or `needs_login`.
 
 The root `channel` package defines the transport contract and frozen delivery
-values without storage or runtime dependencies. The app passes the manager to
-each adapter through the inbound interface that adapter defines. The delivery
-package does not import concrete adapters. Telegram rich text, buttons, and
-files keep their shared frozen encoding; the adapter owns the wire format.
+values without storage or runtime dependencies. Each adapter defines its own
+inbound interface. The app passes the manager to Feishu and WeChat. For
+Telegram, the app combines the manager with the [Telegram policy](../../internal/channel/telegram/policy/)
+and registers that policy with the manager. Feishu and WeChat do not register
+a policy. The delivery package and the Telegram policy do not import each other.
+The policy owns Telegram command rules, buttons, callback claims, speech, album
+cleanup, file queueing, and queued reaction acknowledgements. Telegram rich text,
+buttons, and files keep their shared frozen encoding. The adapter owns the wire
+format.
 
 `session.Service.ReceivedSource` reports the global stored input fact. Channel
 and platform adapters use it for duplicate input and attachment replay, including
@@ -298,8 +303,12 @@ stable request ID. Channel intake advances after an ordinary input commits its
 source receipt. It does not wait for a native admission attempt. Deferred input
 uses the same authorization and Session queue. Commands still use their own
 receipts and acknowledgements. Polling and the outbox serialize replays of the
-same command by source key. They do not hold a Bot-wide command lock. A native rejection settles the input receipt
-without setting `admitted_at`.
+same command by source key. They do not hold a Bot-wide command lock. The
+manager checks the policy's peer constraint before source deduplication. It
+looks up a command receipt after source deduplication. The Telegram policy
+checks the actor, target, and context revision in the callback claim
+transaction. The Session service checks them again in the effect transaction.
+A native rejection settles the input receipt without setting `admitted_at`.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all
 channels enters the bot's bot `main` session with that peer as origin.
@@ -337,7 +346,7 @@ messaging platform like any other message.
 
 Each platform has one durable sender. All platform message bodies, including command acknowledgements and Automation alerts, go through the Outbox. Direct channel inputs can queue final replies or a short error. Ordinary Web and background output stay in the transcript. Background runs can call `notify_user` to queue a message before the run ends. The tool uses the configured default or an explicit paired channel. If a platform has multiple targets, specify `channel:target`.
 
-The key `(event_id, channel, target)` identifies one message. An event can have independent deliveries to different destinations. The sender freezes the platform message before it sends. Confirmation marks it `sent`. Temporary errors keep it `pending`, with backoff from 5 to 320 seconds or the platform wait if longer. A permanent rejection marks it `failed`. No failure changes the destination. Feishu and WeChat use a stable key for retries. Telegram can duplicate a message if the platform accepts it before a crash and the receipt does not commit.
+The key `(event_id, channel, target)` identifies one message. An event can have independent deliveries to different destinations. The sender freezes the platform message before it sends. Confirmation marks it `sent`. Temporary errors keep it `pending`, with backoff from 5 to 320 seconds or the platform wait if longer. A permanent rejection marks it `failed`. No failure changes the destination. Feishu and WeChat use a stable key for retries. Telegram can duplicate a message if the platform accepts it before a crash and the receipt does not commit. The sender checks that the Outbox row is still pending immediately before each send. The Telegram policy binds callback buttons to the remote message in the same transaction that records confirmation.
 
 Telegram and Feishu/Lark can show status on an authorized incoming message.
 `delivery` starts observing only after the input intent commits. The native
