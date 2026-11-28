@@ -120,6 +120,11 @@ WHERE parent_id = @parent_id AND bot_id = @bot_id
 ORDER BY id DESC
 LIMIT 50;
 
+-- name: GetChildWorkflowSource :one
+SELECT s.* FROM submissions s
+WHERE s.session_id = @child_id AND s.parent_request_id IS NOT NULL
+ORDER BY s.rowid LIMIT 1;
+
 -- name: ListChildPending :many
 SELECT id, parent_request_id IS NOT NULL AS from_parent, stop_requested
 FROM submissions

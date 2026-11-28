@@ -44,7 +44,7 @@ func (s *Service) ToolProcessStart(ctx context.Context, r engine.TaskContext, a 
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return ProcessInfo{}, err
 	}
-	if _, _, err := monitorChain(ctx, s.q, source); err != nil {
+	if _, _, err := s.monitorChain(ctx, s.q, source); err != nil {
 		return ProcessInfo{}, err
 	}
 	if err := checkMonitorCapacity(ctx, s.q, conv.ID); err != nil {

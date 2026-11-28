@@ -59,6 +59,7 @@ func TestUserStopDuringModelDiscoveryKeepsCancellationDurable(t *testing.T) {
 		t.Fatal("model discovery did not start")
 	}
 	service := New(r.conn, next, time.Now, nil, nil)
+	bindTestChannelPolicy(service)
 	t.Cleanup(func() {
 		service.cancel()
 		service.wg.Wait()

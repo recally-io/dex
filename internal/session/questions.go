@@ -140,7 +140,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a AskUs
 		return QuestionInfo{}, err
 	}
 	if action != nil {
-		if err := action.allowed(ctx, q, r, source); err != nil {
+		if err := action.allowed(ctx, q, r, source.Kind == "message" && s.ownerOrigin(source.Origin)); err != nil {
 			return QuestionInfo{}, err
 		}
 	}
@@ -192,7 +192,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a AskUs
 // answerContent loads the open question for an answer inside the receipt transaction and returns
 // the content that the model reads. For an action question it also decides the action; see
 // decideAnswer.
-func answerContent(ctx context.Context, q *sqlc.Queries, botID string, sessionID int64, questionID, answer, origin string) (answerDecision, error) {
+func (s *Service) answerContent(ctx context.Context, q *sqlc.Queries, botID string, sessionID int64, questionID, answer, origin string) (answerDecision, error) {
 	row, err := q.GetQuestion(ctx, questionID)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && (row.BotID != botID || row.SessionID != sessionID)) {
 		return answerDecision{}, ErrQuestionClosed
@@ -205,7 +205,7 @@ func answerContent(ctx context.Context, q *sqlc.Queries, botID string, sessionID
 	}
 	d := answerDecision{Content: answerPrefix + row.Text + "\n" + answer}
 	if row.Action.Valid {
-		return d, d.decide(ctx, q, row, answer, origin)
+		return d, d.decide(ctx, q, row, answer, s.ownerOrigin(origin))
 	}
 	return d, nil
 }
@@ -216,8 +216,7 @@ func reopenQuestion(ctx context.Context, q *sqlc.Queries, submissionID string) e
 	return err
 }
 
-// renderQuestion is the channel text of a question. A platform that quotes (Telegram and Feishu)
-// tells the user to reply to the message; the others point to the web.
+// renderQuestion tells the user to reply when the channel can receive a quoted answer.
 func renderQuestion(q sqlc.Question, options []string, botID string, main, quotable bool) string {
 	var b strings.Builder
 	b.WriteString(q.Text)
@@ -259,15 +258,10 @@ func (s *Service) withQuestion(ctx context.Context, id string, event engine.Outc
 	if err != nil {
 		return event, err
 	}
-	rendered := renderQuestion(row, q.Options, row.BotID, conv.ChannelKey == MainKey, quotes(reply.Origin))
+	rendered := renderQuestion(row, q.Options, row.BotID, conv.ChannelKey == MainKey, s.channelRoute(reply.Origin).Quote)
 	if event.Answer != "" {
 		rendered = event.Answer + "\n\n" + rendered
 	}
 	event.Answer = rendered
 	return event, nil
-}
-
-// quotes reports whether the platform of a channel peer returns the ID of a quoted message.
-func quotes(origin string) bool {
-	return strings.HasPrefix(origin, "telegram:") || strings.HasPrefix(origin, "feishu:")
 }

@@ -25,12 +25,6 @@ const maxArchiveReason = 500
 // archiveAction is the one action that a question can carry.
 const archiveAction = "archive"
 
-// userOrigin reports whether an input origin is a person: the web UI or a paired channel peer.
-// It is an allow-list. Task, automation, dream, and unknown inputs are not people.
-func userOrigin(origin string) bool {
-	return origin == "web" || strings.HasPrefix(origin, "telegram:") && positiveTelegramID(strings.TrimPrefix(origin, "telegram:")) || strings.HasPrefix(origin, "feishu:") || strings.HasPrefix(origin, "wechat:")
-}
-
 // questionAction is the action that control runs when the owner approves a question.
 type questionAction struct{ kind, botID, approve string }
 
@@ -45,8 +39,8 @@ func (a *questionAction) store(p *sqlc.CreateQuestionParams) {
 
 // allowed refuses an action question that must not be asked: the source must be a person's input,
 // and the bot must be archivable now. The answer is checked again when it arrives.
-func (a *questionAction) allowed(ctx context.Context, q *sqlc.Queries, r engine.TaskContext, source sqlc.Submission) error {
-	if source.Kind != "message" || !userOrigin(source.Origin) {
+func (a *questionAction) allowed(ctx context.Context, q *sqlc.Queries, r engine.TaskContext, userInput bool) error {
+	if !userInput {
 		return fmt.Errorf("%w: this action needs a user input in this conversation", ErrQuestionInvalid)
 	}
 	if a.botID == r.BotID {
@@ -81,7 +75,7 @@ type answerDecision struct {
 // decide settles an action question inside the receipt transaction, before the model sees the
 // answer. Only a person's answer that equals the stored approve text, after NormalizeText, approves. The rules for the bot
 // run again now, because the bot can be busy after the owner was asked.
-func (d *answerDecision) decide(ctx context.Context, q *sqlc.Queries, row sqlc.Question, answer, origin string) error {
+func (d *answerDecision) decide(ctx context.Context, q *sqlc.Queries, row sqlc.Question, answer string, owner bool) error {
 	if row.Action.String != archiveAction {
 		return fmt.Errorf("unknown question action %q", row.Action.String)
 	}
@@ -90,7 +84,7 @@ func (d *answerDecision) decide(ctx context.Context, q *sqlc.Queries, row sqlc.Q
 		return err
 	}
 	var outcome string
-	if !userOrigin(origin) || NormalizeText(answer) != NormalizeText(row.ApproveText.String) {
+	if !owner || NormalizeText(answer) != NormalizeText(row.ApproveText.String) {
 		outcome = fmt.Sprintf("dex: Not approved. Bot %q is not archived.", bot.Name)
 	} else if err := db.CheckArchive(ctx, q, bot.ID); err == nil {
 		d.archive = bot.ID
@@ -145,7 +139,7 @@ func (s *Service) ToolBotCaller(ctx context.Context, r engine.TaskContext, chang
 	if err != nil {
 		return err
 	}
-	if source.SessionID != conv.ID || source.Kind != "message" || !userOrigin(source.Origin) {
+	if source.SessionID != conv.ID || source.Kind != "message" || !s.ownerOrigin(source.Origin) {
 		return fmt.Errorf("%w: changing a bot needs a user input in this conversation", errBotCaller)
 	}
 	return nil

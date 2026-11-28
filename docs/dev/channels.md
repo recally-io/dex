@@ -128,9 +128,10 @@ Inline buttons carry a 96-bit HMAC reference signed with the current bot token. 
 server row binds the actor, account, private chat, confirmed message, conversation,
 native ID, context-reset receipt, object, action and a 15-minute expiry. The claim
 transaction checks current authority and consumes the nonce with its durable command intent.
-Command processing and effect transactions use one read-only validity check
-(`session.ValidateTelegramControl`); effects repeat it under the SQLite writer. It covers the
-current grant, expiry, actor, message, object and context revision. A definite 400 or 403
+The Telegram policy checks the stored command before dispatch. Session calls the
+same check under its own SQLite writer before it stores an answer, Stop, Clear,
+or child turn. The check covers the current grant, expiry, actor, confirmed
+message, object, execution ID, and context revision. A definite 400 or 403
 rejection of the final `answerCallbackQuery` does not hold the polling offset; network, 5xx
 and 429 errors retry the same update, and the consumed nonce cannot queue a second intent.
 Clear does not change the native conversation ID, so callbacks also bind the latest
@@ -345,22 +346,28 @@ same command by source key. They do not hold a Bot-wide command lock. The
 manager checks the policy's peer constraint before source deduplication. It
 looks up a command receipt after source deduplication. The Telegram policy
 checks the actor, target, and context revision in the callback claim
-transaction. The Session service checks them again in the effect transaction.
+transaction. The bound Telegram policy checks them again in the Session effect transaction.
 A native rejection settles the input receipt without setting `admitted_at`.
 
-Before recovery, the app binds Telegram's staged source lookup and write checks
-to Session. Album member receipts count as received globally. Speech claims
-only report upload ownership to their own bot. Session calls the adapter's
-staging check in its receipt transaction. Main Stop and Clear call the
-adapter in their own write transaction to discard staged input. These checks
-do not need a running transport.
+Before recovery, the app binds channel peer, input, and command checks to
+Session. It also binds the rules for owner input, quoted answers, and file
+routing. Channel operations fail if their policy is absent. Web and internal
+operations do not need a channel policy. None of these checks need a running
+transport.
 
-A peer names a remote destination, such as `telegram:7`. Owner input from all channels enters Main with that peer as origin. Dex checks
-pairing at intake. The app binds the common account and peer check from
-`pairing` to Session and delivery. Session uses its input transaction for the
-check. Telegram uses its private peer and sender rules. The receipt saves the
-account and peer. Ordinary channel
-input cannot select a Session. See [reply routing](sessions.md#input-and-replies).
+The app also binds Telegram's staged source lookup and write checks. Album
+member receipts count as received globally. Speech claims report upload
+ownership only to their own bot. Session checks staged input in the receipt
+transaction. Main Stop and Clear discard staged input in their own write
+transaction. Session writes reply Outbox rows in the same transaction as
+settlement.
+
+A peer names a remote destination, such as `telegram:7`. Owner input from all
+channels enters Main with that peer as the origin. Session checks current
+pairing in the input transaction. Telegram uses its private peer and sender
+rules. Feishu and WeChat use the common account and peer check from `pairing`.
+The receipt saves the account and peer. Ordinary channel input cannot select
+a Session. See [reply routing](sessions.md#input-and-replies).
 
 `/clear`, `/new`, `/stop`, and `/help` use durable command
 receipts. `/clear` and its alias `/new` use `channel:<source key>` as the stable

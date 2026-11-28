@@ -25,23 +25,23 @@ func New(db *sql.DB, sessions *session.Service, botID string) *Policy {
 	return &Policy{db: db, q: sqlc.New(db), sessions: sessions, botID: botID}
 }
 
-func (*Policy) AdmitInput(peer string) error {
-	if session.NonPrivateTelegramPeer(peer) {
-		return session.ErrTelegramUnauthorized
+func (*Policy) AdmitInput(peer string) error { return CheckPeer(peer) }
+
+// CheckPeer rejects non-private Telegram input before it can reach a Session.
+func CheckPeer(peer string) error {
+	if !PrivatePeer(peer) {
+		return ErrTelegramUnauthorized
 	}
 	return nil
 }
 
 // RequirePairedChannel checks the private peer and the allowed sender.
 func (p *Policy) RequirePairedChannel(ctx context.Context, q *sqlc.Queries, peer string, actor session.ChannelContext) error {
-	allowed, err := session.TelegramInputAllowed(ctx, q, p.botID, peer, actor)
-	if err != nil {
-		return err
+	allowed, err := telegramInputAllowed(ctx, q, p.botID, peer, actor)
+	if err == nil && !allowed {
+		return ErrTelegramUnauthorized
 	}
-	if !allowed {
-		return session.ErrTelegramUnauthorized
-	}
-	return nil
+	return err
 }
 
 // IsCommand reports whether Telegram text is a command rather than model input.
@@ -59,5 +59,5 @@ func (p *Policy) SetTelegramRetryAt(ctx context.Context, token string, until int
 }
 
 func (p *Policy) TelegramInputAllowed(ctx context.Context, peer string, source session.ChannelContext) (bool, error) {
-	return p.sessions.TelegramInputAllowed(ctx, p.botID, peer, source)
+	return telegramInputAllowed(ctx, p.q, p.botID, peer, source)
 }

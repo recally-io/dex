@@ -78,6 +78,7 @@ func openNativeTest(t *testing.T, dir, model string, wrap ...func(runner.Provide
 		t.Fatal(err)
 	}
 	service = New(conn, bots, time.Now, nil, nil)
+	bindTestChannelPolicy(service)
 	closeTest := sync.OnceFunc(func() {
 		service.cancel()
 		service.wg.Wait()

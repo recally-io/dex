@@ -22,8 +22,3 @@ WHERE id = @id AND consumed_at IS NULL AND expires_at > @now AND message_id <> '
 SELECT CAST(coalesce((SELECT id FROM submissions
 WHERE session_id = @session_id AND kind = 'context_reset'
 ORDER BY rowid DESC LIMIT 1), '') AS TEXT);
-
--- name: GetChildWorkflowSource :one
-SELECT s.* FROM submissions s
-WHERE s.session_id = @child_id AND s.parent_request_id IS NOT NULL
-ORDER BY s.rowid LIMIT 1;

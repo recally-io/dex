@@ -27,7 +27,7 @@ func telegramAlbumKey(peer string, identity session.ChannelContext) (string, err
 func (p *Policy) StoreTelegramAlbum(ctx context.Context, peer, source string, msg session.Message) error {
 	identity := msg.ChannelContext
 	actor, err := strconv.ParseInt(identity.SenderID, 10, 64)
-	if session.NonPrivateTelegramPeer(peer) || err != nil || actor <= 0 || identity.AccountID == "" || identity.MediaGroup == "" || len(msg.Attachments) != 1 {
+	if !PrivatePeer(peer) || err != nil || actor <= 0 || identity.AccountID == "" || identity.MediaGroup == "" || len(msg.Attachments) != 1 {
 		return errors.New("invalid Telegram album member")
 	}
 	group, err := telegramAlbumKey(peer, identity)

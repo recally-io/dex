@@ -22,10 +22,11 @@ var ErrInvalid = errors.New("invalid task tool call")
 
 // Service checks the caller and applies each change with its replay record in one transaction.
 type Service struct {
-	db    *sql.DB
-	q     *sqlc.Queries
-	now   func() time.Time
-	tasks *tasksvc.Service
+	db                *sql.DB
+	q                 *sqlc.Queries
+	now               func() time.Time
+	tasks             *tasksvc.Service
+	channelUserOrigin func(string) bool
 }
 
 func New(conn *sql.DB) *Service {
@@ -35,6 +36,11 @@ func New(conn *sql.DB) *Service {
 // ConfigureTasks binds Task entry notifications before the tools start.
 func (s *Service) ConfigureTasks(tasks *tasksvc.Service) {
 	s.tasks = tasks
+}
+
+// ConfigureChannelOrigins binds the owner of channel origin rules before the tools start.
+func (s *Service) ConfigureChannelOrigins(userOrigin func(string) bool) {
+	s.channelUserOrigin = userOrigin
 }
 
 // Handlers binds the engine tools to this service. links are the tools of the enabled plugins.
@@ -78,9 +84,9 @@ func caller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Se
 	return conv, source, nil
 }
 
-func taskOrigin(source sqlc.Submission) tasksvc.Origin {
+func (s *Service) taskOrigin(source sqlc.Submission) tasksvc.Origin {
 	switch {
-	case source.Kind == "message" && session.UserOrigin(source.Origin):
+	case source.Kind == "message" && (source.Origin == "web" || s.channelUserOrigin != nil && s.channelUserOrigin(source.Origin)):
 		return tasksvc.OriginUser
 	case source.Kind == "task_wake":
 		return tasksvc.OriginTaskWake
@@ -146,7 +152,7 @@ func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action
 		return zero, err
 	}
 	ledger := tasksvc.NewLedger(q)
-	result, err := change(q, ledger, tasksvc.BotInConversation(conv), taskOrigin(source), s.now().UnixMilli())
+	result, err := change(q, ledger, tasksvc.BotInConversation(conv), s.taskOrigin(source), s.now().UnixMilli())
 	if err != nil {
 		return zero, err
 	}

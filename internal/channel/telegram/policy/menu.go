@@ -18,6 +18,13 @@ import (
 
 type menuAction struct{ text, action, object string }
 
+func (p *Policy) liveOwnerSession(ctx context.Context, peer string, identity session.ChannelContext) (session.Session, error) {
+	if err := p.RequirePairedChannel(ctx, p.q, peer, identity); err != nil {
+		return session.Session{}, err
+	}
+	return p.sessions.Main(ctx, p.botID)
+}
+
 // RunCommand resolves the target once. A revoked actor or stale button gets no reply.
 // The Session service repeats the callback check under the effect writer.
 func (p *Policy) RunCommand(ctx context.Context, c sqlc.ChannelCommand, runShared func(context.Context, int64) (string, error)) (string, bool, error) {
@@ -25,28 +32,28 @@ func (p *Policy) RunCommand(ctx context.Context, c sqlc.ChannelCommand, runShare
 	if err := json.Unmarshal([]byte(c.ChannelContext), &identity); err != nil {
 		return "", false, err
 	}
-	target, err := p.sessions.ChannelConversation(ctx, p.botID, c.Peer, identity)
-	if errors.Is(err, session.ErrTelegramUnauthorized) {
+	target, err := p.liveOwnerSession(ctx, c.Peer, identity)
+	if errors.Is(err, ErrTelegramUnauthorized) {
 		return "", false, nil
 	}
 	if err != nil {
 		return "", false, err
 	}
-	if err := session.ValidateTelegramControl(ctx, p.q, c.SourceKey, p.botID, target.ID); err != nil {
-		if errors.Is(err, session.ErrTelegramUnauthorized) {
+	if err := validateTelegramControl(ctx, p.q, c.SourceKey, p.botID, target.ID); err != nil {
+		if errors.Is(err, ErrTelegramUnauthorized) {
 			return "", false, nil
 		}
 		return "", false, err
 	}
 	answer, handled, err := p.telegramCommand(ctx, c, target, identity)
-	if errors.Is(err, session.ErrTelegramUnauthorized) {
+	if errors.Is(err, ErrTelegramUnauthorized) {
 		return "", false, nil
 	}
 	if err != nil || handled {
 		return answer, handled, err
 	}
 	answer, err = runShared(ctx, target.ID)
-	if errors.Is(err, session.ErrTelegramUnauthorized) {
+	if errors.Is(err, ErrTelegramUnauthorized) || errors.Is(err, session.ErrChannelUnauthorized) {
 		// A rejected Clear still wakes the sender, as a completed Clear does.
 		return "", c.Command != "/stop", nil
 	}
@@ -64,7 +71,7 @@ func (p *Policy) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, tar
 	case "/settings":
 		return "Change Telegram preferences on the Channels page in Dex.", true, nil
 	case "/sessions", "/workflows":
-		children, err := p.sessions.ChannelChildren(ctx, p.botID, target)
+		children, err := p.sessions.DirectChildren(ctx, p.botID, target)
 		if err != nil {
 			return "", true, err
 		}
@@ -93,8 +100,9 @@ func (p *Policy) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, tar
 	}
 	if rest, ok := strings.CutPrefix(c.Command, "/run "); ok {
 		id, message, _ := strings.Cut(strings.TrimSpace(rest), " ")
-		err := p.sessions.ResumeChannelWorkflow(ctx, p.botID, c.Peer, c.SourceKey, id, message, identity)
-		if errors.Is(err, session.ErrTelegramUnauthorized) || errors.Is(err, session.ErrSessionNotFound) {
+		// Keep the turn key of existing commands so they cannot queue a second turn after upgrade.
+		err := p.sessions.ResumeChildFromSource(ctx, p.botID, target, c.Peer, c.SourceKey, "telegram-workflow:"+c.SourceKey, id, message, identity)
+		if errors.Is(err, ErrTelegramUnauthorized) || errors.Is(err, session.ErrChannelUnauthorized) || errors.Is(err, session.ErrSessionNotFound) {
 			return "This saved child is not available to this sender in the current conversation.", true, nil
 		}
 		return "Saved child workflow queued in its existing session.", true, err
@@ -154,7 +162,7 @@ func (p *Policy) menuActions(ctx context.Context, command string, target session
 			actions = append(actions, menuAction{item.text, item.command, strconv.FormatInt(target.ID, 10)})
 		}
 	case "/sessions", "/workflows":
-		children, err := p.sessions.ChannelChildren(ctx, p.botID, target)
+		children, err := p.sessions.DirectChildren(ctx, p.botID, target)
 		if err != nil {
 			return nil, err
 		}
@@ -238,10 +246,10 @@ func (p *Policy) ClaimTelegramCallback(ctx context.Context, id, peer, remote str
 	if err := json.Unmarshal([]byte(row.ChannelContext), &original); err != nil {
 		return false, err
 	}
-	if !session.TelegramCallbackObject(row) || row.BotID != p.botID || row.Peer != peer || row.MessageID != remote || remote == "" || row.ConsumedAt.Valid || row.ExpiresAt <= time.Now().UnixMilli() || original.AccountID != identity.AccountID || original.SenderID != identity.SenderID {
+	if !telegramCallbackObject(row) || row.BotID != p.botID || row.Peer != peer || row.MessageID != remote || remote == "" || row.ConsumedAt.Valid || row.ExpiresAt <= time.Now().UnixMilli() || original.AccountID != identity.AccountID || original.SenderID != identity.SenderID {
 		return false, nil
 	}
-	allowed, err := session.TelegramInputAllowed(ctx, q, p.botID, peer, identity)
+	allowed, err := telegramInputAllowed(ctx, q, p.botID, peer, identity)
 	if err != nil {
 		return false, err
 	}
@@ -270,7 +278,7 @@ func (p *Policy) ClaimTelegramCallback(ctx context.Context, id, peer, remote str
 	if err != nil {
 		return false, err
 	}
-	source := "telegram-callback:" + id
+	source := callbackSourcePrefix + id
 	if err := q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{BotID: p.botID, SourceKey: source, Peer: peer, ChannelKey: conv.ChannelKey, Command: row.Action, ChannelContext: string(encoded)}); err != nil {
 		return false, err
 	}

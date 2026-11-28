@@ -7,11 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-const channelPath = "github.com/recally-io/dex/internal/channel"
+const modulePath = "github.com/recally-io/dex"
+const channelPath = modulePath + "/internal/channel"
 const telegramPolicyPath = channelPath + "/telegram/policy"
 
 func TestChannelImportBoundaries(t *testing.T) {
@@ -55,25 +57,75 @@ func TestChannelImportBoundaries(t *testing.T) {
 	}
 }
 
-func TestBotDoesNotDependOnChannels(t *testing.T) {
+func TestBotAndSessionDoNotDependOnChannels(t *testing.T) {
 	t.Parallel()
-	const bot = "github.com/recally-io/dex/internal/bot"
-	for _, dep := range listPackages(t, "-deps", bot+"/...") {
-		if within(dep, channelPath) {
-			t.Errorf("%s depends on %s; the app must wire channel coordination", bot, dep)
+	for _, pkg := range []string{"bot", "session"} {
+		for _, dep := range listPackages(t, "-deps", modulePath+"/internal/"+pkg+"/...") {
+			if within(dep, channelPath) {
+				t.Errorf("internal/%s depends on %s; the app must wire channels", pkg, dep)
+			}
 		}
 	}
 }
 
-func TestOnlyAppImportsTelegramPolicy(t *testing.T) {
+var platforms = []string{"telegram", "feishu", "wechat"}
+
+func TestPlatformImportBoundaries(t *testing.T) {
 	t.Parallel()
-	const app = "github.com/recally-io/dex/internal/app"
+	const app = modulePath + "/internal/app"
+	const server = modulePath + "/internal/server"
+	const api = modulePath + "/internal/api"
+	checkGeneratedAPIImports(t)
 	// Keep import data available when the embedded web assets are not built.
-	const format = `{{$pkg := .ImportPath}}{{range .Imports}}{{printf "%s=%s\n" $pkg .}}{{end}}{{range .TestImports}}{{printf "%s=%s\n" $pkg .}}{{end}}{{range .XTestImports}}{{printf "%s=%s\n" $pkg .}}{{end}}`
-	for _, edge := range listPackages(t, "-e", "-f", format, "github.com/recally-io/dex/...") {
-		pkg, dep, _ := strings.Cut(edge, "=")
+	const format = `{{$pkg := .ImportPath}}{{range .Imports}}{{printf "%s=%s\n" $pkg .}}{{end}}{{range .TestImports}}{{printf "%s=%s:test\n" $pkg .}}{{end}}{{range .XTestImports}}{{printf "%s=%s:test\n" $pkg .}}{{end}}`
+	for _, edge := range listPackages(t, "-e", "-f", format, modulePath+"/...") {
+		pkg, dependency, _ := strings.Cut(edge, "=")
+		dep, testOnly := strings.CutSuffix(dependency, ":test")
 		if within(dep, telegramPolicyPath) && pkg != app && !within(pkg, telegramPolicyPath) {
 			t.Errorf("%s imports %s; only %s registers the policy", pkg, dep, app)
+		}
+		if pkg == app || pkg == server || pkg == api {
+			continue
+		}
+		for _, platform := range platforms {
+			adapter := channelPath + "/" + platform
+			if !within(dep, adapter) {
+				continue
+			}
+			if !within(pkg, channelPath) {
+				t.Errorf("%s imports %s; only app, server and generated api may import platform adapters here", pkg, dep)
+			} else if testOnly && pkg != channelPath+"/pairing" && !within(pkg, adapter) {
+				// TestChannelImportBoundaries already checks the production closure.
+				t.Errorf("%s tests import %s; tests must follow the platform dependency direction", pkg, dep)
+			}
+		}
+	}
+}
+
+func checkGeneratedAPIImports(t *testing.T) {
+	t.Helper()
+	files, err := filepath.Glob("../api/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range files {
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly|parser.ParseComments)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ast.IsGenerated(file) {
+			continue
+		}
+		for _, spec := range file.Imports {
+			dep, err := strconv.Unquote(spec.Path.Value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, platform := range platforms {
+				if within(dep, channelPath+"/"+platform) {
+					t.Errorf("%s imports %s; only generated API code may import platform adapters", path, dep)
+				}
+			}
 		}
 	}
 }
@@ -102,10 +154,19 @@ func TestDeliveryHasNoTelegramRules(t *testing.T) {
 	}
 }
 
-func TestSessionDoesNotCallTelegramStagingSQL(t *testing.T) {
+func TestBotAndSessionHaveNoPlatformRules(t *testing.T) {
 	t.Parallel()
+	for _, root := range []string{"../bot", "../session"} {
+		if err := checkPlatformRules(t, root); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func checkPlatformRules(t *testing.T, root string) error {
+	t.Helper()
 	files := token.NewFileSet()
-	err := filepath.WalkDir("../session", func(path string, entry os.DirEntry, err error) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -122,24 +183,31 @@ func TestSessionDoesNotCallTelegramStagingSQL(t *testing.T) {
 			return err
 		}
 		for node := range ast.Preorder(file) {
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				continue
-			}
-			selector, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				continue
-			}
-			name := selector.Sel.Name
-			if strings.Contains(name, "TelegramAlbum") || strings.Contains(name, "TelegramEffect") || name == "DiscardTelegramInputEffects" {
-				t.Errorf("%s: %s belongs to Telegram policy", files.Position(selector.Sel.Pos()), name)
+			switch n := node.(type) {
+			case *ast.SelectorExpr:
+				name := strings.ToLower(n.Sel.Name)
+				for _, platform := range platforms {
+					if strings.Contains(name, platform) {
+						t.Errorf("%s: %s belongs to platform policy", files.Position(n.Sel.Pos()), n.Sel.Name)
+					}
+				}
+			case *ast.BasicLit:
+				if n.Kind != token.STRING {
+					continue
+				}
+				value, err := strconv.Unquote(n.Value)
+				if err != nil {
+					return err
+				}
+				for _, platform := range platforms {
+					if strings.HasPrefix(value, platform+":") {
+						t.Errorf("%s: peer prefix %q belongs to platform policy", files.Position(n.Pos()), platform+":")
+					}
+				}
 			}
 		}
 		return nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 }
 
 func listPackages(t *testing.T, args ...string) []string {

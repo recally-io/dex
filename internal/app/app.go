@@ -328,8 +328,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	hub = live.New(sessions, native)
 	bots = &channelRegistry{ctx: runCtx, db: conn, sessions: sessions, managers: make(map[string]*botChannels)}
 	sessions.ConfigureChannelReceipts(bots.reactionIntake, bots.reactionAdmission)
-	sessions.ConfigureChannelPairing(pairing.RequirePairedChannel)
-	bindChannelStaging(sessions)
+	bindSessionChannels(sessions)
+	taskToolService.ConfigureChannelOrigins(sessions.UserOrigin)
 
 	a := &App{db: conn, engine: native, envs: envs, bots: bots, jobs: jobs, background: bg, cancel: cancel}
 	defer func() { //nolint:contextcheck // Shutdown joins the app lifetime.

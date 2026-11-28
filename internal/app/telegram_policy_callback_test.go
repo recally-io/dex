@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	telegrampolicy "github.com/recally-io/dex/internal/channel/telegram/policy"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -39,6 +40,7 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	}
 	defer bots.Close(context.WithoutCancel(t.Context()))
 	service := session.New(conn, bots, time.Now, nil, nil)
+	bindSessionChannels(service)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { defer close(done); service.Run(ctx) }()
@@ -127,7 +129,7 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:synthetic", AllowedUsers: "43"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.StopChannelCommand(ctx, "bot", target.ID, "telegram-callback:queued-revoked-stop", "stop must not execute"); !errors.Is(err, session.ErrTelegramUnauthorized) {
+	if err := service.StopChannelCommand(ctx, "bot", target.ID, "telegram-callback:queued-revoked-stop", "stop must not execute"); !errors.Is(err, telegrampolicy.ErrTelegramUnauthorized) {
 		t.Fatalf("restored Stop bypassed current actor at its effect writer: %v", err)
 	}
 }

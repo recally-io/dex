@@ -14,23 +14,6 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// UserOrigin reports whether a person on the web or a channel wrote an input with this origin.
-func UserOrigin(origin string) bool { return isUserOrigin(origin) }
-
-func isUserOrigin(origin string) bool {
-	return origin == "web" ||
-		strings.HasPrefix(origin, "telegram:") ||
-		strings.HasPrefix(origin, "feishu:") ||
-		strings.HasPrefix(origin, "wechat:")
-}
-
-func peerFromOrigin(origin string) string {
-	if strings.Contains(origin, ":") {
-		return origin
-	}
-	return ""
-}
-
 func boolPtrOrTrue(v *bool) bool {
 	if v == nil {
 		return true
@@ -108,7 +91,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 		}
 	}
 	if final {
-		if peer == source.Origin && strings.HasPrefix(peer, "telegram:") {
+		if peer == source.Origin && s.channelRoute(peer).Files {
 			if err := bindFileDeliveries(ctx, q, outboxID, source.ID); err != nil {
 				return "", err
 			}
@@ -328,8 +311,7 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 		}
 		// Pure background runs (no user input) never auto-send to channels; only the last user input
 		// placed in the answering run decides whether the final reply goes to Web or a Channel.
-		// When the Run's source input shares the winning channel destination (e.g. back-to-back
-		// messages from the same Telegram peer in one QueueAll run), let the source input own the
+		// When the Run's source input shares the winning channel destination, let it own the
 		// Outbox row so send_file and ask_user side effects bound to Inputs[0] stay attached.
 		var owner *sqlc.Submission
 		if lastUser != nil && lastUser.ReplyChannel != "" && lastUser.ReplyPeer != "" {

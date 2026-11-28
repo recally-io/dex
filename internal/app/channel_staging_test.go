@@ -33,7 +33,7 @@ func TestUserStagedSourceDoesNotExposeAnotherBotsUpload(t *testing.T) {
 	// Given one received album member and one speech claim that has not been received.
 	const album, speech = "telegram:123:1", "telegram:123:2"
 	sessions := session.New(conn, nil, time.Now, nil, nil)
-	bindChannelStaging(sessions)
+	bindSessionChannels(sessions)
 	p := policy.New(conn, sessions, "owner")
 	if err := p.StoreTelegramAlbum(ctx, "telegram:42", album, session.Message{
 		Attachments:    []engine.Attachment{{Name: "album.txt"}},
