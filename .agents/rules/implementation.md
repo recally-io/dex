@@ -37,6 +37,8 @@ Read this before you change code, dependencies, native execution, or stored data
 | `plugins/<name>`            | One optional source, such as `plugins/github`. The core does not import it          |
 | `apps/web`                  | React UI, built into `apps/web/dist` and embedded                                   |
 
+`internal/channel/telegram/policy` owns Telegram channel business rules.
+
 ## Rules
 
 - Go code: follow the `use-modern-go` skill in `.agents/skills/`. New JSON

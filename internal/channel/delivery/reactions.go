@@ -3,14 +3,12 @@ package delivery
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/db"
-	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/session"
 )
@@ -19,8 +17,6 @@ const (
 	maxReactionWatches = 64
 	reactionTimeout    = 5 * time.Second
 	reactionPoll       = 150 * time.Millisecond
-	queueAckWindow     = 30 * time.Second
-	queueAckAttempts   = 3
 )
 
 type reactionWatch struct {
@@ -83,19 +79,28 @@ func (m *Manager) watchReaction(ctx context.Context, platform string, bot channe
 	last := channel.Reaction(0)
 	previous := ""
 	status := channel.ReactionQueued
-	if platform == "telegram" && !strings.HasPrefix(watch.peer, "telegram:-") {
-		if err := m.acknowledgeTelegramQueue(ctx, bot, watch); errors.Is(err, channel.ErrReactionUnknown) {
+	policy := m.policies[platform]
+	if policy != nil {
+		handled, err := policy.AcknowledgeQueue(ctx, bot, watch.peer, watch.id, watch.source, watch.nativeQueued)
+		if errors.Is(err, channel.ErrReactionUnknown) {
 			return
 		}
-		last = channel.ReactionQueued
-		status = m.reactionState(ctx, watch, last)
+		if handled {
+			last = channel.ReactionQueued
+			status = m.reactionState(ctx, watch, last)
+		}
 	}
 	tick := time.NewTicker(reactionPoll)
 	defer tick.Stop()
 	for {
 		if status > last {
 			callCtx, cancel := context.WithTimeout(ctx, reactionTimeout)
-			allowed := m.reactionAllowed(callCtx, platform, watch)
+			var allowed bool
+			if policy != nil {
+				allowed = policy.ReactionAllowed(callCtx, watch.peer, watch.source)
+			} else {
+				allowed = m.defaultReactionAllowed(callCtx, platform, watch)
+			}
 			var err error
 			if allowed {
 				previous, err = bot.React(callCtx, watch.peer, watch.source.MessageID, previous, status)
@@ -115,133 +120,22 @@ func (m *Manager) watchReaction(ctx context.Context, platform string, bot channe
 	}
 }
 
-// The same watcher owns the acknowledgement and later reactions. An unknown
-// mutation ends the watcher because Telegram may still apply it.
-func (m *Manager) acknowledgeTelegramQueue(ctx context.Context, bot channel.Reactor, watch *reactionWatch) error {
-	deadline := time.Now().Add(queueAckWindow)
-	for attempt := range queueAckAttempts {
-		callCtx, cancel := context.WithTimeout(ctx, reactionTimeout)
-		allowed := m.reactionAllowed(callCtx, "telegram", watch)
-		if allowed {
-			allowed = m.beginTelegramQueueAcknowledgement(callCtx, watch.id, attempt > 0)
-		}
-		if allowed && attempt > 0 {
-			// The durable write can wait for SQLite. Check again before sending.
-			allowed = m.reactionAllowed(callCtx, "telegram", watch)
-			_, queued := m.telegramQueueState(callCtx, watch)
-			allowed = allowed && queued && time.Now().Before(deadline)
-		}
-		if !allowed {
-			cancel()
-			return nil
-		}
-		if err := callCtx.Err(); err != nil {
-			cancel()
-			return err
-		}
-		_, err := bot.React(callCtx, watch.peer, watch.source.MessageID, "", channel.ReactionQueued)
-		retryAt := time.Now()
-		cancel()
-		outcome := "accepted"
-		if errors.Is(err, channel.ErrReactionUnknown) {
-			outcome = "unknown"
-		} else if err != nil {
-			outcome = "failed"
-		}
-		// A bot can stop after Telegram has confirmed the request. Save the result
-		// before the runtime joins this worker.
-		saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reactionTimeout)
-		saveErr := m.q.RecordTelegramQueueAcknowledgement(saveCtx, sqlc.RecordTelegramQueueAcknowledgementParams{
-			SubmissionID: watch.id, Outcome: outcome, UpdatedAt: time.Now().UnixMilli(),
-		})
-		cancel()
-		if saveErr != nil {
-			slog.Warn("telegram: record queued acknowledgement", "submission", watch.id, "err", saveErr)
-			return err
-		}
-		retry, ok := errors.AsType[*channel.RetryError](err)
-		if !ok || attempt+1 == queueAckAttempts {
-			return err
-		}
-		retryAt = retryAt.Add(max(time.Second<<attempt, retry.After))
-		if !retryAt.Before(deadline) {
-			return err
-		}
-		if !m.waitTelegramQueueRetry(ctx, watch, retryAt, deadline) {
-			return err
-		}
-	}
-	return nil
-}
-
-// Record the unknown outcome before each request. A crash after this write
-// cannot leave a prior rejection as the outcome of the current attempt.
-func (m *Manager) beginTelegramQueueAcknowledgement(ctx context.Context, id string, retry bool) bool {
-	var changed int64
-	var err error
-	if retry {
-		changed, err = m.q.BeginTelegramQueueAcknowledgementRetry(ctx, sqlc.BeginTelegramQueueAcknowledgementRetryParams{
-			SubmissionID: id, UpdatedAt: time.Now().UnixMilli(),
-		})
-	} else {
-		changed, err = m.q.ClaimTelegramQueueAcknowledgement(ctx, sqlc.ClaimTelegramQueueAcknowledgementParams{
-			SubmissionID: id, UpdatedAt: time.Now().UnixMilli(),
-		})
-	}
-	if err != nil && !errors.Is(err, context.Canceled) {
-		slog.Warn("telegram: begin queued acknowledgement", "submission", id, "err", err)
-	}
-	return err == nil && changed == 1
-}
-
-func (m *Manager) waitTelegramQueueRetry(ctx context.Context, watch *reactionWatch, retryAt, deadline time.Time) bool {
-	for time.Now().Before(deadline) {
-		pending, queued := m.telegramQueueState(ctx, watch)
-		if !pending {
-			return false
-		}
-		if queued && !time.Now().Before(retryAt) {
-			return true
-		}
-		select {
-		case <-ctx.Done():
-			return false
-		case <-time.After(reactionPoll):
-		}
-	}
-	return false
-}
-
-// A missing native handle is not proof that the input has not started. Wait for
-// admission to publish the handle before retrying.
-func (m *Manager) telegramQueueState(ctx context.Context, watch *reactionWatch) (pending, queued bool) {
-	r, err := m.q.GetChannelReactionReceipt(ctx, watch.id)
-	if err != nil || r.Status != "pending" || r.StopRequested != 0 {
-		return false, false
-	}
+func (watch *reactionWatch) nativeQueued(ctx context.Context) (queued, published bool) {
 	if sub := watch.native.Load(); sub != nil {
 		queued, err := sub.Queued(ctx)
-		return err == nil && queued, err == nil && queued
+		return err == nil && queued, true
 	}
-	return true, false
+	return false, false
 }
 
-func (m *Manager) reactionAllowed(ctx context.Context, platform string, watch *reactionWatch) bool {
-	if platform == "feishu" {
-		if err := db.RequireActive(ctx, m.q, m.botID); err != nil {
-			return false
-		}
-		cfg, err := m.q.GetFeishuSettings(ctx, m.botID)
-		return err == nil && cfg.OwnerID != "" && watch.peer == "feishu:"+cfg.OwnerID &&
-			watch.source.SenderID == cfg.OwnerID && watch.source.AccountID == cfg.AppID &&
-			(!cfg.Reactions.Valid || cfg.Reactions.Int64 == 1)
-	}
-	enabled, err := m.q.TelegramPrivateReactionsEnabled(ctx, m.botID)
-	if err != nil || !enabled {
+func (m *Manager) defaultReactionAllowed(ctx context.Context, platform string, watch *reactionWatch) bool {
+	if platform != "feishu" || db.RequireActive(ctx, m.q, m.botID) != nil {
 		return false
 	}
-	allowed, err := m.sessions.TelegramInputAllowed(ctx, m.botID, watch.peer, watch.source)
-	return err == nil && allowed
+	cfg, err := m.q.GetFeishuSettings(ctx, m.botID)
+	return err == nil && cfg.OwnerID != "" && watch.peer == "feishu:"+cfg.OwnerID &&
+		watch.source.SenderID == cfg.OwnerID && watch.source.AccountID == cfg.AppID &&
+		(!cfg.Reactions.Valid || cfg.Reactions.Int64 == 1)
 }
 
 func (m *Manager) reactionState(ctx context.Context, watch *reactionWatch, last channel.Reaction) channel.Reaction {

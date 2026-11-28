@@ -1,4 +1,4 @@
-package delivery_test
+package app
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -19,6 +18,7 @@ import (
 )
 
 func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
+	t.Parallel()
 	// Given two live control entry points over real SQLite and the native service.
 	directory := t.TempDir()
 	conn, err := db.Open(t.Context(), filepath.Join(directory, "control.sqlite"))
@@ -62,7 +62,7 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 		}
 	}
 	create("concurrent-button")
-	managers := []*delivery.Manager{delivery.New(ctx, conn, service, "bot"), delivery.New(ctx, conn, service, "bot")}
+	managers := []*botChannels{newBotChannels(ctx, conn, service, "bot"), newBotChannels(ctx, conn, service, "bot")}
 	defer func() {
 		for _, manager := range managers {
 			manager.Close()

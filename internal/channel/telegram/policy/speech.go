@@ -1,4 +1,4 @@
-package delivery
+package policy
 
 import (
 	"context"
@@ -16,15 +16,15 @@ import (
 )
 
 // SpeechInput restores an unacknowledged upload. A credential move cannot transfer its ownership.
-func (m *Manager) SpeechInput(ctx context.Context, source string) (*session.Message, bool, error) {
-	row, err := m.q.GetTelegramEffect(ctx, "stt:"+source)
+func (p *Policy) SpeechInput(ctx context.Context, source string) (*session.Message, bool, error) {
+	row, err := p.q.GetTelegramEffect(ctx, "stt:"+source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, err
 	}
-	if row.BotID != m.botID || row.State == "discarded" {
+	if row.BotID != p.botID || row.State == "discarded" {
 		return nil, true, nil
 	}
 	if row.InputJson == "{}" {
@@ -37,39 +37,39 @@ func (m *Manager) SpeechInput(ctx context.Context, source string) (*session.Mess
 	return &msg, false, nil
 }
 
-func (m *Manager) Transcribe(ctx context.Context, peer, source string, msg session.Message, duration int, options speech.Options, resolve speech.Resolve, store *upload.Store) (session.Message, error) {
+func (p *Policy) Transcribe(ctx context.Context, peer, source string, msg session.Message, duration int, options speech.Options, resolve speech.Resolve, store *upload.Store) (session.Message, error) {
 	key := "stt:" + source
 	msg.SpeechSource = key
-	row, err := m.q.GetTelegramEffect(ctx, key)
+	row, err := p.q.GetTelegramEffect(ctx, key)
 	if errors.Is(err, sql.ErrNoRows) {
 		input, marshalErr := json.Marshal(msg)
 		if marshalErr != nil {
 			return msg, marshalErr
 		}
-		n, createErr := m.q.CreateTelegramEffect(ctx, sqlc.CreateTelegramEffectParams{OperationKey: key, BotID: m.botID, AccountID: msg.ChannelContext.AccountID, SenderID: msg.ChannelContext.SenderID, Peer: peer, SourceKey: source, Kind: "stt", InputJson: string(input), CreatedAt: time.Now().UnixMilli()})
+		n, createErr := p.q.CreateTelegramEffect(ctx, sqlc.CreateTelegramEffectParams{OperationKey: key, BotID: p.botID, AccountID: msg.ChannelContext.AccountID, SenderID: msg.ChannelContext.SenderID, Peer: peer, SourceKey: source, Kind: "stt", InputJson: string(input), CreatedAt: time.Now().UnixMilli()})
 		if createErr != nil {
 			return msg, createErr
 		}
 		if n != 1 {
 			return msg, errors.New("speech source authorization changed")
 		}
-		row, err = m.q.GetTelegramEffect(ctx, key)
+		row, err = p.q.GetTelegramEffect(ctx, key)
 	}
 	if err != nil {
 		return msg, err
 	}
-	if row.BotID != m.botID || row.State == "discarded" {
+	if row.BotID != p.botID || row.State == "discarded" {
 		return msg, errors.New("speech input is no longer authorized")
 	}
 	if row.State == "processing" {
-		if err := m.q.MarkTelegramEffectUnknown(ctx, key); err != nil {
+		if err := p.q.MarkTelegramEffectUnknown(ctx, key); err != nil {
 			return msg, err
 		}
 		row.State = "unknown"
 		row.Error = "transcription outcome unknown; not sent again"
 	}
 	if row.State == "ready" {
-		n, err := m.q.StartTelegramEffect(ctx, key)
+		n, err := p.q.StartTelegramEffect(ctx, key)
 		if err != nil {
 			return msg, err
 		}
@@ -111,7 +111,7 @@ func (m *Manager) Transcribe(ctx context.Context, peer, source string, msg sessi
 			row.State = speechFailure(ctx, err)
 			row.Error = err.Error()
 		}
-		if err := m.completeEffect(ctx, sqlc.CompleteTelegramEffectParams{OperationKey: key, State: row.State, Text: row.Text, Error: row.Error, ResultJson: "{}"}, "speech input is no longer active"); err != nil {
+		if err := p.completeEffect(ctx, sqlc.CompleteTelegramEffectParams{OperationKey: key, State: row.State, Text: row.Text, Error: row.Error, ResultJson: "{}"}, "speech input is no longer active"); err != nil {
 			return msg, err
 		}
 		if ctx.Err() != nil {
@@ -143,10 +143,10 @@ func speechFailure(ctx context.Context, err error) string {
 
 // completeEffect records a started effect's outcome even after ctx ends. A missed row means
 // the effect was revoked or claimed elsewhere, so the caller must not use the outcome.
-func (m *Manager) completeEffect(ctx context.Context, params sqlc.CompleteTelegramEffectParams, inactive string) error {
+func (p *Policy) completeEffect(ctx context.Context, params sqlc.CompleteTelegramEffectParams, inactive string) error {
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 	defer cancel()
-	saved, err := m.q.CompleteTelegramEffect(saveCtx, params)
+	saved, err := p.q.CompleteTelegramEffect(saveCtx, params)
 	if err != nil {
 		return err
 	}
@@ -156,34 +156,34 @@ func (m *Manager) completeEffect(ctx context.Context, params sqlc.CompleteTelegr
 	return nil
 }
 
-func (m *Manager) FinishSpeechInput(ctx context.Context, source string, album bool) error {
-	effect, err := m.q.GetTelegramEffect(ctx, "stt:"+source)
+func (p *Policy) FinishSpeechInput(ctx context.Context, source string, album bool) error {
+	effect, err := p.q.GetTelegramEffect(ctx, "stt:"+source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if effect.BotID != m.botID || effect.InputJson == "{}" {
+	if effect.BotID != p.botID || effect.InputJson == "{}" {
 		return nil
 	}
-	receipt, err := m.sessions.LookupSource(ctx, m.botID, source)
+	receipt, err := p.sessions.LookupSource(ctx, p.botID, source)
 	if err != nil {
 		return err
 	}
 	if receipt.ID == "" && (!album || !receipt.Staged) {
 		return nil
 	}
-	return m.q.ClearTelegramEffectInput(ctx, "stt:"+source)
+	return p.q.ClearTelegramEffectInput(ctx, "stt:"+source)
 }
 
-func (m *Manager) cleanupSpeechInputs(ctx context.Context, store *upload.Store) error {
-	rows, err := m.q.ListDiscardedTelegramEffectInputs(ctx, m.botID)
+func (p *Policy) cleanupSpeechInputs(ctx context.Context, store *upload.Store) error {
+	rows, err := p.q.ListDiscardedTelegramEffectInputs(ctx, p.botID)
 	if err != nil {
 		return err
 	}
 	for _, row := range rows {
-		receipt, err := m.sessions.LookupSource(ctx, m.botID, row.SourceKey)
+		receipt, err := p.sessions.LookupSource(ctx, p.botID, row.SourceKey)
 		if err != nil {
 			return err
 		}
@@ -198,7 +198,7 @@ func (m *Manager) cleanupSpeechInputs(ctx context.Context, store *upload.Store) 
 				}
 			}
 		}
-		if err := m.q.ClearTelegramEffectInput(ctx, row.OperationKey); err != nil {
+		if err := p.q.ClearTelegramEffectInput(ctx, row.OperationKey); err != nil {
 			return err
 		}
 	}

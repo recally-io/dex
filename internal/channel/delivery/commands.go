@@ -26,8 +26,11 @@ func (m *Manager) CommandReceived(ctx context.Context, source string) (bool, err
 
 // Receive stores one update or executes a shared command. A repeated source has no effect.
 func (m *Manager) Receive(ctx context.Context, peer, source string, msg session.Message) error {
-	if session.NonPrivateTelegramPeer(peer) {
-		return session.ErrTelegramUnauthorized
+	policy := m.policy(peer)
+	if policy != nil {
+		if err := policy.AdmitInput(peer); err != nil {
+			return err
+		}
 	}
 	if !strings.Contains(peer, ":") || strings.Contains(peer, "/") || source == "" || msg.ChannelContext.AccountID == "" {
 		return errors.New("invalid channel peer, account, or source")
@@ -42,7 +45,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg session.
 	}
 	_, err := m.q.GetChannelCommand(ctx, source)
 	if err == nil {
-		return m.complete(ctx, source)
+		return m.CompleteCommand(ctx, source)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err
@@ -50,8 +53,8 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg session.
 	cmd := strings.TrimSpace(msg.Content)
 	isFeedback := channel.IsFeedbackCommand(cmd)
 	basicCommand := cmd == "/clear" || cmd == "/new" || cmd == "/stop" || cmd == "/help"
-	telegramCommand := strings.HasPrefix(peer, "telegram:") && channel.IsCommand(cmd)
-	isCommand := isFeedback || basicCommand || telegramCommand
+	platformCommand := policy != nil && policy.IsCommand(cmd)
+	isCommand := isFeedback || basicCommand || platformCommand
 	if !isCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
 		return m.sessions.AcceptMessage(ctx, m.botID, peer, source, msg)
 	}
@@ -73,7 +76,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg session.
 	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{BotID: m.botID, SourceKey: source, Peer: peer, ChannelKey: session.MainKey, Command: cmd, ChannelContext: string(identity)}); err != nil {
 		return err
 	}
-	return m.complete(ctx, source)
+	return m.CompleteCommand(ctx, source)
 }
 
 const feedbackTooLong = "This draft is too long for one channel reply. Shorten it or use Feedback in Web."
@@ -103,7 +106,8 @@ func feedbackReply(text string) string {
 	return answer
 }
 
-func (m *Manager) complete(ctx context.Context, source string) error {
+// CompleteCommand processes a stored command. The caller must first commit its receipt.
+func (m *Manager) CompleteCommand(ctx context.Context, source string) error {
 	// Polling and the outbox can replay the same command. Never hold a bot-wide
 	// lock while the command calls a target Session.
 	owned := make(chan struct{})
@@ -135,60 +139,55 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	if c.BotID != m.botID || c.Completed != 0 || c.DeliveredAt.Valid {
 		return nil
 	}
-	var target session.Session
-	if strings.HasPrefix(c.Peer, "telegram:") {
-		var done bool
-		var err error
-		target, done, err = m.completeTelegram(ctx, c)
-		if err != nil || done {
-			return err
-		}
+	runShared := func(ctx context.Context, targetID int64) (string, error) {
+		return m.runSharedCommand(ctx, c, targetID)
 	}
-	answer := "/clear clears the main timeline's context. It takes no text. /new does the same. /stop stops the main answer and its background work. /feedback prepares a public GitHub issue draft. /help shows these commands."
-	switch c.Command {
-	// Rows saved before /clear existed hold /new.
-	case "/clear", "/new":
-		if target.ID == 0 {
-			target, err = m.sessions.Main(ctx, m.botID)
-			if err != nil {
-				return err
-			}
-		}
-		err := m.sessions.Clear(ctx, m.botID, target.ID, "channel:"+c.SourceKey, c.Peer, "")
-		switch {
-		case errors.Is(err, session.ErrTelegramUnauthorized):
-			answer = ""
-		case errors.Is(err, session.ErrSessionBusy):
-			answer = "Context not cleared. The main timeline is busy. Wait for the reply or stop it, then send /clear again."
-		case err != nil:
-			return err
-		default:
-			answer = "Context cleared."
-		}
-	case "/stop":
-		answer = c.Answer
-		if answer == "" {
-			if target.ID == 0 {
-				var err error
-				target, err = m.sessions.Main(ctx, m.botID)
-				if err != nil {
-					return err
-				}
-			}
-			answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
-			if err := m.sessions.StopChannelCommand(ctx, m.botID, target.ID, c.SourceKey, answer); err != nil {
-				if errors.Is(err, session.ErrTelegramUnauthorized) {
-					return m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
-				}
-				return err
-			}
-		}
+	var answer string
+	wake := true
+	if policy := m.policy(c.Peer); policy != nil {
+		answer, wake, err = policy.RunCommand(ctx, c, runShared)
+	} else {
+		answer, err = runShared(ctx, 0)
+	}
+	if err != nil {
+		return err
 	}
 	if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{Answer: answer, SourceKey: c.SourceKey}); err != nil {
 		return err
 	}
-	m.Notify(c.Peer)
+	if wake {
+		m.Notify(c.Peer)
+	}
 	return nil
+}
+
+func (m *Manager) runSharedCommand(ctx context.Context, c sqlc.ChannelCommand, targetID int64) (string, error) {
+	// A saved Stop answer means the withdrawal already committed.
+	if c.Command == "/stop" && c.Answer != "" {
+		return c.Answer, nil
+	}
+	switch c.Command {
+	case "/clear", "/new", "/stop":
+		if targetID == 0 {
+			target, err := m.sessions.Main(ctx, m.botID)
+			if err != nil {
+				return "", err
+			}
+			targetID = target.ID
+		}
+	default:
+		return "/clear clears the main timeline's context. It takes no text. /new does the same. /stop stops the main answer and its background work. /feedback prepares a public GitHub issue draft. /help shows these commands.", nil
+	}
+	if c.Command == "/stop" {
+		const answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
+		return answer, m.sessions.StopChannelCommand(ctx, m.botID, targetID, c.SourceKey, answer)
+	}
+	// Rows saved before /clear existed hold /new.
+	err := m.sessions.Clear(ctx, m.botID, targetID, "channel:"+c.SourceKey, c.Peer, "")
+	if errors.Is(err, session.ErrSessionBusy) {
+		return "Context not cleared. The main timeline is busy. Wait for the reply or stop it, then send /clear again.", nil
+	}
+	return "Context cleared.", err
 }
 
 // QueueChannelNotice records a platform acknowledgement without a model input.
@@ -240,16 +239,8 @@ func (m *Manager) queueCommandReply(ctx context.Context, bot channel.Bot, r sqlc
 	if err != nil {
 		return err
 	}
-	if strings.HasPrefix(r.Peer, "telegram:") && kind == "control" {
-		var identity session.ChannelContext
-		if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
-			return err
-		}
-		actions, err := m.menuActions(ctx, r.Command, target)
-		if err != nil {
-			return err
-		}
-		if err := m.addButtons(ctx, &part, r.SourceKey, r.Peer, identity, target, actions); err != nil {
+	if policy := m.policy(r.Peer); policy != nil && kind == "control" {
+		if err := policy.DecorateCommandReply(ctx, r, target, &part); err != nil {
 			return err
 		}
 	}

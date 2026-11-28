@@ -19,7 +19,6 @@ import (
 	"github.com/recally-io/dex/internal/background"
 	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
@@ -303,7 +302,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	})
 	routineTools = automation.NewToolService(conn, automations, sessions.WakeSession)
 	hub = live.New(sessions, native)
-	bots = &channelRegistry{ctx: runCtx, db: conn, sessions: sessions, managers: make(map[string]*delivery.Manager)}
+	bots = &channelRegistry{ctx: runCtx, db: conn, sessions: sessions, managers: make(map[string]*botChannels)}
 	sessions.ConfigureChannelReceipts(bots.reactionIntake, bots.reactionAdmission)
 
 	a := &App{db: conn, engine: native, envs: envs, bots: bots, jobs: jobs, background: bg, cancel: cancel}
@@ -313,18 +312,18 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 	}()
 	setTelegram := func(botID string, config *telegram.Config) {
-		manager := bots.Bot(botID)
+		channels := bots.Bot(botID)
 		uploads := upload.New(bot.Home(cfg.DataDir, botID))
 		if config == nil {
-			manager.Set("telegram", nil) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
-			if err := manager.CleanupTelegramAlbums(runCtx, uploads); err != nil {
+			channels.Set("telegram", nil) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
+			if err := channels.CleanupTelegramAlbums(runCtx, uploads); err != nil {
 				slog.Warn("telegram: album cleanup", "err", err)
 			}
 			return
 		}
 		config.Uploads = uploads
 		config.Speech = prefs.SpeechEndpoint
-		manager.Set("telegram", telegram.New(*config, manager)) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
+		channels.Set("telegram", telegram.New(*config, channels)) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
 	}
 	prefs = settings.New(q, native.Catalog, native, envs)
 	if err := prefs.ApplyOnePassword(ctx); err != nil {
@@ -366,7 +365,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	sessions.ConfigureSessions(prefs.CheckSession)
 	setFeishu := func(botID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
-		manager := bots.Bot(botID)
+		manager := bots.Bot(botID).Manager
 		uploads := upload.New(bot.Home(cfg.DataDir, botID))
 		if config == nil {
 			manager.Set("feishu", nil)
@@ -380,7 +379,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	botsService.ChannelStatus = bots.Status
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
 	setWechat := func(botID string, config *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
-		manager := bots.Bot(botID)
+		manager := bots.Bot(botID).Manager
 		uploads := upload.New(bot.Home(cfg.DataDir, botID))
 		if config == nil {
 			manager.Set("wechat", nil)

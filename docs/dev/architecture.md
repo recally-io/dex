@@ -25,9 +25,10 @@ connection screen remains available when the server is offline.
 The [module index](../../.agents/rules/implementation.md#modules) defines
 package ownership. `internal/app` connects the services. Business services call
 `internal/engine`. Platform adapters implement the `internal/channel` contract.
-`internal/channel/delivery` owns commands, the durable Webhook Queue, and
-reply delivery. Telegram accepts only private chats. The engine uses one
-native store per bot.
+`internal/channel/delivery` owns command replay, the durable Webhook Queue, and
+reply delivery. `internal/app` registers the [Telegram policy](channels.md#shared-channels)
+for Telegram business rules. Telegram accepts only private chats. The engine
+uses one native store per bot.
 Optional [inbound webhooks](channels.md#inbound-webhooks) commit events before
 acknowledging them and use the same platform receive functions. The engine does
 not import dex business packages. Each business package defines its model tools.
