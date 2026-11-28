@@ -8,7 +8,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/emersion/go-imap/v2 v2.0.0-beta.9
 	github.com/google/uuid v1.6.0
-	github.com/larksuite/oapi-sdk-go/v3 v3.13.0
+	github.com/larksuite/oapi-sdk-go/v3 v3.14.0
 	github.com/oapi-codegen/runtime v1.9.1
 	github.com/pressly/goose/v3 v3.30.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
