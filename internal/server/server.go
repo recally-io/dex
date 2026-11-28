@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 	"uuid"
 
+	"github.com/recally-io/dex/apps/web"
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
@@ -35,7 +36,6 @@ import (
 	"github.com/recally-io/dex/internal/sysops"
 	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/internal/upload"
-	"github.com/recally-io/dex/apps/web"
 )
 
 // Config holds what the handler serves.
