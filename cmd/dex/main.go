@@ -15,6 +15,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/recally-io/dex/apps/web"
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/service"
 	"github.com/recally-io/dex/internal/sysops"
@@ -70,6 +71,7 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 		LoginEnv:        testLoginEnv(),
 		FakeModel:       testFakeModel(),
 		Version:         version(),
+		WebHandler:      web.Handler(),
 		Token:           token,
 		RequireToken:    requireToken,
 		Logs:            logBuf,

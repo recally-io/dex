@@ -1,4 +1,4 @@
-package localdex_test
+package inapp_test
 
 import (
 	"net/http"
@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/recally-io/dex/internal/localdex"
+	"github.com/recally-io/dex/apps/native/internal/inapp"
 )
 
 func TestUserOpensLocalWorkspaceWithoutAServer(t *testing.T) {
 	t.Parallel()
 	// Given an isolated data directory, start the runtime without a listener.
-	cfg := localdex.Config{DataDir: t.TempDir(), Version: "local-test", Mobile: true}
-	instance, err := localdex.Start(t.Context(), cfg)
+	cfg := inapp.Config{DataDir: t.TempDir(), Version: "local-test", Mobile: true}
+	instance, err := inapp.Start(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestUserOpensLocalWorkspaceWithoutAServer(t *testing.T) {
 		}
 	})
 
-	if other, err := localdex.Start(t.Context(), cfg); err == nil {
+	if other, err := inapp.Start(t.Context(), cfg); err == nil {
 		_ = other.Close()
 		t.Fatal("a second runtime opened the same workspace")
 	}

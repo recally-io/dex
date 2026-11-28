@@ -16,7 +16,7 @@ import (
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/nsgotest"
 	"github.com/recally-io/dex/apps/native/internal/bridge"
-	"github.com/recally-io/dex/internal/localdex"
+	"github.com/recally-io/dex/apps/native/internal/inapp"
 )
 
 func TestMain(m *testing.M) { nsgotest.Main(m) }
@@ -134,7 +134,7 @@ func TestUserOpensLocalWorkspaceInWebKit(t *testing.T) {
 	if nsgotest.Target() == "" {
 		t.Skip("A native Apple run is required")
 	}
-	instance, err := localdex.Start(t.Context(), localdex.Config{DataDir: t.TempDir(), Mobile: true})
+	instance, err := inapp.Start(t.Context(), inapp.Config{DataDir: t.TempDir(), Mobile: true})
 	if err != nil {
 		t.Fatal(err)
 	}

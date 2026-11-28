@@ -4,43 +4,44 @@ Read this before you change code, dependencies, native execution, or stored data
 
 ## Modules
 
-The server and native app share the root Go 1.27.3 module.
+The server and native app share the root Go 1.27.3 module. The root
+`internal/` tree is the shared core. It does not depend on `apps/`.
 
-| Path                        | Owns                                                                                |
-| --------------------------- | ----------------------------------------------------------------------------------- |
-| `cmd/dex`                   | Process entry: data directory, address, HTTP server                                 |
-| `internal/app`              | Wiring: business storage, engine, session service, HTTP, channels                   |
-| `internal/localdex`         | In-process workspace runtime with no HTTP listener                                  |
-| `internal/session`          | Input intents, business receipts, child session turns and results, source state     |
-| `internal/engine`           | PiG Harnesses, execution storage, model access, tool runtime, transcript projection |
-| `internal/db`               | `control.sqlite`, goose migrations, sqlc queries                                    |
-| `internal/server`           | HTTP API handlers of `api/openapi.yaml`, the web UI at `/`                          |
-| `internal/api`              | Generated from `api/openapi.yaml` (`mise run generate:api`)                         |
-| `internal/live`             | SSE transport over typed engine watches and history                                 |
-| `internal/dream`            | Hidden sessions that consolidate the memory repo                                    |
-| `internal/scheduler`        | Job schedules; jobs check durable state                                             |
-| `internal/automation`       | Automation prompts, schedules, runs, and sessions                                   |
-| `internal/runner`           | Runner leases, workspaces, backend selection, and Outbound Machine enrollment       |
-| `internal/runner/outbound`  | Outbound Machine protocol and sessions                                              |
-| `internal/background`       | Session Processes, output, wake-ups, and process supervision                        |
-| `internal/channel`          | Channel transport contract and frozen delivery values                               |
-| `internal/channel/delivery` | Bot lifecycle, channel commands, and durable reply outbox                           |
-| `internal/channel/telegram` | Telegram polling, pairing, protocol, and media adaptation                           |
-| `internal/channel/feishu`   | Feishu/Lark setup, events, cards, and media adaptation                              |
-| `internal/channel/wechat`   | WeChat login, polling, protocol, and media adaptation                               |
-| `internal/upload`           | Upload validation, file storage, and bot-scoped paths                               |
-| `internal/service`          | Per-user launchd/systemd definitions, commands, and readiness checks                |
-| `internal/sysops`           | In-process server operations: update coordination, restart, SQLite backups, logs    |
-| `internal/update`           | Release verification, maintenance coordination, and executable replacement          |
-| `internal/mcptest`          | Local MCP test servers; no production execution                                     |
-| `internal/settings`         | Global providers, model checks, 1Password credentials, access token                 |
-| `internal/bot`              | Bot settings, activity, paths, channel configuration                                |
-| `internal/task`             | Tasks, the source event store, holds, waits, and the `task_*` tools                 |
-| `internal/plugin`           | The seam that optional sources use: hooks, plugin API, jobs, and Task link tools    |
-| `plugins/<name>`            | One optional source, such as `plugins/github`. `internal/app` does not import it    |
-| `plugins/builtin`           | Plugin factories for the server and the local workspace                             |
-| `apps/web`                  | React UI, built into `apps/web/dist` and embedded                                   |
-| `apps/native`               | Native app entry, theme, and workspace selection                                    |
+| Path                         | Owns                                                                                |
+| ---------------------------- | ----------------------------------------------------------------------------------- |
+| `cmd/dex`                    | Process entry: data directory, address, HTTP server                                 |
+| `internal/app`               | Wiring: business storage, engine, session service, HTTP, channels                   |
+| `internal/session`           | Input intents, business receipts, child session turns and results, source state     |
+| `internal/engine`            | PiG Harnesses, execution storage, model access, tool runtime, transcript projection |
+| `internal/db`                | `control.sqlite`, goose migrations, sqlc queries                                    |
+| `internal/server`            | HTTP API handlers of `api/openapi.yaml`, optional web handler at `/`                |
+| `internal/api`               | Generated from `api/openapi.yaml` (`mise run generate:api`)                         |
+| `internal/live`              | SSE transport over typed engine watches and history                                 |
+| `internal/dream`             | Hidden sessions that consolidate the memory repo                                    |
+| `internal/scheduler`         | Job schedules; jobs check durable state                                             |
+| `internal/automation`        | Automation prompts, schedules, runs, and sessions                                   |
+| `internal/runner`            | Runner leases, workspaces, backend selection, and Outbound Machine enrollment       |
+| `internal/runner/outbound`   | Outbound Machine protocol and sessions                                              |
+| `internal/background`        | Session Processes, output, wake-ups, and process supervision                        |
+| `internal/channel`           | Channel transport contract and frozen delivery values                               |
+| `internal/channel/delivery`  | Bot lifecycle, channel commands, and durable reply outbox                           |
+| `internal/channel/telegram`  | Telegram polling, pairing, protocol, and media adaptation                           |
+| `internal/channel/feishu`    | Feishu/Lark setup, events, cards, and media adaptation                              |
+| `internal/channel/wechat`    | WeChat login, polling, protocol, and media adaptation                               |
+| `internal/upload`            | Upload validation, file storage, and bot-scoped paths                               |
+| `internal/service`           | Per-user launchd/systemd definitions, commands, and readiness checks                |
+| `internal/sysops`            | In-process server operations: update coordination, restart, SQLite backups, logs    |
+| `internal/update`            | Release verification, maintenance coordination, and executable replacement          |
+| `internal/mcptest`           | Local MCP test servers; no production execution                                     |
+| `internal/settings`          | Global providers, model checks, 1Password credentials, access token                 |
+| `internal/bot`               | Bot settings, activity, paths, channel configuration                                |
+| `internal/task`              | Tasks, the source event store, holds, waits, and the `task_*` tools                 |
+| `internal/plugin`            | The seam that optional sources use: hooks, plugin API, jobs, and Task link tools    |
+| `plugins/<name>`             | One optional source, such as `plugins/github`. `internal/app` does not import it    |
+| `plugins/builtin`            | Plugin factories for the server and the local workspace                             |
+| `apps/web`                   | React UI, built into `apps/web/dist` and embedded                                   |
+| `apps/native`                | Native app entry, theme, and workspace selection                                    |
+| `apps/native/internal/inapp` | Local workspace runtime with no HTTP listener                                       |
 
 In `apps/native`, `internal/webview` owns platform WebViews and navigation.
 `internal/bridge` serves local requests and streams SSE.

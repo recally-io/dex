@@ -68,6 +68,8 @@ type Config struct {
 	WechatHTTPClient *http.Client
 	// Version is the version that GET /api/health reports.
 	Version string
+	// WebHandler serves the web UI at /. If nil, no web UI is served.
+	WebHandler http.Handler
 	// DreamEvery is the shortest time between two dreams; zero means 24 hours.
 	DreamEvery time.Duration
 	// AutomationCheck is the time between two checks for due automations; zero means 1 minute.
@@ -462,6 +464,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		sessions.RetryNow()
 	})
 	a.handler = server.New(server.Config{
+		WebHandler:      cfg.WebHandler,
 		ChannelWebhooks: http.HandlerFunc(bots.webhook),
 		SkillCatalogURL: cfg.SkillCatalogURL,
 		McpRegistryURL:  cfg.McpRegistryURL,

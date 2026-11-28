@@ -66,22 +66,22 @@ GitHub entry point for installing dex. Run repository tasks through mise.
 
 Run `mise tasks` for the full list. The main tasks:
 
-| Task                | What it does                                                                                                     |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `build`             | Builds `bin/dex` for this platform                                                                               |
-| `check`             | All checks; CI runs its steps in jobs                                                                            |
-| `check:quick`       | Checks only what changed: Go tests without `-race`, skips `internal/app`; the pre-push hook runs it              |
-| `check:go`          | golangci-lint, `go build`, `go test -race`; `internal/db` and `internal/app` run without `-race`                 |
-| `check:app`         | The `internal/app` tests without the race detector; CI runs them in shards with `check:go-shard`                 |
-| `check:native`      | Checks removed backend paths, rejects PiG TUI and extension-host imports, and builds four platforms with cgo off |
-| `documd`            | Renders one figure: `mise run documd <source> <png>`                                                             |
-| `generate:diagrams` | Renders the architecture, message-flow, always-on-flow, and plugins PNGs from PlantUML                           |
-| `generate:db`       | Regenerates `internal/db/sqlc`                                                                                   |
-| `generate:api`      | Regenerates the Go server and the TS client from `api/openapi.yaml`                                              |
-| `build:web`         | Builds the web UI into `apps/web/dist`                                                                           |
-| `check:web`         | `tsc`, `vp lint`, `vp fmt --check`, `vp test` in `apps/web/`                                                     |
-| `check:e2e`         | Browser end-to-end tests in `apps/web/tests/` using `e2e` and the faux provider                                  |
-| `check:api-drift`   | Fails when the generated API code differs from the contract                                                      |
+| Task                | What it does                                                                                        |
+| ------------------- | --------------------------------------------------------------------------------------------------- |
+| `build`             | Builds `bin/dex` for this platform                                                                  |
+| `check`             | All checks; CI runs its steps in jobs                                                               |
+| `check:quick`       | Checks only what changed: Go tests without `-race`, skips `internal/app`; the pre-push hook runs it |
+| `check:go`          | golangci-lint, `go build`, `go test -race`; `internal/db` and `internal/app` run without `-race`    |
+| `check:app`         | The `internal/app` tests without the race detector; CI runs them in shards with `check:go-shard`    |
+| `check:native`      | Checks Go dependency boundaries and builds the server and native app with cgo off                   |
+| `documd`            | Renders one figure: `mise run documd <source> <png>`                                                |
+| `generate:diagrams` | Renders the architecture, message-flow, always-on-flow, and plugins PNGs from PlantUML              |
+| `generate:db`       | Regenerates `internal/db/sqlc`                                                                      |
+| `generate:api`      | Regenerates the Go server and the TS client from `api/openapi.yaml`                                 |
+| `build:web`         | Builds the web UI into `apps/web/dist`                                                              |
+| `check:web`         | `tsc`, `vp lint`, `vp fmt --check`, `vp test` in `apps/web/`                                        |
+| `check:e2e`         | Browser end-to-end tests in `apps/web/tests/` using `e2e` and the faux provider                     |
+| `check:api-drift`   | Fails when the generated API code differs from the contract                                         |
 
 ## Tests
 
@@ -95,9 +95,10 @@ stdio servers. They do not call production services.
 Run `mise run check:go` after a Go or PiG dependency change. It builds the web
 assets, runs lint, builds the packages, and runs tests with the race detector.
 The `internal/db` and `internal/app` tests run without it.
-`mise run check:native` also builds darwin and linux for amd64 and arm64
-with `CGO_ENABLED=0`. It checks that tracked backend-worker files and PiG TUI
-or extension-host dependencies are absent.
+`mise run check:native` checks the [Go dependency boundaries](architecture.md#runtime-modules)
+and rejects backend-worker files and server dependencies on PiG TUI or the
+extension host. With `CGO_ENABLED=0`, it builds the server for Darwin and Linux
+on amd64 and arm64. It also builds the native app for Linux amd64.
 
 Run `mise run check:e2e` to run the browser end-to-end tests in `apps/web/tests/`.
 The suite builds `apps/web/dist`, starts `dex` with `DEX_FAKE_MODEL=1` and isolated

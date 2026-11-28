@@ -113,6 +113,8 @@ func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 		return &http.Client{Jar: jar}
 	}
 	browser := newBrowser()
+	// Check the OAuth redirect without serving the web UI.
+	browser.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	d.srv.Client().Jar = newBrowser().Jar
 	d.must(t, http.MethodPost, "/api/session", map[string]string{"token": ownerToken}, nil, http.StatusNoContent)
 	d.must(t, http.MethodPut, "/api/bots/default/vault", map[string]string{"scope": "agent", "name": "NOTES_OAUTH", "value": "private-client-secret"}, nil)
@@ -186,8 +188,11 @@ func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 		if resp.StatusCode != want {
 			t.Fatalf("callback: %d, want %d", resp.StatusCode, want)
 		}
-		if want == http.StatusOK && resp.Request.URL.Path != "/b/default/integrations" {
-			t.Fatalf("callback went to %q, want the Bot Integrations page", resp.Request.URL.Path)
+		if want == http.StatusSeeOther {
+			location, err := resp.Location()
+			if err != nil || location.Path != "/b/default/integrations" {
+				t.Fatalf("callback location %v (%v), want the Bot Integrations page", location, err)
+			}
 		}
 	}
 	// When state or the browser binding is wrong, the flow cannot be used.
@@ -199,7 +204,7 @@ func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 	finish(browser, auth, auth.Query().Get("state"), "good", 400)
 	finish(browser, auth, auth.Query().Get("state"), "good", 400)
 	auth = start()
-	finish(browser, auth, auth.Query().Get("state"), "good", 200)
+	finish(browser, auth, auth.Query().Get("state"), "good", http.StatusSeeOther)
 	finish(browser, auth, auth.Query().Get("state"), "good", 400)
 	// Then only this connection gets a grant and an authenticated read succeeds after refresh.
 	d.setModel(t, "tool")

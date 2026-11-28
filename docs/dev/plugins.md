@@ -20,7 +20,7 @@ See [Tasks](tasks.md#sources-and-held-events) for routing, waits, and holds.
 | `internal/task`   | The event store, routing, holds, waits, links, and Task alerts            |
 | `plugins/builtin` | The list of factories for the server and the local workspace              |
 
-`cmd/dex` and `internal/localdex` pass this list to `internal/app`. The app
+`cmd/dex` and `apps/native/internal/inapp` pass this list to `internal/app`. The app
 package does not import plugin implementations. A plugin implementation can
 import the core, but not another plugin implementation. Shared code that two plugins need goes
 into `internal/plugin`. A plugin gets only `plugin.Deps`: the control database

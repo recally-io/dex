@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/recally-io/dex/internal/localdex"
+	"github.com/recally-io/dex/apps/native/internal/inapp"
 )
 
 const macDefaultOrigin = "http://127.0.0.1:8787"
@@ -18,29 +18,29 @@ const macDefaultOrigin = "http://127.0.0.1:8787"
 // The lock also lets root cleanup wait for a startup that has not yet posted
 // its result to the UI. All other starts and stops run off the UI goroutine.
 type localWorkspace struct {
-	mu       sync.Mutex
-	instance *localdex.Instance
+	mu      sync.Mutex
+	runtime *inapp.Runtime
 }
 
-func (w *localWorkspace) start(ctx context.Context, appDir, version string, mac bool) (*localdex.Instance, error) {
+func (w *localWorkspace) start(ctx context.Context, appDir, version string, mac bool) (*inapp.Runtime, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if w.instance != nil {
-		return w.instance, nil
+	if w.runtime != nil {
+		return w.runtime, nil
 	}
 	dir, err := localDataDir(appDir, mac)
 	if err != nil {
 		return nil, err
 	}
-	instance, err := localdex.Start(ctx, localdex.Config{DataDir: dir, Version: version, Mobile: !mac})
+	runtime, err := inapp.Start(ctx, inapp.Config{DataDir: dir, Version: version, Mobile: !mac})
 	if err != nil {
 		return nil, err
 	}
-	w.instance = instance
-	return instance, nil
+	w.runtime = runtime
+	return runtime, nil
 }
 
 func localDataDir(appDir string, mac bool) (string, error) {
@@ -58,12 +58,12 @@ func localDataDir(appDir string, mac bool) (string, error) {
 func (w *localWorkspace) close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.instance == nil {
+	if w.runtime == nil {
 		return nil
 	}
-	instance := w.instance
-	w.instance = nil
-	return instance.Close()
+	runtime := w.runtime
+	w.runtime = nil
+	return runtime.Close()
 }
 
 var errDexAuthRequired = errors.New("remote Dex authentication is required")

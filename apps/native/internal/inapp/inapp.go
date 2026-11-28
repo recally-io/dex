@@ -1,5 +1,5 @@
-// Package localdex starts Dex without an HTTP server.
-package localdex
+// Package inapp starts Dex without an HTTP server.
+package inapp
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/recally-io/dex/apps/web"
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/sysops"
 	"github.com/recally-io/dex/plugins/builtin"
@@ -19,9 +20,9 @@ type Config struct {
 	Mobile  bool
 }
 
-// Instance owns the workspace runtime. Call Close when the workspace is no longer in use.
-type Instance struct {
-	runtime  *app.App
+// Runtime runs the workspace services. Call Close when the workspace is no longer in use.
+type Runtime struct {
+	app      *app.App
 	lifetime context.Context
 	stop     context.CancelFunc
 	gate     sync.Mutex
@@ -31,12 +32,13 @@ type Instance struct {
 
 // Start starts the services and embeds the API and web UI in the caller's process.
 // The handler has no sign-in. Do not expose it to a network.
-func Start(ctx context.Context, cfg Config) (*Instance, error) {
+func Start(ctx context.Context, cfg Config) (*Runtime, error) {
 	config := app.Config{
 		RequireToken: false,
 		Token:        "",
 		DataDir:      cfg.DataDir,
 		Version:      cfg.Version,
+		WebHandler:   web.Handler(),
 		Logs:         sysops.NewLogBuffer(0),
 		Plugins:      builtin.Factories(),
 	}
@@ -47,43 +49,43 @@ func Start(ctx context.Context, cfg Config) (*Instance, error) {
 	} else {
 		config.ToolEnv = app.ToolEnv(os.Environ())
 	}
-	runtime, err := app.Start(ctx, config)
+	a, err := app.Start(ctx, config)
 	if err != nil {
 		return nil, err
 	}
 	lifetime, stop := context.WithCancel(context.WithoutCancel(ctx))
-	i := &Instance{runtime: runtime, lifetime: lifetime, stop: stop}
-	i.close = sync.OnceValue(i.shutdown)
-	return i, nil
+	rt := &Runtime{app: a, lifetime: lifetime, stop: stop}
+	rt.close = sync.OnceValue(rt.shutdown)
+	return rt, nil
 }
 
 // Handler serves the local API and embedded web UI directly.
-func (i *Instance) Handler() http.Handler { return http.HandlerFunc(i.serve) }
+func (rt *Runtime) Handler() http.Handler { return http.HandlerFunc(rt.serve) }
 
-func (i *Instance) serve(w http.ResponseWriter, r *http.Request) {
-	i.gate.Lock()
-	if i.lifetime.Err() != nil {
-		i.gate.Unlock()
+func (rt *Runtime) serve(w http.ResponseWriter, r *http.Request) {
+	rt.gate.Lock()
+	if rt.lifetime.Err() != nil {
+		rt.gate.Unlock()
 		http.Error(w, "workspace is closed", http.StatusServiceUnavailable)
 		return
 	}
-	i.requests.Add(1)
-	i.gate.Unlock()
-	defer i.requests.Done()
+	rt.requests.Add(1)
+	rt.gate.Unlock()
+	defer rt.requests.Done()
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	stop := context.AfterFunc(i.lifetime, cancel) //nolint:contextcheck // Also cancel requests when the instance closes.
+	stop := context.AfterFunc(rt.lifetime, cancel) //nolint:contextcheck // Also cancel requests when the runtime closes.
 	defer stop()
-	i.runtime.Handler().ServeHTTP(w, r.WithContext(ctx))
+	rt.app.Handler().ServeHTTP(w, r.WithContext(ctx))
 }
 
-func (i *Instance) shutdown() error {
-	i.gate.Lock()
-	i.stop()
-	i.gate.Unlock()
-	i.requests.Wait()
-	return i.runtime.Close()
+func (rt *Runtime) shutdown() error {
+	rt.gate.Lock()
+	rt.stop()
+	rt.gate.Unlock()
+	rt.requests.Wait()
+	return rt.app.Close()
 }
 
 // Close stops the services and releases the workspace data.
-func (i *Instance) Close() error { return i.close() }
+func (rt *Runtime) Close() error { return rt.close() }

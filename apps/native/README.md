@@ -41,7 +41,8 @@ The server and the native app share the root Go 1.27.3 module. The root `go.mod`
 
 - `apps/native/` owns app startup, workspace selection, theme, and platform build inputs.
 - `internal/webview/` hosts the platform views and handles navigation. The stub on other platforms exists for Go builds and headless tests.
-- `internal/bridge/` sends local workspace requests directly to the Dex handler. The repository's `internal/localdex/` starts and stops that runtime.
+- `internal/bridge/` sends local workspace requests directly to the Dex handler.
+- `internal/inapp/` starts and stops the local runtime without an HTTP listener. It supplies the embedded web handler to the shared core.
 
 ## Build for local development
 
