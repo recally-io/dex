@@ -211,7 +211,7 @@ jobs:
           awk -v name="$archive" '$2 == name' checksums.txt | shasum -a 256 -c
           ditto -x -k "$archive" .
           codesign --verify --deep --strict Dex.app
-          lipo -verify_arch arm64 Dex.app/Contents/MacOS/Dex
+          lipo Dex.app/Contents/MacOS/Dex -verify_arch arm64
           version=${RELEASE_TAG#v}
           test "$(plutil -extract CFBundleShortVersionString raw Dex.app/Contents/Info.plist)" = "${version%%-*}"
       - name: Smoke test
