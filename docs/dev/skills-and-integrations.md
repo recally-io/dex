@@ -328,6 +328,8 @@ global maintenance pause. A shutdown or a restore still waits for all bots. Afte
 bots can start work while the selected bot closes and opens its resources.
 If the selected bot has not opened, Reload opens it and reports the MCP
 connection results. A failed preflight keeps its current resources.
+Dex does not reconnect an MCP server that drops its connection. The server
+stays unavailable until the next reload of that bot.
 
 Each bot has its own resource lock. Concurrent calls for that bot wait with
 context cancellation. The global lock protects resource state; file access,
