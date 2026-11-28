@@ -18,7 +18,7 @@ and MCP. The browser receives typed transcript events through SSE.
 ## Runtime modules
 
 The Go binary embeds the built web UI. Node and Bun are development tools
-for the web UI; the installed service needs neither runtime. The [Apple client](../../clients/native/README.md)
+for the web UI; the installed service needs neither runtime. The [Apple client](../../native/README.md)
 runs in a separate process. It opens the workspace from a selected Dex server in
 WebKit. It does not embed a second copy of the web UI or run an agent. The native
 connection screen remains available when the server is offline.

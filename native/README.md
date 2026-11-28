@@ -6,7 +6,7 @@ The app opens the workspace from an existing Dex server. It does not start Dex, 
 
 - **Mac:** The initial address is `http://127.0.0.1:8787`. Use the port of your existing server if it differs. Plain HTTP is limited to `127.0.0.1` on macOS.
 - **iPhone and iOS Simulator:** Enter a reachable HTTPS origin, such as `https://dex.example.com`. The app has no default address. An origin contains a scheme, host, and optional port. Do not include a path, query, fragment, or credentials.
-- **Remote access:** Follow [Deploy an HTTPS entry point](../../README.md#deploy-an-https-entry-point). The server must require a Dex token even when the reverse proxy uses a loopback upstream. Use a certificate the client trusts. Do not disable certificate checks or expose a plain HTTP listener to the network.
+- **Remote access:** Follow [Deploy an HTTPS entry point](../README.md#deploy-an-https-entry-point). The server must require a Dex token even when the reverse proxy uses a loopback upstream. Use a certificate the client trusts. Do not disable certificate checks or expose a plain HTTP listener to the network.
 
 Enter the access token on the Dex login page when it asks for one. The web view keeps its own login data across retries and restarts. Switching to another origin or using **Forget** clears that data. The web view blocks navigation outside the configured scheme, host, and port. If this blocks an OAuth flow, open the Dex origin in your browser and start the flow again there.
 
@@ -40,7 +40,7 @@ Run `mise run apple:test` for the connection rules and the macOS WebKit navigati
 
 ## Build a signed IPA for a physical iPhone
 
-Run the remaining build commands from `clients/native`. Keep all signing values local. Do not add team IDs, profile paths, profiles, certificates, private keys, or passwords to the repository.
+Run the remaining build commands from `native/`. Keep all signing values local. Do not add team IDs, profile paths, profiles, certificates, private keys, or passwords to the repository.
 
 Use a valid Apple Development signing identity with its private key in an unlocked keychain. Obtain an iOS development provisioning profile from the same team. The profile must authorize the bundle ID from `nsgo.yaml`, the signing certificate, and each test iPhone's UDID. For an Ad Hoc distribution IPA, use the matching Ad Hoc profile and Apple Distribution identity instead. Set `IOS_PROFILE` to the absolute path of the applicable `.mobileprovision` file. Set `IOS_SIGN_ID` to the exact identity name or SHA-1 fingerprint.
 
@@ -48,7 +48,7 @@ Use a valid Apple Development signing identity with its private key in an unlock
 mise exec go@1.27.3 -- go tool nsgo build -target ios -channel none \
   -sign "${IOS_SIGN_ID:?Set the iOS signing identity}" \
   -profile "${IOS_PROFILE:?Set the iOS development or Ad Hoc profile path}" \
-  -output ../../.local/apple-v1/build/device
+  -output ../.local/apple-v1/build/device
 ```
 
 The build creates a signed iPhoneOS `.app` and an `.ipa` in the target directory. NSGo also copies the IPA and its SHA-256 checksum to the output's `releases/` directory. Verify the app before you keep or hand off the IPA. Set `DEVICE_APP` to the `.app` path from that build:
@@ -77,7 +77,7 @@ mise exec go@1.27.3 -- go tool nsgo build -target macos_arm64 -channel direct \
   -installers=true -skip-installers= \
   -sign "${MAC_SIGN_ID:?Set the Developer ID Application identity}" \
   -notarize "${MAC_NOTARY_PROFILE:?Set the notary profile name}" \
-  -output ../../.local/apple-v1/build/developer-id
+  -output ../.local/apple-v1/build/developer-id
 ```
 
 The build uses the hardened runtime and sends the package to Apple's notary service. After acceptance, NSGo staples a ticket to the app and disk image. Set `MAC_RELEASE_APP` to the `.app` in the target output and `MAC_DMG` to the `.dmg` in `releases/`. Verify both before distribution:
@@ -97,7 +97,7 @@ mise exec go@1.27.3 -- go tool nsgo build -target ios -channel store \
   -sign "${IOS_DISTRIBUTION_ID:?Set the Apple Distribution identity}" \
   -profile "${IOS_STORE_PROFILE:?Set the App Store profile path}" \
   -build-number "${IOS_BUILD_NUMBER:?Set the next build number}" \
-  -output ../../.local/apple-v1/build/testflight
+  -output ../.local/apple-v1/build/testflight
 ```
 
 For upload, provide an authorized App Store Connect team API key through `NSGO_APP_STORE_KEY` (the `.p8` path), `NSGO_APP_STORE_KEY_ID`, and `NSGO_APP_STORE_ISSUER`. Set `IOS_STORE_IPA` to the signed IPA from the `testflight` output. Run the next command only when you intend to upload the build:

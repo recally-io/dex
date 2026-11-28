@@ -7,7 +7,7 @@ import (
 	"github.com/nsgo-dev/nsgo"
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/ui"
-	"github.com/recally-io/dex/clients/native/locales"
+	"github.com/recally-io/dex/native/locales"
 )
 
 const savedOriginKey = "dex.origin"

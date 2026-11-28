@@ -47,13 +47,13 @@ fi
 job go-lint bash -c 'golangci-lint fmt --diff && golangci-lint run && go build ./...'
 
 # The Apple client is a separate Go module. Its WebKit tests need macOS.
-if [[ $(uname -s) == Darwin ]] && grep -q '^clients/native/' <<<"$changed"; then
+if [[ $(uname -s) == Darwin ]] && grep -q '^native/' <<<"$changed"; then
   job apple-test mise run apple:test
 fi
 
 packages=()
 while IFS= read -r dir; do
-  [[ "$dir" == clients/native || "$dir" == clients/native/* ]] && continue
+  [[ "$dir" == native || "$dir" == native/* ]] && continue
   if [[ "$dir" != internal/app && -n "$(find "$dir" -maxdepth 1 -name '*.go' -print -quit 2>/dev/null)" ]]; then
     packages+=("./$dir")
   fi

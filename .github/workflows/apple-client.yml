@@ -3,13 +3,13 @@ name: Apple client
 on:
   pull_request:
     paths:
-      - clients/native/**
+      - native/**
       - .mise/tasks/apple/**
       - .github/workflows/apple-client.yml
   push:
     branches: [main]
     paths:
-      - clients/native/**
+      - native/**
       - .mise/tasks/apple/**
       - .github/workflows/apple-client.yml
   workflow_dispatch:
