@@ -51,7 +51,11 @@ test.each([
   expect(sidebar).toContain('aria-label="Switch workspace, Local Workspace"');
   expect(sidebar).toContain(">On this device<");
   expect(sidebar).toContain(settingsHref);
-  expect(sidebar.indexOf(settingsHref)).toBeGreaterThan(sidebar.indexOf(">Settings"));
+  const workspaceNavigation = sidebar.indexOf('<nav aria-label="Workspace"');
+  expect(workspaceNavigation).toBeGreaterThan(-1);
+  const endOfNavigation = sidebar.indexOf("</nav>", workspaceNavigation);
+  expect(endOfNavigation).toBeGreaterThan(workspaceNavigation);
+  expect(sidebar.indexOf(settingsHref)).toBeGreaterThan(endOfNavigation);
 });
 
 test.each([

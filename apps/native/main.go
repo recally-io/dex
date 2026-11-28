@@ -232,7 +232,48 @@ func root(cx *core.Scope) core.Node {
 	})
 
 	label := func(text func(*core.Scope) string) func() string { return func() string { return text(cx) } }
-	buttonSize := core.Style{MinHeight: core.Pt(44)}
+	colors := ui.ColorsOf(cx)
+	muted := ui.Colored(colors.Muted)
+	buttonSize := core.Style{MinHeight: core.Pt(42)}
+	cardLayout := core.Style{Padding: core.All(16), Gap: 10}
+	cardStyle := func() core.Style { return ui.CardStyle(cx) }
+	cardHeader := func(title func(*core.Scope) string, current func() bool) core.Node {
+		return core.View{
+			Style: core.Style{Direction: core.Row, AlignItems: core.AlignCenter, JustifyContent: core.JustifySpaceBetween, Gap: 8},
+			Children: []core.Node{
+				core.Text{ContentFunc: label(title), Role: core.RoleHeader, Style: ui.TypeTitle.Merge(core.Style{FlexShrink: 1})},
+				core.Show{When: current, Then: func(*core.Scope) core.Node {
+					return ui.Badge{TextFunc: label(locales.CurrentWorkspace)}
+				}},
+			},
+		}
+	}
+	status := core.NewMemo(cx, func() string {
+		if m := message.Get(); m != nil {
+			return m(cx)
+		}
+		switch phase.Get() {
+		case checkingServer:
+			if attempt.Get() == localWorkspaceTarget {
+				return locales.OpeningLocal(cx)
+			}
+			return locales.Connecting(cx)
+		case clearingSignIn:
+			if storeOwner.Get() == localWorkspaceTarget {
+				return locales.ClosingLocal(cx)
+			}
+			return locales.Clearing(cx)
+		case offline:
+			if attempt.Get() == localWorkspaceTarget {
+				return locales.LocalViewFailed(cx)
+			}
+			if strings.HasPrefix(attempt.Get(), "http://") {
+				return locales.Offline(cx) + " " + locales.LocalOffline(cx)
+			}
+			return locales.Offline(cx)
+		}
+		return ""
+	})
 	return core.View{
 		Style:     core.Style{FlexGrow: 1, FlexShrink: 1, PaddingEnv: core.EnvAll(core.EnvSafeArea)},
 		StyleFunc: func() core.Style { return core.Style{Background: cx.Palette().Background} },
@@ -250,45 +291,81 @@ func root(cx *core.Scope) core.Node {
 				return core.Scroll{
 					Style: core.Style{FlexGrow: 1, FlexShrink: 1, PaddingEnv: core.EnvEdges{Bottom: core.EnvKeyboard}},
 					Children: []core.Node{core.View{
-						Style: core.Style{Width: core.Pct(100), MaxWidth: core.Pt(520), AlignSelf: core.AlignCenter, Padding: core.All(20), Gap: 12},
+						Style: core.Style{Width: core.Pct(100), MaxWidth: core.Pt(440), AlignSelf: core.AlignCenter, Padding: core.All(24), Gap: 16},
 						Children: []core.Node{
-							core.Text{ContentFunc: label(locales.Connection), Style: ui.TypeHeading},
-							ui.Button{TextFunc: label(locales.OpenLocal), OnPress: func() {
-								if !busy() {
-									connect(localWorkspaceTarget, true)
-								}
-							}, Disabled: busy, Style: buttonSize},
-							core.Text{ContentFunc: func() string {
-								if mac {
-									return locales.MacHelp(cx)
-								}
-								return locales.RemoteHelp(cx)
-							}},
-							core.Text{ContentFunc: label(locales.Address)},
-							ui.Input{Value: draft.Get, Disabled: busy, OnChange: func(value string) {
-								draft.Set(value)
-								message.Set(nil)
-							}, OnSubmit: func(value string) {
-								if !busy() {
-									draft.Set(value)
-									submit()
-								}
-							}, PlaceholderFunc: label(locales.AddressPlaceholder), LabelFunc: label(locales.Address),
-								KeyboardType: core.KeyboardURL, AutoCapitalize: core.AutoCapitalizeNone, NoAutoCorrect: true, ReturnKeyType: core.ReturnKeyGo,
-								Style: core.Style{Height: core.Pt(44), FontSize: 16}, TestID: "server-address"},
-							ui.Button{TextFunc: label(locales.Connect), OnPress: submit, Disabled: busy, Variant: ui.ButtonSecondary, Style: buttonSize},
 							core.Show{When: func() bool { return phase.Get() == switchWorkspace }, Then: func(*core.Scope) core.Node {
-								return ui.Button{TextFunc: label(locales.BackToWorkspace), Variant: ui.ButtonSecondary, Style: buttonSize, OnPress: func() {
-									if attempt.Get() != localWorkspaceTarget {
-										draft.Set(attempt.Get())
-									}
-									message.Set(nil)
-									mount++
-									phase.Set(online)
-								}}
+								return ui.Button{
+									TextFunc: label(locales.BackToWorkspace), Variant: ui.ButtonGhost,
+									Style: core.Style{AlignSelf: core.AlignStart},
+									OnPress: func() {
+										if attempt.Get() != localWorkspaceTarget {
+											draft.Set(attempt.Get())
+										}
+										message.Set(nil)
+										mount++
+										phase.Set(online)
+									},
+								}
 							}},
-							core.Show{When: func() bool { return phase.Get() == offline }, Then: func(*core.Scope) core.Node {
-								return ui.Button{TextFunc: label(locales.Retry), OnPress: retry, Variant: ui.ButtonSecondary, Style: buttonSize}
+							core.View{Style: core.Style{Gap: 4}, Children: []core.Node{
+								core.Text{Role: core.RoleHeader, Style: ui.TypeHeading, ContentFunc: func() string {
+									if phase.Get() == switchWorkspace {
+										return locales.SwitchWorkspace(cx)
+									}
+									return locales.Connection(cx)
+								}},
+								core.Text{ContentFunc: label(locales.ConnectionSubtitle), Style: ui.TypeBody, StyleFunc: muted},
+							}},
+							core.View{Style: cardLayout, StyleFunc: cardStyle, Children: []core.Node{
+								cardHeader(locales.LocalWorkspace, func() bool { return storeOwner.Get() == localWorkspaceTarget }),
+								core.Text{ContentFunc: label(locales.LocalHelp), Style: ui.TypeBody, StyleFunc: muted},
+								ui.Button{TextFunc: label(locales.OpenLocal), OnPress: func() {
+									if !busy() {
+										connect(localWorkspaceTarget, true)
+									}
+								}, Disabled: busy, Style: buttonSize},
+							}},
+							core.View{Style: cardLayout, StyleFunc: cardStyle, Children: []core.Node{
+								cardHeader(locales.RemoteServer, func() bool {
+									owner := storeOwner.Get()
+									return owner != "" && owner != localWorkspaceTarget
+								}),
+								core.Text{Style: ui.TypeBody, StyleFunc: muted, ContentFunc: func() string {
+									if mac {
+										return locales.MacHelp(cx)
+									}
+									return locales.RemoteHelp(cx)
+								}},
+								ui.Input{Value: draft.Get, Disabled: busy, OnChange: func(value string) {
+									draft.Set(value)
+									message.Set(nil)
+								}, OnSubmit: func(value string) {
+									if !busy() {
+										draft.Set(value)
+										submit()
+									}
+								}, PlaceholderFunc: label(locales.AddressPlaceholder), LabelFunc: label(locales.Address),
+									KeyboardType: core.KeyboardURL, AutoCapitalize: core.AutoCapitalizeNone, NoAutoCorrect: true, ReturnKeyType: core.ReturnKeyGo,
+									Style: core.Style{Height: core.Pt(42), FontSize: 15}, TestID: "server-address"},
+								ui.Button{TextFunc: label(locales.Connect), OnPress: submit, Disabled: busy, Variant: ui.ButtonSecondary, Style: buttonSize},
+							}},
+							core.Show{When: func() bool { return status.Get() != "" || phase.Get() == offline }, Then: func(*core.Scope) core.Node {
+								return core.View{
+									Style: core.Style{Direction: core.Row, AlignItems: core.AlignCenter, Gap: 10},
+									Children: []core.Node{
+										core.Text{ContentFunc: status.Get, TestID: "connection-status",
+											Style: ui.TypeBody.Merge(core.Style{FlexGrow: 1, FlexShrink: 1}),
+											StyleFunc: ui.Colored(func() core.Color {
+												if phase.Get() == offline || message.Get() != nil {
+													return colors.Danger()
+												}
+												return colors.Muted()
+											})},
+										core.Show{When: func() bool { return phase.Get() == offline }, Then: func(*core.Scope) core.Node {
+											return ui.Button{TextFunc: label(locales.Retry), OnPress: retry, Variant: ui.ButtonSecondary}
+										}},
+									},
+								}
 							}},
 							core.Show{When: func() bool { return storeOwner.Get() != "" && !busy() }, Then: func(*core.Scope) core.Node {
 								return ui.Button{TextFunc: func() string {
@@ -296,34 +373,8 @@ func root(cx *core.Scope) core.Node {
 										return locales.ForgetLocal(cx)
 									}
 									return locales.Forget(cx)
-								}, OnPress: forget, Variant: ui.ButtonOutline, Style: buttonSize}
+								}, OnPress: forget, Variant: ui.ButtonGhost, Style: core.Style{AlignSelf: core.AlignCenter}}
 							}},
-							core.Text{ContentFunc: func() string {
-								if m := message.Get(); m != nil {
-									return m(cx)
-								}
-								switch phase.Get() {
-								case checkingServer:
-									if attempt.Get() == localWorkspaceTarget {
-										return locales.OpeningLocal(cx)
-									}
-									return locales.Connecting(cx)
-								case clearingSignIn:
-									if storeOwner.Get() == localWorkspaceTarget {
-										return locales.ClosingLocal(cx)
-									}
-									return locales.Clearing(cx)
-								case offline:
-									if attempt.Get() == localWorkspaceTarget {
-										return locales.LocalViewFailed(cx)
-									}
-									if strings.HasPrefix(attempt.Get(), "http://") {
-										return locales.Offline(cx) + " " + locales.LocalOffline(cx)
-									}
-									return locales.Offline(cx)
-								}
-								return ""
-							}, TestID: "connection-status"},
 						},
 					}},
 				}

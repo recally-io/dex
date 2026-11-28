@@ -1,5 +1,11 @@
 appName: Dex
 connection: Connect to Dex
+switchWorkspace: Switch Workspace
+connectionSubtitle: Use a workspace on this device or connect to a remote Dex server.
+localWorkspace: Local Workspace
+localHelp: Runs privately on this device. No server or token required.
+remoteServer: Remote Server
+currentWorkspace: Current
 openLocal: Open Local Workspace
 openingLocal: Opening local workspace…
 closingLocal: Closing local workspace…

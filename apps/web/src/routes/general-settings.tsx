@@ -16,7 +16,6 @@ import { Failure, Loading } from "../components/feedback";
 import { Select } from "../components/form";
 import { ModelPicker } from "../components/model-picker";
 import { FramedPage, Note, Panel, Section } from "../components/page";
-import { WorkspaceSettings } from "../components/workspace-settings";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 import { ThinkingPicker } from "../components/thinking-picker";
 import { Button } from "../components/ui/button";
@@ -78,7 +77,6 @@ export function GeneralSettingsPage() {
       toolbar={<GlobalSettingsSwitcher page="/settings/general" />}
       description="New bots copy these settings from the default bot. Existing bots keep their own settings."
     >
-      <WorkspaceSettings />
       {settings.isPending || template.isPending ? (
         <Loading />
       ) : settings.isError || template.isError ? (

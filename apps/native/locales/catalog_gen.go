@@ -63,6 +63,12 @@ var supplied = map[string]Translation{}
 const (
 	textAppName = iota
 	textConnection
+	textSwitchWorkspace
+	textConnectionSubtitle
+	textLocalWorkspace
+	textLocalHelp
+	textRemoteServer
+	textCurrentWorkspace
 	textOpenLocal
 	textOpeningLocal
 	textClosingLocal
@@ -97,6 +103,12 @@ const (
 var keyOfText = [numTexts]string{
 	"appName",
 	"connection",
+	"switchWorkspace",
+	"connectionSubtitle",
+	"localWorkspace",
+	"localHelp",
+	"remoteServer",
+	"currentWorkspace",
 	"openLocal",
 	"openingLocal",
 	"closingLocal",
@@ -129,6 +141,12 @@ var keyOfText = [numTexts]string{
 var textsEn = i18n.NewTexts(""+
 	"Dex"+
 	"Connect to Dex"+
+	"Switch Workspace"+
+	"Use a workspace on this device or connect to a remote Dex server."+
+	"Local Workspace"+
+	"Runs privately on this device. No server or token required."+
+	"Remote Server"+
+	"Current"+
 	"Open Local Workspace"+
 	"Opening local workspace…"+
 	"Closing local workspace…"+
@@ -158,6 +176,12 @@ var textsEn = i18n.NewTexts(""+
 	[]uint16{
 		3,
 		14,
+		16,
+		65,
+		15,
+		59,
+		13,
+		7,
 		20,
 		26,
 		26,
@@ -270,6 +294,48 @@ func Connection(cx *core.Scope) string { return For(cx).Connection() }
 
 // Connection is the package's Connection in the language of msgs.
 func (msgs Messages) Connection() string { return msgs.text(textConnection) }
+
+// SwitchWorkspace says "Switch Workspace"
+// in the language the app shows under cx.
+func SwitchWorkspace(cx *core.Scope) string { return For(cx).SwitchWorkspace() }
+
+// SwitchWorkspace is the package's SwitchWorkspace in the language of msgs.
+func (msgs Messages) SwitchWorkspace() string { return msgs.text(textSwitchWorkspace) }
+
+// ConnectionSubtitle says "Use a workspace on this device or connect to a remote Dex server."
+// in the language the app shows under cx.
+func ConnectionSubtitle(cx *core.Scope) string { return For(cx).ConnectionSubtitle() }
+
+// ConnectionSubtitle is the package's ConnectionSubtitle in the language of msgs.
+func (msgs Messages) ConnectionSubtitle() string { return msgs.text(textConnectionSubtitle) }
+
+// LocalWorkspace says "Local Workspace"
+// in the language the app shows under cx.
+func LocalWorkspace(cx *core.Scope) string { return For(cx).LocalWorkspace() }
+
+// LocalWorkspace is the package's LocalWorkspace in the language of msgs.
+func (msgs Messages) LocalWorkspace() string { return msgs.text(textLocalWorkspace) }
+
+// LocalHelp says "Runs privately on this device. No server or token required."
+// in the language the app shows under cx.
+func LocalHelp(cx *core.Scope) string { return For(cx).LocalHelp() }
+
+// LocalHelp is the package's LocalHelp in the language of msgs.
+func (msgs Messages) LocalHelp() string { return msgs.text(textLocalHelp) }
+
+// RemoteServer says "Remote Server"
+// in the language the app shows under cx.
+func RemoteServer(cx *core.Scope) string { return For(cx).RemoteServer() }
+
+// RemoteServer is the package's RemoteServer in the language of msgs.
+func (msgs Messages) RemoteServer() string { return msgs.text(textRemoteServer) }
+
+// CurrentWorkspace says "Current"
+// in the language the app shows under cx.
+func CurrentWorkspace(cx *core.Scope) string { return For(cx).CurrentWorkspace() }
+
+// CurrentWorkspace is the package's CurrentWorkspace in the language of msgs.
+func (msgs Messages) CurrentWorkspace() string { return msgs.text(textCurrentWorkspace) }
 
 // OpenLocal says "Open Local Workspace"
 // in the language the app shows under cx.

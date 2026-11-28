@@ -24,7 +24,7 @@ Run the test with the emulator serial, fixture directory, and the primary and al
 uv run --script apps/native/uitests/android-smoke.py "$SERIAL" "$FIXTURE" "$PRIMARY" "$ALTERNATE"
 ```
 
-The test clears the app on that emulator, signs in, sends a message to `faux/echo`, and verifies the reply after a forced restart. It opens Settings, switches to another port on the same host, and checks that the user must sign in again. It then signs in on the second port, forgets the server, and checks that the next connection to that same origin requires a new login. The script clears app data and removes the two ADB port forwards on exit. Stop the fixture and delete the test emulator after the run.
+The test clears the app on that emulator, signs in, sends a message to `faux/echo`, and verifies the reply after a forced restart. It opens the navigation drawer, uses the workspace switcher to connect to another port on the same host, and checks that the user must sign in again. It then signs in on the second port, forgets the server, and checks that the next connection to that same origin requires a new login. The script clears app data and removes the two ADB port forwards on exit. Stop the fixture and delete the test emulator after the run.
 
 ## Test iOS
 
@@ -39,7 +39,7 @@ mise exec -- bash apps/native/uitests/run-ios.sh \
 
 The runner makes and deletes its own simulator. It tests TLS before it adds the QA root to that simulator. It does not change host trust. Use `QA_SIM_RUNTIME` and `QA_SIM_DEVICE_TYPE` if the default iOS 26.5 runtime or iPhone 17 type is not available. Set `QA_IOS_ONLY=attachment` before the command to run only the Photos picker and attachment test.
 
-Set `QA_IOS_ONLY=switch` to check the workspace switch in Settings and on the sign-in page. The test also checks that switching and forgetting a server clear its login.
+Set `QA_IOS_ONLY=switch` to check the workspace switcher in the navigation drawer and on the sign-in page. The test also checks that switching and forgetting a server clear its login.
 
 Set `QA_IOS_ONLY=focus` to check chat input in the app and in Safari. Both clients sign in to the primary HTTPS fixture and open a chat with an existing reply. The tests check the input and Send button while typing and after the reply. The app also dismisses the keyboard before sending; Safari sends with the keyboard open.
 

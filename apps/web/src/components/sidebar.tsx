@@ -83,6 +83,7 @@ export function Sidebar({
         ) : null}
       </nav>
       <Footer area={area} attentionCount={attentionCount} />
+      <WorkspaceSwitcher />
       {creating ? (
         <BotContext.Provider value={openBot ?? "default"}>
           <BotCreateDialog onClose={() => setCreating(false)} />
@@ -135,7 +136,6 @@ function Footer({ area, attentionCount }: { area: string | undefined; attentionC
           <span role="img" aria-label={label} title={label} className="size-2 rounded-full bg-red" />
         ) : null}
       </Link>
-      <WorkspaceSwitcher />
     </nav>
   );
 }
@@ -149,24 +149,25 @@ function WorkspaceSwitcher() {
   const label = `Switch workspace, ${workspace.label}`;
 
   return (
-    <div className="mt-1 border-t border-border pt-2">
+    <div className="shrink-0 border-t border-border p-2">
       <a
         href={workspaceSettingsHref}
         aria-label={label}
         title={label}
-        className={cn(
-          buttonVariants({ variant: "ghost" }),
-          "h-auto min-h-11 w-full min-w-0 justify-start gap-2 px-2 py-1.5 text-foreground",
-        )}
+        className="flex w-full min-w-0 items-center gap-2.5 rounded-[9px] px-2 py-1.5 text-left transition-colors hover:bg-accent"
       >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-control bg-muted text-foreground">
-          <Icon aria-hidden />
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/70 bg-card text-foreground shadow-[0_1px_1px_rgb(0_0_0/0.04)]">
+          <Icon className="size-3.5" aria-hidden />
         </span>
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate">{workspace.label}</span>
-          <span className="truncate text-xs font-normal text-muted-foreground">{workspace.subtitle}</span>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate text-[13px] font-medium leading-tight text-foreground">
+            {workspace.label}
+          </span>
+          <span className="truncate text-[11px] leading-tight text-muted-foreground">
+            {workspace.subtitle}
+          </span>
         </span>
-        <ChevronsUpDown className="size-3.5 text-muted-foreground" aria-hidden />
+        <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground/80" aria-hidden />
       </a>
     </div>
   );
