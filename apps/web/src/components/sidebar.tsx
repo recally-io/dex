@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Cable, ListTodo, Plus, Search, Settings } from "lucide-react";
+import { Cable, ChevronsUpDown, Globe, Laptop, ListTodo, Plus, Search, Settings } from "lucide-react";
 import type { Bot } from "../api/generated/types.gen";
 import { getSettingsOptions, listBotsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { BotContext } from "../lib/bot-scope";
@@ -12,6 +12,7 @@ import { cn } from "../lib/utils";
 import { BotAvatar } from "./bot-avatar";
 import { BotCreateDialog } from "./bot-create-dialog";
 import { Button, buttonVariants } from "./ui/button";
+import { getWorkspaceInfo, workspaceSettingsHref } from "./workspace-settings";
 
 const row =
   "h-8 min-w-0 justify-start gap-2 rounded-[9px] border-0 px-2 text-[13px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:bg-card aria-[current=page]:text-foreground aria-[current=page]:shadow-[0_0_0_1px_var(--border),0_1px_2px_rgb(0_0_0/0.06)]";
@@ -82,6 +83,7 @@ export function Sidebar({
         ) : null}
       </nav>
       <Footer area={area} attentionCount={attentionCount} />
+      <WorkspaceSwitcher />
       {creating ? (
         <BotContext.Provider value={openBot ?? "default"}>
           <BotCreateDialog onClose={() => setCreating(false)} />
@@ -135,6 +137,39 @@ function Footer({ area, attentionCount }: { area: string | undefined; attentionC
         ) : null}
       </Link>
     </nav>
+  );
+}
+
+function WorkspaceSwitcher() {
+  const workspace = getWorkspaceInfo();
+
+  if (!workspace) return null;
+
+  const Icon = workspace.isLocal ? Laptop : Globe;
+  const label = `Switch workspace, ${workspace.label}`;
+
+  return (
+    <div className="shrink-0 border-t border-border p-2">
+      <a
+        href={workspaceSettingsHref}
+        aria-label={label}
+        title={label}
+        className="flex w-full min-w-0 items-center gap-2.5 rounded-[9px] px-2 py-1.5 text-left transition-colors hover:bg-accent"
+      >
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/70 bg-card text-foreground shadow-[0_1px_1px_rgb(0_0_0/0.04)]">
+          <Icon className="size-3.5" aria-hidden />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate text-[13px] font-medium leading-tight text-foreground">
+            {workspace.label}
+          </span>
+          <span className="truncate text-[11px] leading-tight text-muted-foreground">
+            {workspace.subtitle}
+          </span>
+        </span>
+        <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground/80" aria-hidden />
+      </a>
+    </div>
   );
 }
 

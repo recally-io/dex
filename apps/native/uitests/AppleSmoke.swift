@@ -207,15 +207,16 @@ final class AppleSmoke: XCTestCase {
         capture("06-background-catch-up")
     }
 
-    private func switchWorkspaceFromSettings() {
+    private func switchWorkspaceFromSidebar() {
         XCTAssertFalse(control("Change address").exists, "Chat must not have a connection toolbar.")
-        XCTAssertFalse(control("Switch workspace").exists)
-        app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open navigation")).firstMatch.tap()
-        app.webViews.links["Settings"].tap()
-        let change = control("Switch workspace")
-        wait(change)
-        capture("16-workspace-settings")
-        change.tap()
+        let navigation = app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open navigation")).firstMatch
+        wait(navigation)
+        navigation.tap()
+        let switcher = app.webViews.links.matching(NSPredicate(format: "label BEGINSWITH %@", "Switch workspace")).firstMatch
+        wait(switcher)
+        capture("16-workspace-switcher")
+        switcher.tap()
+        wait(control("Switch Workspace"))
         wait(address)
     }
 
@@ -226,7 +227,9 @@ final class AppleSmoke: XCTestCase {
         connect(primary)
         wait(signInTitle)
         app.webViews.links["Switch workspace"].tap()
+        wait(control("Switch Workspace"))
         wait(address)
+        capture("17-native-workspace-switcher")
         XCTAssertFalse(control("Retry").exists)
         control("Back to workspace").tap()
         signIn(token)
@@ -236,13 +239,13 @@ final class AppleSmoke: XCTestCase {
         wait(composer)
         XCTAssertFalse(signInTitle.exists)
 
-        switchWorkspaceFromSettings()
+        switchWorkspaceFromSidebar()
         connect(alternate)
         wait(signInTitle)
         capture("07-switched-sign-in")
         signIn(token)
         wait(composer)
-        switchWorkspaceFromSettings()
+        switchWorkspaceFromSidebar()
         control("Forget server").tap()
         XCTAssertTrue(control("Forget server").waitForNonExistence(timeout: 15))
         wait(address)

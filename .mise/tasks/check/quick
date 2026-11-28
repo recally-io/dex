@@ -47,8 +47,10 @@ fi
 job go-lint bash -c 'golangci-lint fmt --diff && golangci-lint run && go build ./...'
 
 # The Apple client is a separate Go module. Its WebKit tests need macOS.
+# Skip apple:test's build:web dependency because apps/web/dist was already built above;
+# rebuilding it here would wipe dist/ while parallel go-lint and go-test embed it.
 if [[ $(uname -s) == Darwin ]] && grep -qE '^apps/(native|assets)/' <<<"$changed"; then
-  job apple-test mise run apple:test
+  job apple-test mise run --skip-deps apple:test
 fi
 
 packages=()

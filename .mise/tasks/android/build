@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Build an Android APK; require the release keystore when a tag is supplied"
+#MISE depends=["build:web"]
 set -euo pipefail
 cd "${MISE_PROJECT_ROOT:?}/apps/native"
 sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:?Set ANDROID_HOME to the Android SDK directory}}

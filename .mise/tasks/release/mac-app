@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Package the Apple silicon Mac app for a Dex release"
+#MISE depends=["build:web"]
 set -euo pipefail
 
 cd "${MISE_PROJECT_ROOT:?}"

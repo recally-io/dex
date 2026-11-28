@@ -44,9 +44,15 @@ through a reverse proxy without [turning on authentication](#deploy-an-https-ent
 
 ### Access from other devices
 
-For Apple silicon Macs, download `Dex-<tag>-macOS-arm64.zip` from [GitHub Releases](https://github.com/vaayne/dex/releases). The app needs macOS 14 or later. It has an ad hoc signature and is not notarized. Unzip `Dex.app` and connect it to your existing Dex server. On iPhone, use Safari or build the native client.
+For Apple silicon Macs, download `Dex-<tag>-macOS-arm64.zip` from [GitHub Releases](https://github.com/vaayne/dex/releases). The app needs macOS 14 or later. It has an ad hoc signature and is not notarized. Unzip `Dex.app` and open a local workspace or connect to an existing Dex server. On iPhone, use Safari or build the native client.
 
-For Android 9 or later on 64-bit ARM phones, download `Dex-<tag>-Android-arm64.apk` from the same release. Install the APK and enter the HTTPS address of your Dex server. Keep Android System WebView up to date. See [Dex native apps](apps/native/README.md).
+For Android 9 or later on 64-bit ARM phones, download `Dex-<tag>-Android-arm64.apk` from the same release. Install the APK and open a local workspace or enter the HTTPS address of an existing Dex server. Keep Android System WebView up to date. See [Dex native apps](apps/native/README.md).
+
+The standalone server uses `~/.dex` by default. A native local workspace runs
+inside the app and uses a `dex` subdirectory in the platform's app data
+directory. Only the macOS app accepts `DEX_DATA_DIR` as an override. To use a
+server's data, connect to that server over HTTP or HTTPS. See [local workspace
+storage](apps/native/README.md#open-a-local-workspace).
 
 The API can run shell commands, so a host that is not loopback requires an
 access token:

@@ -12,6 +12,12 @@ dev:
 build:
   targets: [macos, ios, android_arm64]
 
+licenses:
+  allow:
+    - github.com/recally-io/dex # First-party code.
+    - modernc.org/memory # NSGo does not classify LICENSE-LOGO.
+    - modernc.org/sqlite # NSGo does not classify the SQLite public-domain notice.
+
 android:
   classes: [.nsgo/android/WorkspaceView.jar]
 

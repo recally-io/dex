@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Build local macOS arm64 and iOS Simulator apps without launching them"
+#MISE depends=["build:web"]
 #MISE dir="{{config_root}}/apps/native"
 set -euo pipefail
 

@@ -6,12 +6,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/recally-io/dex/internal/artifact"
@@ -99,6 +101,7 @@ type Config struct {
 
 // App is a running control process.
 type App struct {
+	dataLock   *os.File
 	db         *sql.DB
 	engine     *engine.Bots
 	envs       *runner.Manager
@@ -116,6 +119,24 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, err
 	}
+	lock, err := os.OpenFile(filepath.Join(cfg.DataDir, ".dex.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open workspace lock: %w", err)
+	}
+	// The CLI and native app can select the same directory. Only one may own
+	// recovery, channel jobs, and the bot execution stores at a time.
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		closeErr := lock.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, errors.Join(fmt.Errorf("workspace is already open in Dex: %s", cfg.DataDir), closeErr)
+		}
+		return nil, errors.Join(fmt.Errorf("lock workspace: %w", err), closeErr)
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, releaseWorkspaceLock(lock))
+		}
+	}()
 	conn, err := db.Open(ctx, filepath.Join(cfg.DataDir, "control.sqlite"))
 	if err != nil {
 		return nil, err
@@ -522,6 +543,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		setWechat(bot.ID, wx)
 	}
 	jobs.Start(runCtx)
+	a.dataLock = lock
 	return a, nil
 }
 
@@ -536,7 +558,17 @@ func (a *App) Close() error {
 	a.cancel()
 	a.wg.Wait()
 	a.background.Close()
-	return errors.Join(a.engine.Close(context.Background()), a.envs.Close(context.Background()), a.db.Close())
+	err := errors.Join(a.engine.Close(context.Background()), a.envs.Close(context.Background()), a.db.Close())
+	if a.dataLock != nil {
+		err = errors.Join(err, releaseWorkspaceLock(a.dataLock))
+	}
+	return err
+}
+
+func releaseWorkspaceLock(file *os.File) error {
+	// A concurrent fork can hold the descriptor until it execs. Release the
+	// lock before close so reopening does not wait for that process.
+	return errors.Join(syscall.Flock(int(file.Fd()), syscall.LOCK_UN), file.Close())
 }
 
 // ToolEnv selects the process values that tools inherit when the login shell is not available.

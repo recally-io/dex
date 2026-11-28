@@ -4,12 +4,15 @@ package main
 
 import (
 	"crypto/sha256"
+	"encoding/json/v2"
 	"errors"
+	"net/http"
 	"net/url"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"unsafe"
 	"uuid"
 
 	"github.com/ebitengine/purego"
@@ -175,6 +178,11 @@ func dexParseOrigin(raw string) (dexOrigin, *url.URL) {
 		port = 443
 	case "http":
 		port = 80
+	case "dex-local":
+		if u.Host != "workspace" {
+			return dexOrigin{}, nil
+		}
+		return dexOrigin{scheme: u.Scheme, host: u.Host}, u
 	default:
 		return dexOrigin{}, nil
 	}
@@ -200,13 +208,17 @@ func (h *dexWorkspaceHost) SetProp(name string, value any) {
 		return
 	}
 	raw, _ := value.(string)
-	canonical, ok := canonicalOrigin(raw, runtime.GOOS == "darwin")
-	if !ok || canonical != raw {
-		h.emit("failure", nil)
-		return
+	address, storeID := localAppleOrigin, dexStoreID(localWorkspaceTarget)
+	if raw != localWorkspaceTarget {
+		canonical, ok := canonicalOrigin(raw, runtime.GOOS == "darwin")
+		if !ok || canonical != raw {
+			h.emit("failure", nil)
+			return
+		}
+		address, storeID = canonical, dexStoreID(canonical)
 	}
-	origin, _ := dexParseOrigin(canonical)
-	page, err := newDexAppleWebView(origin, dexStoreID(canonical), h.emit)
+	origin, _ := dexParseOrigin(address)
+	page, err := newDexAppleWebView(origin, storeID, h.emit)
 	if err != nil {
 		h.emit("failure", nil)
 		return
@@ -216,10 +228,14 @@ func (h *dexWorkspaceHost) SetProp(name string, value any) {
 	page.view.Send(dexSel("setAutoresizingMask:"), uint(flexibleWidthAndHeight))
 	page.view.Send(dexSel("setFrame:"), objc.Send[dexRect](h.container, dexSel("bounds")))
 	h.container.Send(dexSel("addSubview:"), page.view)
-	page.load(canonical, "GET")
+	page.load(address, http.MethodGet)
 }
 
-func (*dexWorkspaceHost) Command(string, any) {}
+func (h *dexWorkspaceHost) Command(name string, value any) {
+	if raw, ok := value.(string); ok && h.page != nil {
+		h.page.localCommand(name, raw)
+	}
+}
 
 func (h *dexWorkspaceHost) Close() {
 	if h.page != nil {
@@ -234,6 +250,13 @@ type dexAppleWebView struct {
 	origin   dexOrigin
 	storeID  uuid.UUID
 	emit     func(string, any)
+	local    *dexAppleLocal
+}
+
+type dexAppleLocal struct {
+	controller objc.ID
+	sequence   uint64
+	tasks      map[string]objc.ID
 }
 
 // Only the Apple main thread accesses the delegates and their views.
@@ -241,6 +264,9 @@ var dexWebViews = map[objc.ID]*dexAppleWebView{}
 
 var dexWebDelegate = sync.OnceValues(func() (objc.Class, error) {
 	return objc.RegisterClass("DexWorkspaceNavigationDelegate", objc.GetClass("NSObject"), nil, nil, []objc.MethodDef{
+		{Cmd: dexSel("webView:startURLSchemeTask:"), Fn: dexStartSchemeTask},
+		{Cmd: dexSel("webView:stopURLSchemeTask:"), Fn: dexStopSchemeTask},
+		{Cmd: dexSel("userContentController:didReceiveScriptMessage:"), Fn: dexReceiveScriptMessage},
 		{Cmd: dexSel("webView:decidePolicyForNavigationAction:decisionHandler:"), Fn: dexNavigationAction},
 		{Cmd: dexSel("webView:decidePolicyForNavigationResponse:decisionHandler:"), Fn: dexNavigationResponse},
 		{Cmd: dexSel("webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:"),
@@ -277,13 +303,23 @@ func newDexAppleWebView(origin dexOrigin, id uuid.UUID, emit func(string, any)) 
 	config.Send(dexSel("setWebsiteDataStore:"), store)
 	config.Send(dexSel("setApplicationNameForUserAgent:"), dexNSString("DexWorkspace/1"))
 	config.Send(dexSel("preferences")).Send(dexSel("setJavaScriptCanOpenWindowsAutomatically:"), false)
-	// Use a fresh configuration without user scripts or message handlers.
+	w := &dexAppleWebView{delegate: objc.ID(delegate).Send(dexSel("new")), origin: origin, storeID: id, emit: emit}
+	if origin.scheme == "dex-local" {
+		controller := config.Send(dexSel("userContentController"))
+		w.local = &dexAppleLocal{controller: controller, tasks: make(map[string]objc.ID)}
+		config.Send(dexSel("setURLSchemeHandler:forURLScheme:"), w.delegate, dexNSString(origin.scheme))
+		controller.Send(dexSel("addScriptMessageHandler:name:"), w.delegate, dexNSString("dexLocal"))
+		script := dexClass("WKUserScript").Send(dexSel("alloc")).Send(dexSel("initWithSource:injectionTime:forMainFrameOnly:"), dexNSString(localBridgeJS), 0, true)
+		controller.Send(dexSel("addUserScript:"), script)
+		script.Send(dexSel("release"))
+	}
 	view := dexClass("WKWebView").Send(dexSel("alloc")).Send(dexSel("initWithFrame:configuration:"), dexRect{}, config)
 	if view == 0 {
+		w.delegate.Send(dexSel("release"))
 		return nil, errors.New("WebKit could not create the Dex web view")
 	}
 	view.Send(dexSel("setAllowsLinkPreview:"), false)
-	w := &dexAppleWebView{view: view, delegate: objc.ID(delegate).Send(dexSel("new")), origin: origin, storeID: id, emit: emit}
+	w.view = view
 	dexWebViews[w.delegate] = w
 	view.Send(dexSel("setNavigationDelegate:"), w.delegate)
 	view.Send(dexSel("setUIDelegate:"), w.delegate)
@@ -323,12 +359,122 @@ func (w *dexAppleWebView) load(raw, method string) {
 
 func (w *dexAppleWebView) close() {
 	delete(dexWebViews, w.delegate)
+	if w.local != nil {
+		w.local.controller.Send(dexSel("removeScriptMessageHandlerForName:"), dexNSString("dexLocal"))
+		clear(w.local.tasks)
+	}
 	w.view.Send(dexSel("stopLoading"))
 	w.view.Send(dexSel("setNavigationDelegate:"), objc.ID(0))
 	w.view.Send(dexSel("setUIDelegate:"), objc.ID(0))
 	w.view.Send(dexSel("removeFromSuperview"))
 	w.view.Send(dexSel("release"))
 	w.delegate.Send(dexSel("release"))
+}
+
+func dexStartSchemeTask(self objc.ID, _ objc.SEL, _, task objc.ID) {
+	w := dexWebViews[self]
+	if w == nil || w.local == nil {
+		return
+	}
+	request := task.Send(dexSel("request"))
+	raw := dexGoString(request.Send(dexSel("URL")).Send(dexSel("absoluteString")))
+	if origin, _ := dexParseOrigin(raw); origin != w.origin {
+		dexFailSchemeTask(task)
+		return
+	}
+	w.local.sequence++
+	id := strconv.FormatUint(w.local.sequence, 10)
+	msg := localMessage{Op: "static", ID: id, localRequest: localRequest{
+		Method: dexGoString(request.Send(dexSel("HTTPMethod"))), URL: raw,
+		Header: make(http.Header),
+	}}
+	fields := request.Send(dexSel("allHTTPHeaderFields"))
+	keys := fields.Send(dexSel("keyEnumerator"))
+	for key := keys.Send(dexSel("nextObject")); key != 0; key = keys.Send(dexSel("nextObject")) {
+		msg.Header.Set(dexGoString(key), dexGoString(fields.Send(dexSel("objectForKey:"), key)))
+	}
+	body, err := json.Marshal(msg)
+	if err != nil {
+		dexFailSchemeTask(task)
+		return
+	}
+	w.local.tasks[id] = task
+	w.emit("localStatic", string(body))
+}
+
+func dexStopSchemeTask(self objc.ID, _ objc.SEL, _, task objc.ID) {
+	if w := dexWebViews[self]; w != nil && w.local != nil {
+		for id, pending := range w.local.tasks {
+			if pending == task {
+				delete(w.local.tasks, id)
+				return
+			}
+		}
+	}
+}
+
+func dexFailSchemeTask(task objc.ID) {
+	err := dexClass("NSError").Send(dexSel("errorWithDomain:code:userInfo:"), dexNSString("NSURLErrorDomain"), -1002, objc.ID(0))
+	task.Send(dexSel("didFailWithError:"), err)
+}
+
+func dexReceiveScriptMessage(self objc.ID, _ objc.SEL, _, message objc.ID) {
+	w := dexWebViews[self]
+	if w == nil || w.local == nil {
+		return
+	}
+	frame := message.Send(dexSel("frameInfo"))
+	if !objc.Send[bool](frame, dexSel("isMainFrame")) {
+		return
+	}
+	origin, _ := dexParseOrigin(dexGoString(frame.Send(dexSel("request")).Send(dexSel("URL")).Send(dexSel("absoluteString"))))
+	body := message.Send(dexSel("body"))
+	if origin == w.origin && objc.Send[bool](body, dexSel("isKindOfClass:"), dexClass("NSString")) {
+		w.emit("localMessage", dexGoString(body))
+	}
+}
+
+func (w *dexAppleWebView) localCommand(name, raw string) {
+	if w.local == nil {
+		return
+	}
+	switch name {
+	case "eval":
+		w.view.Send(dexSel("evaluateJavaScript:completionHandler:"), dexNSString(raw), objc.ID(0))
+	case "staticResult":
+		var result localStaticResult
+		if err := json.Unmarshal([]byte(raw), &result); err != nil {
+			return
+		}
+		task := w.local.tasks[result.ID]
+		if task == 0 {
+			return
+		}
+		delete(w.local.tasks, result.ID)
+		request := task.Send(dexSel("request"))
+		address := request.Send(dexSel("URL"))
+		fields := dexClass("NSMutableDictionary").Send(dexSel("dictionary"))
+		for key, values := range result.Response.Headers {
+			fields.Send(dexSel("setObject:forKey:"), dexNSString(strings.Join(values, ", ")), dexNSString(key))
+		}
+		// WebKit can request module scripts with CORS from a custom-scheme page.
+		if strings.HasPrefix(dexGoString(address.Send(dexSel("path"))), "/assets/") {
+			fields.Send(dexSel("setObject:forKey:"), dexNSString("*"), dexNSString("Access-Control-Allow-Origin"))
+		}
+		response := dexClass("NSHTTPURLResponse").Send(dexSel("alloc")).Send(dexSel("initWithURL:statusCode:HTTPVersion:headerFields:"), address, result.Response.Status, dexNSString("HTTP/1.1"), fields)
+		if response == 0 {
+			dexFailSchemeTask(task)
+			return
+		}
+		task.Send(dexSel("didReceiveResponse:"), response)
+		response.Send(dexSel("release"))
+		if body := result.Response.Body; len(body) != 0 {
+			data := dexClass("NSData").Send(dexSel("dataWithBytes:length:"), unsafe.SliceData(body), len(body))
+			runtime.KeepAlive(body)
+			task.Send(dexSel("didReceiveData:"), data)
+		}
+		task.Send(dexSel("didFinish"))
+	}
 }
 
 func dexNavigationAction(self objc.ID, _ objc.SEL, view, action, decision objc.ID) {
@@ -342,12 +488,12 @@ func dexNavigationAction(self objc.ID, _ objc.SEL, view, action, decision objc.I
 	request := action.Send(dexSel("request"))
 	raw := dexGoString(request.Send(dexSel("URL")).Send(dexSel("absoluteString")))
 	origin, u := dexParseOrigin(raw)
-	if origin == w.origin && target != 0 {
+	if origin == w.origin && target != 0 && (w.local == nil || main) {
 		dexDecide(decision, true)
 		return
 	}
 	settings := target != 0 && main && raw == workspaceSettingsURL
-	external := main && origin != w.origin && u != nil && origin.scheme == "https" && !strings.ContainsAny(raw, "?#")
+	external := main && origin != w.origin && u != nil && origin.scheme == "https" && (w.local != nil || !strings.ContainsAny(raw, "?#"))
 	activated := (settings || external) &&
 		dexGoString(request.Send(dexSel("HTTPMethod"))) == "GET" &&
 		objc.Send[int](action, dexSel("navigationType")) == 0 && // WKNavigationTypeLinkActivated

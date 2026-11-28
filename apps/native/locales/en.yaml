@@ -1,5 +1,17 @@
 appName: Dex
 connection: Connect to Dex
+switchWorkspace: Switch Workspace
+connectionSubtitle: Use a workspace on this device or connect to a remote Dex server.
+localWorkspace: Local Workspace
+localHelp: Runs privately on this device. No server or token required.
+remoteServer: Remote Server
+currentWorkspace: Current
+openLocal: Open Local Workspace
+openingLocal: Opening local workspace…
+closingLocal: Closing local workspace…
+forgetLocal: Forget local selection
+localStartFailed: "Could not start the local workspace: {reason}"
+localViewFailed: Could not open the local workspace. Try again.
 address: Server address
 addressPlaceholder: https://dex.example.com
 connect: Connect
@@ -14,7 +26,7 @@ remoteHelp: Enter the HTTPS address of an existing Dex server that this device c
 macHelp: Use an HTTPS address or Dex on this Mac at 127.0.0.1.
 invalidAddress: Enter a server address with no sign-in details, path, query, or fragment.
 clearFailed: Could not clear the WebView sign-in. Try again.
-saveFailed: Could not save the server address. Try again.
+saveFailed: Could not save the workspace selection. Try again.
 clearing: Clearing sign-in…
 navExternalTitle: Open Link in Browser?
 navExternalMessage: Open a link to {host} in your browser.

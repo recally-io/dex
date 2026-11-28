@@ -73,10 +73,10 @@ def run():
         key("KEYCODE_BACK")
         tap("Sign in")
 
-    def workspace_settings():
+    def switch_workspace_from_sidebar():
         tap("Open navigation", prefix=True)
-        tap("Settings")
-        tap("Switch workspace")
+        tap("Switch workspace", prefix=True)
+        get("Switch Workspace")
 
     def start():
         adb("shell", "am", "start", "-n", "io.recally.dex/dev.oneo.nsgo.NsgoActivity")
@@ -97,15 +97,15 @@ def run():
         adb("shell", "am", "force-stop", "io.recally.dex")
         start()
         get("echo: " + marker)
-        workspace_settings()
+        switch_workspace_from_sidebar()
         connect(args.alternate)
         sign_in()
         get("echo: " + marker)
-        workspace_settings()
+        switch_workspace_from_sidebar()
         tap("Forget server")
         get("Connect to Dex")
         connect(args.alternate)
-        print("PASS: chat, restart, Settings, switch between same-host ports, forget and sign in again")
+        print("PASS: chat, restart, switch from the sidebar between same-host ports, forget and sign in again")
     finally:
         adb("shell", "pm", "clear", "io.recally.dex")
         adb("shell", "rm", "-f", "/data/local/tmp/dex-ui.xml")

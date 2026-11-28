@@ -6,7 +6,7 @@ its own document, listed in [Subsystems](#subsystems).
 
 ## Runtime overview
 
-![Runtime boundaries and data owners](../assets/architecture.png)
+![Server runtime boundaries and data owners](../assets/architecture.png)
 
 Source: [architecture.puml](../assets/src/architecture.puml).
 
@@ -17,10 +17,11 @@ and MCP. The browser receives typed transcript events through SSE.
 
 ## Runtime modules
 
-`apps/web/` owns the React UI. The Go binary embeds its build output. Node and Bun are development tools; the installed service needs neither runtime. `apps/native/` owns one NSGo app for macOS, iOS, and Android. Both clients use the icon in `apps/assets/`. The [native client](../../apps/native/README.md)
-runs in a separate process. It opens the workspace from a selected Dex server in
-WebKit on Apple devices and in the system WebView on Android. It does not embed a second copy of the web UI or run an agent. The native
-connection screen remains available when the server is offline.
+`apps/web/` owns the React UI. Both the server and the native app embed its build output. Node and Bun are development tools; the installed app and service need neither runtime. `apps/native/` owns one NSGo app for macOS, iOS, and Android. Both clients use the icon in `apps/assets/`.
+
+The [native client](../../apps/native/README.md) opens a local workspace or a selected Dex server. Remote workspaces use the server's origin, sign-in, and HTTPS connection without a native script bridge. When the server is offline, the connection screen stays available.
+
+For a local workspace, `localdex` starts `internal/app` inside the native app. It exposes an `http.Handler` to the app without an HTTP server, TCP listener, or loopback connection. WebKit loads `dex-local://workspace`; Android WebView intercepts `https://local.dex.internal` without making a network request. The local bridge serves assets and files, dispatches same-origin API calls to the handler, and forwards SSE frames as the handler flushes them. Only the local view has this bridge. The local handler does not require sign-in. Normal server authentication and cross-origin checks stay in place. The app starts the runtime when the local workspace opens and stops it when the user switches away or the app closes.
 
 The [module index](../../.agents/rules/implementation.md#modules) defines
 package ownership. `internal/app` connects the services. Business services call
@@ -112,8 +113,15 @@ start ([plugins](plugins.md#plugin-migrations)). The Bot directory remains
 transcripts, and tool calls. Only the engine opens a bot execution store, and business
 code calls typed engine methods instead of reading it.
 
-The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
-each bot execution store. Run one dex process per data directory.
+The standalone server defaults to `~/.dex`. `DEX_DATA_DIR` can change that
+path. The native app connects to a standalone server over HTTP or HTTPS.
+
+The in-process local workspace stores data in the `dex` subdirectory of NSGo's
+`cx.DataDir()`. On macOS, the default is
+`~/Library/Application Support/io.recally.dex/dex`. On iOS and Android, the
+path is inside the app's private data directory. Only macOS uses a non-empty
+`DEX_DATA_DIR` from the app's environment in place of this default. A file lock
+prevents two Dex runtimes from opening the same data directory.
 
 ## Message flow
 
