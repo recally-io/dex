@@ -374,7 +374,9 @@ receipts. `/clear` and its alias `/new` use `channel:<source key>` as the stable
 reset request ID.
 A crash after reset admission but before command completion reuses that reset.
 A busy refusal is saved in the command receipt; replay cannot clear it later.
-The command sends one short notice. Reset submissions have no model reply.
+The effect writer checks whether the command was canceled by revocation.
+Pairing again does not restore canceled commands. The command sends one short
+notice. Reset submissions have no model reply.
 `/stop` requests Session cancellation on Main. It withdraws queued input and
 pending results. The command saves its answer in the same transaction as the
 withdrawal. For the distinction from Main foreground Stop, see [Sessions](sessions.md). If command completion fails,

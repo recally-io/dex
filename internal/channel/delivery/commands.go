@@ -125,6 +125,9 @@ func (m *Manager) CompleteCommand(ctx context.Context, source string) error {
 	} else {
 		answer, err = runShared(ctx, 0)
 	}
+	if errors.Is(err, session.ErrChannelUnauthorized) {
+		return nil // The command cannot take effect or get a reply.
+	}
 	if err != nil {
 		return err
 	}
