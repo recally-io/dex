@@ -174,7 +174,13 @@ The managed dialog polls its setup state. It shows a private owner verification
 link first and the Telegram bot creation link second. Cancel calls the API.
 Neither the managed dialog nor the Channels response receives the created token.
 
-`/settings` opens `/settings/general`. In the native app, General and the sign-in page show **Switch workspace**. The app adds `DexWorkspace/1` to the system web view's user agent for display only. An activated `dex-workspace://settings` link from its own main frame opens the native connection screen. The link does not select a server or clear a login.
+`/settings` opens `/settings/general`. In the native app, the sidebar footer,
+General, and the sign-in page show a workspace switcher. The sidebar shows
+**Local Workspace** or the remote host. General and the sign-in page show
+**Local Workspace** or the remote origin. The app adds `DexWorkspace/1` to the
+system web view's user agent for display only. An activated
+`dex-workspace://settings` link from its own main frame opens the native
+connection screen. The link does not select a server or clear a login.
 
 ## Components and theme
 

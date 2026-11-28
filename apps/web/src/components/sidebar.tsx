@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Cable, ListTodo, Plus, Search, Settings } from "lucide-react";
+import { Cable, ChevronsUpDown, Globe, Laptop, ListTodo, Plus, Search, Settings } from "lucide-react";
 import type { Bot } from "../api/generated/types.gen";
 import { getSettingsOptions, listBotsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { BotContext } from "../lib/bot-scope";
@@ -12,6 +12,7 @@ import { cn } from "../lib/utils";
 import { BotAvatar } from "./bot-avatar";
 import { BotCreateDialog } from "./bot-create-dialog";
 import { Button, buttonVariants } from "./ui/button";
+import { getWorkspaceInfo, workspaceSettingsHref } from "./workspace-settings";
 
 const row =
   "h-8 min-w-0 justify-start gap-2 rounded-[9px] border-0 px-2 text-[13px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:bg-card aria-[current=page]:text-foreground aria-[current=page]:shadow-[0_0_0_1px_var(--border),0_1px_2px_rgb(0_0_0/0.06)]";
@@ -134,7 +135,40 @@ function Footer({ area, attentionCount }: { area: string | undefined; attentionC
           <span role="img" aria-label={label} title={label} className="size-2 rounded-full bg-red" />
         ) : null}
       </Link>
+      <WorkspaceSwitcher />
     </nav>
+  );
+}
+
+function WorkspaceSwitcher() {
+  const workspace = getWorkspaceInfo();
+
+  if (!workspace) return null;
+
+  const Icon = workspace.isLocal ? Laptop : Globe;
+  const label = `Switch workspace, ${workspace.label}`;
+
+  return (
+    <div className="mt-1 border-t border-border pt-2">
+      <a
+        href={workspaceSettingsHref}
+        aria-label={label}
+        title={label}
+        className={cn(
+          buttonVariants({ variant: "ghost" }),
+          "h-auto min-h-11 w-full min-w-0 justify-start gap-2 px-2 py-1.5 text-foreground",
+        )}
+      >
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-control bg-muted text-foreground">
+          <Icon aria-hidden />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate">{workspace.label}</span>
+          <span className="truncate text-xs font-normal text-muted-foreground">{workspace.subtitle}</span>
+        </span>
+        <ChevronsUpDown className="size-3.5 text-muted-foreground" aria-hidden />
+      </a>
+    </div>
   );
 }
 
