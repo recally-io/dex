@@ -16,7 +16,12 @@ output=$(cd "$2" && pwd)
 source=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/dex-apple-mac.XXXXXXXX")
 gate_pid=
+recovery_pid=
 cleanup() {
+  if [[ -n "$recovery_pid" ]]; then
+    kill "$recovery_pid" 2>/dev/null || true
+    wait "$recovery_pid" 2>/dev/null || true
+  fi
   if [[ -n "$gate_pid" ]]; then
     kill "$gate_pid" 2>/dev/null || true
     wait "$gate_pid" 2>/dev/null || true
@@ -47,9 +52,27 @@ plutil -insert home -string "$work/home" "$work/Fixture.plist"
 plutil -insert gate -string "$work/gate" "$work/Fixture.plist"
 (cd "$work" && xcodegen generate)
 
-# Own the default port before the app starts. Return 503 until the test enables the QA backend.
-printf '{\n  admin off\n  auto_https off\n}\nhttp://127.0.0.1:8787 {\n  bind 127.0.0.1\n  @ready file {\n    root "%s/gate"\n    try_files /start-default\n  }\n  handle @ready {\n    reverse_proxy %s\n  }\n  handle {\n    respond 503\n  }\n}\n' \
-  "$work" "${local_url#http://}" > "$work/gate/Caddyfile"
+# Keep the default port for the fixture. Limit shutdown time for open event streams.
+cat > "$work/gate/Caddyfile" <<EOF
+{
+  admin off
+  auto_https off
+  grace_period 1s
+}
+http://127.0.0.1:8787 {
+  bind 127.0.0.1
+  @ready file {
+    root "$work/gate"
+    try_files /start-default
+  }
+  handle @ready {
+    reverse_proxy ${local_url#http://}
+  }
+  handle {
+    respond 503
+  }
+}
+EOF
 env -i HOME="$work/home" PATH=/usr/bin:/bin "$(command -v caddy)" run --config "$work/gate/Caddyfile" --adapter caddyfile > "$output/mac-gate.log" 2>&1 &
 gate_pid=$!
 deadline=$((SECONDS + 10))
@@ -59,6 +82,22 @@ until lsof -nP -a -p "$gate_pid" -iTCP:8787 -sTCP:LISTEN >/dev/null; do
   sleep 0.2
 done
 [[ $(env -i PATH=/usr/bin:/bin curl -q --silent --noproxy '*' --max-time 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/health) == 503 ]]
+
+# The runner can read the gate but cannot write outside its sandbox.
+# Wait for its offline assertion, not for a probe from another local process.
+: > "$output/mac-ui.log"
+(
+  deadline=$((SECONDS + 120))
+  until grep -Fq 'DEX_MAC_QA_OFFLINE_CONFIRMED' "$output/mac-ui.log"; do
+    if ((SECONDS >= deadline)); then
+      printf 'XCTest did not confirm the offline screen.\n' >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  touch "$work/gate/start-default"
+) &
+recovery_pid=$!
 
 result="$work/mac.xcresult"
 status=0

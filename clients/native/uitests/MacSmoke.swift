@@ -17,17 +17,25 @@ final class MacSmoke: XCTestCase {
         XCTAssertTrue(retry.waitForExistence(timeout: 15))
         XCTAssertFalse(app.webViews.firstMatch.exists)
         capture(app, "01-mac-offline")
+        FileHandle.standardError.write(Data("DEX_MAC_QA_OFFLINE_CONFIRMED\n".utf8))
 
-        try Data().write(to: gate.appendingPathComponent("start-default"))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            FileManager.default.fileExists(atPath: gate.appendingPathComponent("start-default").path)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
         retry.click()
 
         let composer = app.webViews.descendants(matching: .any)["Message Dex QA"].firstMatch
         XCTAssertTrue(composer.waitForExistence(timeout: 15))
         XCTAssertFalse(app.webViews.staticTexts["Sign in to dex"].exists)
         composer.click()
-        composer.typeText("Mac QA retry\n")
-        let answer = app.webViews.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "echo: Mac QA retry")).firstMatch
-        XCTAssertTrue(answer.waitForExistence(timeout: 15))
+        let message = "retry"
+        composer.typeText(message)
+        XCTAssertEqual(composer.value as? String, message)
+        composer.typeKey(.return, modifierFlags: [])
+        let echo = "echo: " + message
+        let answer = app.webViews.staticTexts.matching(NSPredicate(format: "label == %@ OR value == %@", echo, echo)).firstMatch
+        XCTAssertTrue(answer.waitForExistence(timeout: 15), app.webViews.firstMatch.debugDescription)
         capture(app, "02-mac-echo")
     }
 
