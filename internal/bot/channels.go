@@ -14,13 +14,6 @@ import (
 
 var ErrCredentialInUse = errors.New("channel credential already in use")
 
-// Channels combines public settings. The API binds Feishu to the platform's view.
-type Channels[F any] struct {
-	Telegram Telegram `json:"telegram"`
-	Wechat   Wechat   `json:"wechat"`
-	Feishu   F        `json:"feishu"`
-}
-
 // feishuSetup is the Feishu capability that bot needs until channel coordination moves out.
 type feishuSetup interface {
 	State(ctx context.Context, botID string) (state string, paired bool, err error)

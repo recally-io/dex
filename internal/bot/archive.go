@@ -25,9 +25,13 @@ func (s *Service) StopChannels(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	err := db.RequireActive(ctx, s.q, id)
-	if !errors.Is(err, db.ErrBotArchived) {
-		return err // Restore can finish before the archive callback reaches this lock.
+	if err == nil {
+		return nil // Restore can finish before the archive callback reaches this lock.
 	}
+	if errors.Is(err, db.ErrBotArchived) {
+		err = nil
+	}
+	// Also stop when the read fails, so an archived bot does not keep its channels.
 	delete(s.sessions, id)
 	if s.onTelegram != nil {
 		s.onTelegram(id, nil)
@@ -38,7 +42,7 @@ func (s *Service) StopChannels(ctx context.Context, id string) error {
 	if s.onWechat != nil {
 		s.onWechat(id, nil)
 	}
-	return nil
+	return err
 }
 
 // RestoreBot shows an archived bot again and starts the channels that are configured.

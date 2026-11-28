@@ -1150,24 +1150,6 @@ func (e TaskWakeItemTitle) Valid() bool {
 	}
 }
 
-// Defines values for TelegramTransport.
-const (
-	TelegramTransportPolling TelegramTransport = "polling"
-	TelegramTransportWebhook TelegramTransport = "webhook"
-)
-
-// Valid indicates whether the value is a known member of the TelegramTransport enum.
-func (e TelegramTransport) Valid() bool {
-	switch e {
-	case TelegramTransportPolling:
-		return true
-	case TelegramTransportWebhook:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for TelegramInputTransport.
 const (
 	TelegramInputTransportPolling TelegramInputTransport = "polling"
@@ -1508,7 +1490,11 @@ type BoundaryItemStatus string
 type ChannelStatus = channel.Status
 
 // Channels defines model for Channels.
-type Channels = bot.Channels[Feishu]
+type Channels struct {
+	Feishu   Feishu   `json:"feishu"`
+	Telegram Telegram `json:"telegram"`
+	Wechat   Wechat   `json:"wechat"`
+}
 
 // ChildEvent Current state of this session or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
 type ChildEvent struct {
@@ -2721,20 +2707,7 @@ type TaskWakeItemKind string
 type TaskWakeItemTitle string
 
 // Telegram defines model for Telegram.
-type Telegram struct {
-	AllowedUsers             []int64            `json:"allowedUsers"`
-	BotId                    *string            `json:"botId,omitempty"`
-	Enabled                  bool               `json:"enabled"`
-	ManagedCreationAvailable *bool              `json:"managedCreationAvailable,omitempty"`
-	ManagerConfigured        *bool              `json:"managerConfigured,omitempty"`
-	Options                  *TelegramOptions   `json:"options,omitempty"`
-	Status                   ChannelStatus      `json:"status"`
-	Transport                *TelegramTransport `json:"transport,omitempty"`
-	WebhookUrl               *string            `json:"webhookUrl,omitempty"`
-}
-
-// TelegramTransport defines model for Telegram.Transport.
-type TelegramTransport string
+type Telegram = bot.Telegram
 
 // TelegramInput defines model for TelegramInput.
 type TelegramInput struct {
