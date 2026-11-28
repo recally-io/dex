@@ -59,9 +59,6 @@ SELECT EXISTS(SELECT 1 FROM telegram_album_members
 WHERE bot_id = @bot_id AND batch_source = @batch_source AND state = 'sealed'
  AND peer = @peer AND account_id = @account_id AND sender_id = @sender_id);
 
--- name: HasTelegramAlbumGroup :one
-SELECT EXISTS(SELECT 1 FROM telegram_album_members WHERE bot_id = ? AND group_key = ? AND state <> 'discarded');
-
 -- name: DiscardPrivateTelegramAlbums :exec
 UPDATE telegram_album_members SET state = 'discarded'
 WHERE bot_id = ? AND peer NOT LIKE 'telegram:-%' AND state IN ('collecting', 'sealed');

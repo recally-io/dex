@@ -117,14 +117,17 @@ const titleLength = 60
 
 // Service stores receipts and projects native execution outcomes.
 type Service struct {
-	q                *sqlc.Queries
-	engine           *engine.Bots
-	now              func() time.Time
-	notify           func(origin string)
-	channelIntake    func(bot, origin, id string, source ChannelContext)
-	channelAdmission func(bot, origin, id string, sub *engine.Submission)
-	channelPairing   func(context.Context, *sqlc.Queries, string, string, string) error
-	changed          func(sessionID int64)
+	q                    *sqlc.Queries
+	engine               *engine.Bots
+	now                  func() time.Time
+	notify               func(origin string)
+	channelIntake        func(bot, origin, id string, source ChannelContext)
+	channelAdmission     func(bot, origin, id string, sub *engine.Submission)
+	channelPairing       func(context.Context, *sqlc.Queries, string, string, string) error
+	lookupStagedSourceIn func(context.Context, *sqlc.Queries, string, bool) (StagedSource, error)
+	checkInputIn         func(context.Context, *sqlc.Queries, string, string, Message) error
+	discardStagedIn      func(context.Context, *sqlc.Queries, string) error
+	changed              func(sessionID int64)
 	// OnBotArchived runs after a transaction that archived a bot has committed. Optional.
 	OnBotArchived func(botID string)
 
@@ -299,6 +302,16 @@ func (s *Service) ConfigureChannelPairing(check func(ctx context.Context, q *sql
 	s.channelPairing = check
 }
 
+// ConfigureChannelStaging binds adapter storage before recovery or intake starts.
+// The write hooks must use these queries without opening a transaction or calling the network.
+func (s *Service) ConfigureChannelStaging(
+	lookup func(ctx context.Context, q *sqlc.Queries, source string, includeUnreceived bool) (StagedSource, error),
+	check func(ctx context.Context, q *sqlc.Queries, botID, peer string, input Message) error,
+	discard func(ctx context.Context, q *sqlc.Queries, botID string) error,
+) {
+	s.lookupStagedSourceIn, s.checkInputIn, s.discardStagedIn = lookup, check, discard
+}
+
 // ConfigureChannelReceipts connects best-effort observations before the service starts.
 // Neither callback may wait on transport or execution.
 func (s *Service) ConfigureChannelReceipts(intake func(string, string, string, ChannelContext), admission func(string, string, string, *engine.Submission)) {
@@ -398,22 +411,12 @@ func (s *Service) enqueue(ctx context.Context, botID, channelKey, sourceKey, ori
 		if err := db.RequireActive(ctx, q, botID); err != nil {
 			return 0, err
 		}
-		if m.SpeechSource != "" {
-			effect, err := q.GetTelegramEffect(ctx, m.SpeechSource)
-			if err != nil {
+		if m.SpeechSource != "" || m.AlbumSource != "" {
+			if s.checkInputIn == nil {
+				return 0, fmt.Errorf("%w: staged input check is unavailable", errSessionInvalid)
+			}
+			if err := s.checkInputIn(ctx, q, botID, origin, m); err != nil {
 				return 0, err
-			}
-			if effect.BotID != botID || effect.State == "discarded" {
-				return 0, fmt.Errorf("%w: speech input discarded before admission", errSessionInvalid)
-			}
-		}
-		if m.AlbumSource != "" {
-			sealed, err := q.IsTelegramAlbumSealed(ctx, sqlc.IsTelegramAlbumSealedParams{BotID: botID, BatchSource: m.AlbumSource, Peer: origin, AccountID: m.ChannelContext.AccountID, SenderID: m.ChannelContext.SenderID})
-			if err != nil {
-				return 0, err
-			}
-			if !sealed {
-				return 0, fmt.Errorf("%w: album was discarded before admission", errSessionInvalid)
 			}
 		}
 		attachments, err := json.Marshal(m.Attachments)

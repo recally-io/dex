@@ -80,8 +80,17 @@ settings, pairing codes, and managed setup. The app connects it to the runtime.
   record. Location, contact, and poll inputs keep their available fields as text.
   Quoted files are not downloaded. Media bytes alone do not prove that a model
   can understand their content.
-- See [file delivery and albums](files.md#telegram) for batch limits, replay,
-  and outgoing file snapshots.
+- The Telegram policy stores each album member in its own write transaction.
+  It takes the SQLite writer before checking the global source, the member
+  receipt, and the current bot and sender grant. Polling can advance and the
+  webhook worker can finish the row after the member commits.
+- The Telegram transport wakes an independent collector. The policy seals
+  members in receive order after 800 ms of silence, after 3 s from the first
+  member, or when 10 files are ready, whichever comes first. Later members
+  form a separate input with a continuation note. Only a committed Session
+  receipt transfers ownership to the input. Native admission can come later.
+  See [file delivery and albums](files.md#telegram) for replay and outgoing
+  file snapshots.
 - Transcription is off by default. `options.stt` requires a saved custom
   provider, an audio model, and consent to send audio. The provider must have
   an explicit base URL and support OpenAI-compatible `/audio/transcriptions`.
@@ -93,12 +102,13 @@ settings, pairing codes, and managed setup. The app connects it to the runtime.
 - Transcription defaults to 30 seconds per request, 20 MiB per input, and
   300 seconds of Telegram-reported duration. The response limit is the smaller
   of 64 KiB and the configured byte limit. Dex does not decode the audio to
-  verify duration. `telegram_effects` retains staged
-  upload ownership and provider results before native admission. It clears staged
-  references after a business or album receipt owns the upload. Empty, failed, or
-  unknown transcription keeps the original audio and an explicit note. Unknown
-  requests are not sent again on recovery. These rows record side effects;
-  they do not identify artifacts or queue work.
+  verify duration. The Telegram policy commits an `stt:<source>` claim in
+  `telegram_effects` before it calls the provider outside the transaction.
+  The claim owns the staged upload but does not acknowledge the source. The
+  policy clears the staged reference after a business or album receipt owns
+  the upload. Recovery uses a saved transcript and marks an interrupted call
+  as unknown without sending it again. Empty, failed, or unknown transcription
+  keeps the original audio and an explicit note.
 - Polling checks the token through `getUpdates`. A transient startup failure
   does not stop the bot. Poll errors and recovery update runtime status in
   bot settings. Tokens do not appear in status reasons.
@@ -313,8 +323,9 @@ The app passes the manager to Feishu and WeChat. For Telegram, the app
 combines the manager with the [Telegram policy](../../internal/channel/telegram/policy/)
 and registers that policy with the manager. Feishu and WeChat do not register
 a policy. The delivery package and the Telegram policy do not import each other.
-The policy owns Telegram command rules, buttons, callback claims, speech, album
-cleanup, file queueing, and queued reaction acknowledgements. Telegram rich text,
+The policy owns Telegram command rules, buttons, callback claims, album member
+and seal transactions, speech claims, upload cleanup, file queueing, and queued
+reaction acknowledgements. Telegram rich text,
 buttons, and files keep their shared frozen encoding. The adapter owns the wire
 format.
 
@@ -336,6 +347,13 @@ looks up a command receipt after source deduplication. The Telegram policy
 checks the actor, target, and context revision in the callback claim
 transaction. The Session service checks them again in the effect transaction.
 A native rejection settles the input receipt without setting `admitted_at`.
+
+Before recovery, the app binds Telegram's staged source lookup and write checks
+to Session. Album member receipts count as received globally. Speech claims
+only report upload ownership to their own bot. Session calls the adapter's
+staging check in its receipt transaction. Main Stop and Clear call the
+adapter in their own write transaction to discard staged input. These checks
+do not need a running transport.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all channels enters Main with that peer as origin. Dex checks
 pairing at intake. The app binds the common account and peer check from

@@ -86,7 +86,7 @@ type inbound interface {
 	Transcribe(ctx context.Context, peer, source string, msg session.Message, duration int, options speech.Options, resolve speech.Resolve, store *upload.Store) (session.Message, error)
 	FinishSpeechInput(ctx context.Context, source string, album bool) error
 	StoreTelegramAlbum(ctx context.Context, peer, source string, msg session.Message) error
-	ReadyTelegramAlbums(ctx context.Context) ([]session.TelegramAlbum, time.Duration, error)
+	ReadyTelegramAlbums(ctx context.Context) ([]Album, time.Duration, error)
 	FinishTelegramAlbum(ctx context.Context, source string) error
 	CleanupTelegramAlbums(ctx context.Context, store *upload.Store) error
 }

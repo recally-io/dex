@@ -195,11 +195,8 @@ func (s *Service) Clear(ctx context.Context, botID string, sessionID int64, requ
 		}); err != nil {
 			return err
 		}
-		if c.ChannelKey == MainKey {
-			if err := q.DiscardTelegramInputEffects(ctx, botID); err != nil {
-				return err
-			}
-			if err := q.DiscardPrivateTelegramAlbums(ctx, botID); err != nil {
+		if c.ChannelKey == MainKey && s.discardStagedIn != nil {
+			if err := s.discardStagedIn(ctx, q, botID); err != nil {
 				return err
 			}
 		}

@@ -1,6 +1,9 @@
 package channel_test
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +39,9 @@ func TestChannelImportBoundaries(t *testing.T) {
 					t.Errorf("%s must not depend on %s", pkg, dep)
 				}
 				for _, adapter := range adapters {
+					if pkg == telegramPolicyPath && dep == root+"/telegram" {
+						continue // Policy returns the transport's sealed Album type.
+					}
 					if pkg == pairing && dep == adapter {
 						continue
 					}
@@ -88,6 +94,46 @@ func TestDeliveryHasNoTelegramRules(t *testing.T) {
 		}
 		if strings.Contains(name, "telegram") || name == "speech.go" || strings.Contains(strings.ToLower(string(source)), "telegram") {
 			t.Errorf("%s contains a Telegram rule or reference", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSessionDoesNotCallTelegramStagingSQL(t *testing.T) {
+	t.Parallel()
+	files := token.NewFileSet()
+	err := filepath.WalkDir("../session", func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name := entry.Name()
+		if entry.IsDir() && name == "testdata" {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		// Parse all files, including those with build tags.
+		file, err := parser.ParseFile(files, path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			return err
+		}
+		for node := range ast.Preorder(file) {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				continue
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				continue
+			}
+			name := selector.Sel.Name
+			if strings.Contains(name, "TelegramAlbum") || strings.Contains(name, "TelegramEffect") || name == "DiscardTelegramInputEffects" {
+				t.Errorf("%s: %s belongs to Telegram policy", files.Position(selector.Sel.Pos()), name)
+			}
 		}
 		return nil
 	})

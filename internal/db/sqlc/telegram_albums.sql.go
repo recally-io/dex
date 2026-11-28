@@ -91,22 +91,6 @@ func (q *Queries) HasEarlierTelegramAlbumBatch(ctx context.Context, arg HasEarli
 	return exists, err
 }
 
-const hasTelegramAlbumGroup = `-- name: HasTelegramAlbumGroup :one
-SELECT EXISTS(SELECT 1 FROM telegram_album_members WHERE bot_id = ? AND group_key = ? AND state <> 'discarded')
-`
-
-type HasTelegramAlbumGroupParams struct {
-	BotID    string `json:"bot_id"`
-	GroupKey string `json:"group_key"`
-}
-
-func (q *Queries) HasTelegramAlbumGroup(ctx context.Context, arg HasTelegramAlbumGroupParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, hasTelegramAlbumGroup, arg.BotID, arg.GroupKey)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const isTelegramAlbumSealed = `-- name: IsTelegramAlbumSealed :one
 SELECT EXISTS(SELECT 1 FROM telegram_album_members
 WHERE bot_id = ?1 AND batch_source = ?2 AND state = 'sealed'

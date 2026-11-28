@@ -50,7 +50,10 @@ The server and native app share the root `go.mod`. The root
 In `apps/native`, `internal/webview` owns platform WebViews and navigation.
 `internal/bridge` serves local requests and streams SSE.
 
-`internal/channel/telegram/policy` owns Telegram channel business rules.
+`internal/channel/telegram/policy` owns Telegram channel business rules,
+including album member and seal transactions, speech claims, and staged upload
+cleanup. `internal/channel/telegram` owns receive, wake, and flush. The policy
+can use the transport's sealed `Album` type. The transport does not import policy.
 
 ## Rules
 
@@ -76,7 +79,10 @@ In `apps/native`, `internal/webview` owns platform WebViews and navigation.
   `ReceivedSource`. It scopes preview references to each bot through
   `LookupSource` and `SourceReceipt`. Platform adapters must not define
   duplicate input or pending replies from `admitted_at` and submission status
-  predicates.
+  predicates. Before recovery, the app binds adapter staging lookups and write
+  checks to Session. Session passes the queries from the original write
+  transaction to input and Stop/Clear checks. The checks must not open a new
+  transaction or call the network. Keep platform staging SQL in the adapter.
 - Keep one transcript projection in the engine for history, snapshots, and
   incremental events. Store origin, attachments, and task labels in native
   input metadata. Queued input comes from the native Inbox. Withdrawn input

@@ -155,11 +155,10 @@ func (s *Service) withdraw(ctx context.Context, botID string, id int64, command 
 			if err := q.SupersedeMainTurnStops(ctx, c.ID); err != nil {
 				return withdrawal{}, err
 			}
-			if err := q.DiscardTelegramInputEffects(ctx, botID); err != nil {
-				return withdrawal{}, err
-			}
-			if err := q.DiscardPrivateTelegramAlbums(ctx, botID); err != nil {
-				return withdrawal{}, err
+			if s.discardStagedIn != nil {
+				if err := s.discardStagedIn(ctx, q, botID); err != nil {
+					return withdrawal{}, err
+				}
 			}
 		}
 		if !c.ParentID.Valid {
