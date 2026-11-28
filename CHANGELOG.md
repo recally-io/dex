@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.21.0-rc.1] - 2026-11-28
+
 ### Added
 
 - Install the signed ARM64 Android APK to connect to an existing HTTPS Dex server. Chat, reopen the workspace, and switch servers from Settings.
@@ -139,7 +141,8 @@ This release covers all changes since `v0.19.1`, including `v0.20.0-rc.1` to `v0
 
 - **Telegram**: Remove legacy text and delivery shims (#166).
 
-[Unreleased]: https://github.com/vaayne/dex/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/vaayne/dex/compare/v0.21.0-rc.1...HEAD
+[v0.21.0-rc.1]: https://github.com/vaayne/dex/compare/v0.20.0...v0.21.0-rc.1
 [v0.20.0]: https://github.com/vaayne/dex/compare/v0.19.1...v0.20.0
 [v0.19.1]: https://github.com/vaayne/dex/compare/v0.19.0...v0.19.1
 [v0.19.0]: https://github.com/vaayne/dex/compare/v0.18.0...v0.19.0
