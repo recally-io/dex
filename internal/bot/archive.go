@@ -32,15 +32,14 @@ func (s *Service) StopChannels(ctx context.Context, id string) error {
 		err = nil
 	}
 	// Also stop when the read fails, so an archived bot does not keep its channels.
-	delete(s.sessions, id)
 	if s.onTelegram != nil {
 		s.onTelegram(id, nil)
 	}
 	if s.feishu != nil {
 		s.feishu.StopLocked(id)
 	}
-	if s.onWechat != nil {
-		s.onWechat(id, nil)
+	if s.wechat != nil {
+		s.wechat.StopLocked(id)
 	}
 	return err
 }
@@ -57,9 +56,11 @@ func (s *Service) RestoreBot(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	// Do not let a pre-archive setup become valid again if stop has not run yet.
-	delete(s.sessions, id)
 	if s.feishu != nil {
 		s.feishu.CancelRegistrationLocked(id)
+	}
+	if s.wechat != nil {
+		s.wechat.CancelLoginLocked(id)
 	}
 	tg, errTG := s.TelegramConfig(ctx, id)
 	var startFeishu func(context.Context)
@@ -67,7 +68,11 @@ func (s *Service) RestoreBot(ctx context.Context, id string) error {
 	if s.feishu != nil {
 		startFeishu, errFS = s.feishu.PrepareStartLocked(ctx, id)
 	}
-	wx, errWX := s.WechatConfig(ctx, id)
+	var startWechat func(context.Context)
+	var errWX error
+	if s.wechat != nil {
+		startWechat, errWX = s.wechat.PrepareStartLocked(ctx, id)
+	}
 	if err := errors.Join(errTG, errFS, errWX); err != nil {
 		return err
 	}
@@ -77,8 +82,8 @@ func (s *Service) RestoreBot(ctx context.Context, id string) error {
 	if startFeishu != nil {
 		startFeishu(ctx)
 	}
-	if s.onWechat != nil && (wx == nil || db.CanStartChannel(ctx, s.q, id)) {
-		s.onWechat(id, wx)
+	if startWechat != nil {
+		startWechat(ctx)
 	}
 	return nil
 }

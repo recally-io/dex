@@ -415,7 +415,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 		manager.Set("wechat", wechat.New(*config, wxOptions, q, manager, uploads))
 	}
-	botsService.ConfigureWechat(wxOptions, setWechat)
+	wechatSetup := wechat.NewSetup(q, conn, channelMu, wxOptions, setWechat, func(id string) channel.Status {
+		return bots.Status(id, "wechat")
+	})
+	botsService.BindWechat(wechatSetup)
 	activeBots, err := q.ListBots(ctx)
 	if err != nil {
 		return nil, err
@@ -472,6 +475,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		WebHandler:      cfg.WebHandler,
 		ChannelWebhooks: http.HandlerFunc(bots.webhook),
 		Feishu:          feishuSetup,
+		Wechat:          wechatSetup,
 		SkillCatalogURL: cfg.SkillCatalogURL,
 		McpRegistryURL:  cfg.McpRegistryURL,
 		Tasks:           tasks,
@@ -538,7 +542,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		if err != nil {
 			return nil, err
 		}
-		wx, err := botsService.WechatConfig(ctx, bot.ID)
+		wx, err := wechatSetup.Config(ctx, bot.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -548,7 +552,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 		setTelegram(bot.ID, tg)
 		setFeishu(bot.ID, fs)
-		setWechat(bot.ID, wx)
+		if wx == nil || db.CanStartChannel(ctx, q, bot.ID) {
+			setWechat(bot.ID, wx)
+		}
 	}
 	jobs.Start(runCtx)
 	a.dataLock = lock

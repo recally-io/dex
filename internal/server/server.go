@@ -26,6 +26,7 @@ import (
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/live"
@@ -47,6 +48,7 @@ type Config struct {
 	Settings    *settings.Service
 	Bots        *bot.Service
 	Feishu      *feishu.SetupService
+	Wechat      *wechat.SetupService
 	Artifacts   *artifact.Service
 	Live        *live.Hub
 	DataDir     string
@@ -122,7 +124,7 @@ func New(cfg Config) http.Handler {
 			}
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, settings.ErrInvalid), errors.Is(err, bot.ErrInvalid), errors.Is(err, feishu.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
+			case errors.Is(err, settings.ErrInvalid), errors.Is(err, bot.ErrInvalid), errors.Is(err, feishu.ErrInvalid), errors.Is(err, wechat.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
 				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, session.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, session.ErrRejected), errors.Is(err, session.ErrProjectInvalid), errors.Is(err, session.ErrRunnerInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, tasksvc.ErrTaskToken):
@@ -139,7 +141,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, bot.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, session.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrBotArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, bot.ErrCredentialInUse), errors.Is(err, feishu.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, bot.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget), errors.Is(err, engine.ErrMCPServerExists):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, bot.ErrCredentialInUse), errors.Is(err, feishu.ErrCredentialInUse), errors.Is(err, wechat.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, bot.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget), errors.Is(err, engine.ErrMCPServerExists):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -996,7 +998,7 @@ func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegra
 }
 
 func (h *handler) BeginWechatLogin(ctx context.Context, _ api.BeginWechatLoginRequestObject) (api.BeginWechatLoginResponseObject, error) {
-	view, err := h.Bots.BeginWechatLogin(ctx, botID(ctx))
+	view, err := h.Wechat.Begin(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -1008,7 +1010,7 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 	if req.Body != nil {
 		code = deref(req.Body.VerifyCode)
 	}
-	view, err := h.Bots.PollWechatLogin(ctx, botID(ctx), req.LoginId, code)
+	view, err := h.Wechat.Poll(ctx, botID(ctx), req.LoginId, code)
 	if err != nil {
 		return nil, err
 	}
@@ -1016,7 +1018,7 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 }
 
 func (h *handler) DeleteWechat(ctx context.Context, _ api.DeleteWechatRequestObject) (api.DeleteWechatResponseObject, error) {
-	if err := h.Bots.DeleteWechat(ctx, botID(ctx)); err != nil {
+	if err := h.Wechat.Delete(ctx, botID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteWechat200JSONResponse(ok), nil

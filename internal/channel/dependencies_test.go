@@ -45,12 +45,14 @@ func TestChannelImportBoundaries(t *testing.T) {
 	}
 }
 
-func TestBotDoesNotImportFeishu(t *testing.T) {
+func TestBotDoesNotImportMigratedChannelAdapters(t *testing.T) {
 	t.Parallel()
 	const bot = "github.com/recally-io/dex/internal/bot"
 	for _, dep := range listPackages(t, "-f", "{{range .Imports}}{{println .}}{{end}}", bot) {
-		if within(dep, channelPath+"/feishu") {
-			t.Errorf("%s imports %s; the app must wire Feishu setup", bot, dep)
+		for _, platform := range []string{"feishu", "wechat"} {
+			if within(dep, channelPath+"/"+platform) {
+				t.Errorf("%s imports %s; the app must wire %s setup", bot, dep, platform)
+			}
 		}
 	}
 }

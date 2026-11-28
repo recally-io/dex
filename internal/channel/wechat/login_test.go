@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -13,6 +14,7 @@ import (
 )
 
 func TestUserWechatRefreshRemainsUsableAfterFiveMinutes(t *testing.T) {
+	t.Parallel()
 	// Given a real QR boundary that expires the initial code and confirms its replacement.
 	var polls atomic.Int64
 	var srv *httptest.Server
@@ -33,23 +35,21 @@ func TestUserWechatRefreshRemainsUsableAfterFiveMinutes(t *testing.T) {
 	tr.DisableKeepAlives = true
 	defer tr.CloseIdleConnections()
 	client := &http.Client{Transport: tr}
+	conn, q, id := setupDB(t)
 	synctest.Test(t, func(t *testing.T) {
-		login, _, err := wechat.BeginLogin(t.Context(), "login", wechat.Options{APIURL: srv.URL, HTTPClient: client})
+		s := wechat.NewSetup(q, conn, new(sync.Mutex), wechat.Options{APIURL: srv.URL, HTTPClient: client}, func(string, *wechat.Config) {}, nil)
+		login, err := s.Begin(t.Context(), id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		// When more than five minutes elapse, remote expiry can still replace the QR code.
 		time.Sleep(5*time.Minute + time.Second)
-		view, err := login.Poll(t.Context(), "")
+		view, err := s.Poll(t.Context(), id, login.ID, "")
 		if err != nil || !view.Active || view.Status != "expired" || polls.Load() != 1 {
 			t.Fatalf("refresh: %+v err=%v remote polls=%d", view, err, polls.Load())
 		}
-		view, err = login.Poll(t.Context(), "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Then local activation, rather than elapsed time, determines confirmation.
-		view, err = login.Activate(func(cfg *wechat.Config) error { return cfg.Validate() })
+		// Then the replacement can confirm and activate the account.
+		view, err = s.Poll(t.Context(), id, login.ID, "")
 		if err != nil || view.Status != "confirmed" || view.Active {
 			t.Fatalf("activation: %+v %v", view, err)
 		}

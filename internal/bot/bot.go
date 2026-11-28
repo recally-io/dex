@@ -19,7 +19,6 @@ import (
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/telegram"
-	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -38,12 +37,10 @@ var ErrNotFound = errors.New("bot not found")
 
 var thinkingLevels = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 
-// Service owns bot writes and channel setup sessions.
+// Service owns bot writes and coordinates channel settings and approvals.
 type Service struct {
 	q               *sqlc.Queries
 	checkModel      func(context.Context, string, string) error
-	wechatOptions   wechat.Options
-	onWechat        func(string, *wechat.Config)
 	db              *sql.DB
 	ChannelStatus   func(string, string) channel.Status
 	OnRunnerChanged func(ctx context.Context, botID, oldEnvID, oldSandboxID string)
@@ -52,10 +49,10 @@ type Service struct {
 	telegramVault   *vault.Store
 	manager         *telegramManager
 	feishu          feishuSetup
+	wechat          wechatSetup
 	// One lock orders credential checks, saves, runtime changes, and setup sessions
 	// across bots. Model checks take the settings lock; settings never takes this lock.
 	mu               *sync.Mutex
-	sessions         map[string]*channelSession
 	channelApprovals map[string]channelApproval
 }
 
