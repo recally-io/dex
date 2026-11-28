@@ -138,6 +138,45 @@ func (q *Queries) FinishParentInputStop(ctx context.Context, id string) error {
 	return err
 }
 
+const getChildWorkflowSource = `-- name: GetChildWorkflowSource :one
+SELECT s.id, s.session_id, s.content, s.status, s.answer, s.reason, s.created_at, s.settled_at, s.source_key, s.attachments, s.origin, s.admitted_at, s.when_busy, s.parent_request_id, s.result_child_id, s.native_answer_id, s.channel_context, s.channel_revoked, s.required_reply_id, s.stop_requested, s.producer, s.reply_channel, s.reply_peer, s.exit_action, s.kind FROM submissions s
+WHERE s.session_id = ?1 AND s.parent_request_id IS NOT NULL
+ORDER BY s.rowid LIMIT 1
+`
+
+func (q *Queries) GetChildWorkflowSource(ctx context.Context, childID int64) (Submission, error) {
+	row := q.db.QueryRowContext(ctx, getChildWorkflowSource, childID)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.Content,
+		&i.Status,
+		&i.Answer,
+		&i.Reason,
+		&i.CreatedAt,
+		&i.SettledAt,
+		&i.SourceKey,
+		&i.Attachments,
+		&i.Origin,
+		&i.AdmittedAt,
+		&i.WhenBusy,
+		&i.ParentRequestID,
+		&i.ResultChildID,
+		&i.NativeAnswerID,
+		&i.ChannelContext,
+		&i.ChannelRevoked,
+		&i.RequiredReplyID,
+		&i.StopRequested,
+		&i.Producer,
+		&i.ReplyChannel,
+		&i.ReplyPeer,
+		&i.ExitAction,
+		&i.Kind,
+	)
+	return i, err
+}
+
 const getTurn = `-- name: GetTurn :one
 SELECT s.id, s.session_id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s

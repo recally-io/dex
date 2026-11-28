@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	telegrampolicy "github.com/recally-io/dex/internal/channel/telegram/policy"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -37,6 +38,7 @@ func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
 	}
 	defer bots.Close(context.WithoutCancel(t.Context()))
 	service := session.New(conn, bots, time.Now, nil, nil)
+	bindSessionChannels(service)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { defer close(done); service.Run(ctx) }()
@@ -45,9 +47,12 @@ func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
 	defer manager.Close()
 	// When a group or malformed peer sends a command with valid-looking actor IDs.
 	for _, peer := range []string{"telegram:-100", "telegram:042", "telegram:0"} {
-		err := manager.Receive(ctx, peer, "group-command", session.Message{Content: "/clear", ChannelContext: session.ChannelContext{AccountID: "123", SenderID: "42"}})
-		if err == nil {
-			t.Fatalf("non-private peer %q reached Main", peer)
+		msg := session.Message{Content: "/clear", ChannelContext: session.ChannelContext{AccountID: "123", SenderID: "42"}}
+		if err := manager.Receive(ctx, peer, "group-command", msg); !errors.Is(err, telegrampolicy.ErrTelegramUnauthorized) {
+			t.Fatalf("manager accepted non-private peer %q: %v", peer, err)
+		}
+		if err := service.AcceptMessage(ctx, "bot", peer, "group-input", msg); !errors.Is(err, telegrampolicy.ErrTelegramUnauthorized) {
+			t.Fatalf("Session accepted non-private peer %q: %v", peer, err)
 		}
 	}
 	// An input with a private peer but a revoked actor must also leave Main absent.
@@ -56,7 +61,7 @@ func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
 	}
 	const source = "telegram:123:revoked"
 	err = manager.Receive(ctx, "telegram:42", source, session.Message{Content: "revoked input", ChannelContext: session.ChannelContext{AccountID: "123", SenderID: "42"}})
-	if !errors.Is(err, session.ErrTelegramUnauthorized) {
+	if !errors.Is(err, telegrampolicy.ErrTelegramUnauthorized) {
 		t.Fatalf("revoked input did not get the authorization error: %v", err)
 	}
 	if received, err := service.ReceivedSource(ctx, source); err != nil || received {

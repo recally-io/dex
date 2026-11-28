@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/recally-io/dex/internal/channel"
@@ -16,8 +17,44 @@ import (
 	"github.com/recally-io/dex/internal/session"
 )
 
-func bindChannelStaging(sessions *session.Service) {
+func bindSessionChannels(sessions *session.Service) {
+	sessions.ConfigureChannelPolicy(session.ChannelPolicy{
+		CheckPeer: func(peer string) error {
+			if strings.HasPrefix(peer, "telegram:") {
+				return telegrampolicy.CheckPeer(peer)
+			}
+			if !channelRoute(peer).User {
+				return session.ErrChannelUnauthorized
+			}
+			return nil
+		},
+		CheckInputIn: func(ctx context.Context, q *sqlc.Queries, botID, peer string, source session.ChannelContext) error {
+			if strings.HasPrefix(peer, "telegram:") {
+				return telegrampolicy.CheckInputActorIn(ctx, q, botID, peer, source)
+			}
+			return pairing.RequirePairedChannel(ctx, q, botID, peer, source.AccountID)
+		},
+		CheckCommandIn: telegrampolicy.CheckCommandIn,
+		Route:          channelRoute,
+	})
 	sessions.ConfigureChannelStaging(telegrampolicy.LookupStagedSourceIn, telegrampolicy.CheckInputIn, telegrampolicy.DiscardStagedIn)
+}
+
+func channelRoute(peer string) session.ChannelRoute {
+	platform, _, ok := strings.Cut(peer, ":")
+	if !ok {
+		return session.ChannelRoute{}
+	}
+	switch platform {
+	case "telegram":
+		return session.ChannelRoute{User: true, Owner: telegrampolicy.PrivatePeer(peer), Quote: true, Files: true}
+	case "feishu":
+		return session.ChannelRoute{User: true, Owner: true, Quote: true}
+	case "wechat":
+		return session.ChannelRoute{User: true, Owner: true}
+	default:
+		return session.ChannelRoute{}
+	}
 }
 
 // botChannels wires the Telegram adapter's inbound interface to the manager

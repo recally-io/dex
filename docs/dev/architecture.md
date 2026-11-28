@@ -26,6 +26,11 @@ or the PiG extension host. `cmd/dex-agent` does not depend on `apps/`,
 Production entry points do not link test helpers. The `check:native` task
 checks these boundaries.
 
+Bot and Session do not depend on channel packages. The app binds channel
+policy before it starts recovery. Platform adapters own channel rules and
+Session owns the effect writer. Session invokes the bound checks in that
+transaction. See [channel intake and delivery](channels.md#shared-channels).
+
 The native app starts and stops the local runtime when the Owner opens or
 leaves a local workspace. iOS and macOS load `dex-local://workspace`.
 Android intercepts `https://local.dex.internal`. The local bridge dispatches

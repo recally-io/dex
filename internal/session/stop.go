@@ -113,7 +113,7 @@ func (s *Service) withdraw(ctx context.Context, botID string, id int64, command 
 	}
 	defer func() { _ = tx.Rollback() }()
 	if command != nil {
-		if err := checkTelegramControl(ctx, q, command.SourceKey, botID, id); err != nil {
+		if err := s.checkChannelCommand(ctx, q, command.SourceKey, botID, id); err != nil {
 			return withdrawal{}, err
 		}
 	}

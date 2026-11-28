@@ -49,7 +49,7 @@ func (s *Service) DispatchExternal(ctx context.Context, c engine.TaskContext, a 
 	if runnerID == "" {
 		return DispatchResult{}, invalid("select an Outbound Runner for this Session")
 	}
-	issue, err := s.tasks.DispatchExternalExecution(ctx, tasksvc.BotInConversation(conv), taskOrigin(source), a.ID, a.Resume, tasksvc.ExternalParams{
+	issue, err := s.tasks.DispatchExternalExecution(ctx, tasksvc.BotInConversation(conv), s.taskOrigin(source), a.ID, a.Resume, tasksvc.ExternalParams{
 		Harness: a.Harness, RunnerID: runnerID, WorkspacePath: a.Workspace, ExternalSessionID: a.SessionID, DispatchID: c.Key,
 	})
 	if err != nil {

@@ -51,9 +51,15 @@ In `apps/native`, `internal/webview` owns platform WebViews and navigation.
 `internal/bridge` serves local requests and streams SSE.
 
 `internal/channel/telegram/policy` owns Telegram channel business rules,
-including album member and seal transactions, speech claims, and staged upload
-cleanup. `internal/channel/telegram` owns receive, wake, and flush. The policy
-can use the transport's sealed `Album` type. The transport does not import policy.
+including controls, album member and seal transactions, speech claims, and
+staged upload cleanup. `internal/channel/telegram` owns receive, wake, and
+flush. The policy can use the transport's sealed `Album` type. The transport
+does not import policy. Only app imports the policy. Outside the channel tree,
+only app, server, and generated API code can import platform packages. Inside
+the tree, pairing can import platforms. Platforms do not import each other.
+The production dependency trees of Bot and Session do not include any channel
+package. Bot and Session Go code do not call platform SQL or interpret platform
+peer prefixes.
 
 ## Rules
 
@@ -79,10 +85,12 @@ can use the transport's sealed `Album` type. The transport does not import polic
   `ReceivedSource`. It scopes preview references to each bot through
   `LookupSource` and `SourceReceipt`. Platform adapters must not define
   duplicate input or pending replies from `admitted_at` and submission status
-  predicates. Before recovery, the app binds adapter staging lookups and write
-  checks to Session. Session passes the queries from the original write
-  transaction to input and Stop/Clear checks. The checks must not open a new
-  transaction or call the network. Keep platform staging SQL in the adapter.
+  predicates. Before recovery, the app binds peer rules, staging lookups, and
+  write checks to Session. Session passes the queries from the original write
+  transaction to the input and command checks for enqueue, Stop, Clear, and
+  Resume. The checks must not open a new transaction or call the network. With
+  no policy, channel operations fail. Keep platform SQL in the adapter. Keep
+  reply Outbox writes in the Session settlement transaction.
 - Keep one transcript projection in the engine for history, snapshots, and
   incremental events. Store origin, attachments, and task labels in native
   input metadata. Queued input comes from the native Inbox. Withdrawn input

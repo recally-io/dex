@@ -141,7 +141,7 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a Mo
 	if source.SessionID != conv.ID || source.Reason.String == "stopped" || source.Reason.String == "withdrawn" {
 		return MonitorInfo{}, errMonitorTarget
 	}
-	rootRequestID, chainDepth, err := monitorChain(ctx, q, source)
+	rootRequestID, chainDepth, err := s.monitorChain(ctx, q, source)
 	if err != nil {
 		return MonitorInfo{}, err
 	}
@@ -382,10 +382,10 @@ func checkMonitorCapacity(ctx context.Context, q *sqlc.Queries, sessionID int64)
 }
 
 // Follow command receipts to the first non-command source. Schedule rows already record depth.
-func monitorChain(ctx context.Context, q *sqlc.Queries, source sqlc.Submission) (string, int64, error) {
+func (s *Service) monitorChain(ctx context.Context, q *sqlc.Queries, source sqlc.Submission) (string, int64, error) {
 	var depth int64
 	for depth <= maxMonitorChainDepth {
-		if source.Kind == "message" && userOrigin(source.Origin) {
+		if source.Kind == "message" && s.ownerOrigin(source.Origin) {
 			return source.ID, depth, nil
 		}
 		if source.Kind == "wake" && source.SourceKey.String == source.ID {

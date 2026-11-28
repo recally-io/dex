@@ -115,6 +115,15 @@ func (s *Service) Main(ctx context.Context, botID string) (Session, error) {
 // Clear stores a reset only when both owners are idle. Delivery cannot pass this check. A
 // handoff is the first message of the new context; it does not start a run.
 func (s *Service) Clear(ctx context.Context, botID string, sessionID int64, requestID, origin, handoff string) error {
+	channel := isChannelOrigin(origin)
+	if channel {
+		if err := s.checkChannelPeer(origin); err != nil {
+			return err
+		}
+		if s.channelPolicy.CheckCommandIn == nil {
+			return ErrChannelUnauthorized
+		}
+	}
 	unlock, err := s.lockSession(ctx, sessionID)
 	if err != nil {
 		return err
@@ -163,8 +172,10 @@ func (s *Service) Clear(ctx context.Context, botID string, sessionID int64, requ
 			return err
 		}
 		q := s.q.WithTx(tx)
-		if err := checkTelegramControl(ctx, q, strings.TrimPrefix(requestID, "channel:"), botID, sessionID); err != nil {
-			return err
+		if channel {
+			if err := s.checkChannelCommand(ctx, q, strings.TrimPrefix(requestID, "channel:"), botID, sessionID); err != nil {
+				return err
+			}
 		}
 		if archived, err := q.SessionBotArchived(ctx, sessionID); err != nil || archived != 0 {
 			return cmp.Or(err, db.ErrBotArchived)

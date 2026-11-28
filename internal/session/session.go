@@ -123,9 +123,9 @@ type Service struct {
 	notify               func(origin string)
 	channelIntake        func(bot, origin, id string, source ChannelContext)
 	channelAdmission     func(bot, origin, id string, sub *engine.Submission)
-	channelPairing       func(context.Context, *sqlc.Queries, string, string, string) error
+	channelPolicy        ChannelPolicy
 	lookupStagedSourceIn func(context.Context, *sqlc.Queries, string, bool) (StagedSource, error)
-	checkInputIn         func(context.Context, *sqlc.Queries, string, string, Message) error
+	checkStagedInputIn   func(context.Context, *sqlc.Queries, string, string, Message) error
 	discardStagedIn      func(context.Context, *sqlc.Queries, string) error
 	changed              func(sessionID int64)
 	// OnBotArchived runs after a transaction that archived a bot has committed. Optional.
@@ -277,6 +277,12 @@ func (s *Service) Post(ctx context.Context, botID, channelKey, title, id, conten
 // Send is Post for a message with attachments, or for a new session with its own settings. When
 // neither the session nor the bot has a model, it stores nothing and returns ErrNoModel.
 func (s *Service) Send(ctx context.Context, botID, channelKey string, m Message) (int64, error) {
+	origin := inputOrigin(channelKey)
+	if isChannelOrigin(origin) {
+		if err := s.checkChannelPeer(origin); err != nil {
+			return 0, err
+		}
+	}
 	bot, err := s.q.GetBot(ctx, botID)
 	if err != nil {
 		return 0, err
@@ -293,13 +299,7 @@ func (s *Service) Send(ctx context.Context, botID, channelKey string, m Message)
 	if model == "" {
 		return 0, ErrNoModel
 	}
-	return s.enqueue(ctx, botID, channelKey, "", inputOrigin(channelKey), m, false)
-}
-
-// ConfigureChannelPairing binds the shared account and peer check before the service starts.
-// The check must use the input transaction's queries.
-func (s *Service) ConfigureChannelPairing(check func(ctx context.Context, q *sqlc.Queries, botID, peer, accountID string) error) {
-	s.channelPairing = check
+	return s.enqueue(ctx, botID, channelKey, "", origin, m, false)
 }
 
 // ConfigureChannelStaging binds adapter storage before recovery or intake starts.
@@ -309,7 +309,7 @@ func (s *Service) ConfigureChannelStaging(
 	check func(ctx context.Context, q *sqlc.Queries, botID, peer string, input Message) error,
 	discard func(ctx context.Context, q *sqlc.Queries, botID string) error,
 ) {
-	s.lookupStagedSourceIn, s.checkInputIn, s.discardStagedIn = lookup, check, discard
+	s.lookupStagedSourceIn, s.checkStagedInputIn, s.discardStagedIn = lookup, check, discard
 }
 
 // ConfigureChannelReceipts connects best-effort observations before the service starts.
@@ -329,8 +329,8 @@ func (s *Service) AcceptMessage(ctx context.Context, botID, peer, sourceKey stri
 }
 
 func (s *Service) submitMessage(ctx context.Context, botID, peer, sourceKey string, m Message, deferAdmission bool) error {
-	if NonPrivateTelegramPeer(peer) {
-		return ErrTelegramUnauthorized
+	if err := s.checkChannelPeer(peer); err != nil {
+		return err
 	}
 	m.ID = uuid.NewV7().String()
 	m.Settings = Settings{}
@@ -362,9 +362,7 @@ func (s *Service) submitMessage(ctx context.Context, botID, peer, sourceKey stri
 }
 
 func (s *Service) enqueue(ctx context.Context, botID, channelKey, sourceKey, origin string, m Message, deferAdmission bool) (int64, error) {
-	if NonPrivateTelegramPeer(origin) {
-		return 0, ErrTelegramUnauthorized
-	}
+	channelInput := sourceKey != "" || isChannelOrigin(origin)
 	complete, archived := false, ""
 	createdReceipt := false
 	var ledger *tasksvc.Ledger
@@ -386,7 +384,7 @@ func (s *Service) enqueue(ctx context.Context, botID, channelKey, sourceKey, ori
 		if sessionTitle == "" && len(m.Attachments) > 0 {
 			sessionTitle = title(m.Attachments[0].Name)
 		}
-		if channelKey == MainKey && origin != "web" {
+		if channelKey == MainKey && channelInput {
 			// Keep Main creation in the receipt transaction so a rejected input leaves no session.
 			bot, err := q.GetBot(ctx, botID)
 			if err != nil {
@@ -402,12 +400,11 @@ func (s *Service) enqueue(ctx context.Context, botID, channelKey, sourceKey, ori
 		if err != nil {
 			return 0, err
 		}
-		if err := checkTelegramControl(ctx, q, sourceKey, botID, conv.ID); err != nil {
-			return 0, err
-		}
-		telegramSource := privateTelegramSource(origin, m.ChannelContext)
-		if telegramSource {
-			if err := authorizeTelegramActor(ctx, q, botID, m.ChannelContext.AccountID, m.ChannelContext.SenderID); err != nil {
+		if channelInput {
+			if err := s.checkChannelCommand(ctx, q, sourceKey, botID, conv.ID); err != nil {
+				return 0, err
+			}
+			if err := s.checkChannelInput(ctx, q, botID, origin, m.ChannelContext); err != nil {
 				return 0, err
 			}
 		}
@@ -416,10 +413,10 @@ func (s *Service) enqueue(ctx context.Context, botID, channelKey, sourceKey, ori
 			return 0, err
 		}
 		if m.SpeechSource != "" || m.AlbumSource != "" {
-			if s.checkInputIn == nil {
+			if s.checkStagedInputIn == nil {
 				return 0, fmt.Errorf("%w: staged input check is unavailable", errSessionInvalid)
 			}
-			if err := s.checkInputIn(ctx, q, botID, origin, m); err != nil {
+			if err := s.checkStagedInputIn(ctx, q, botID, origin, m); err != nil {
 				return 0, err
 			}
 		}
@@ -437,20 +434,12 @@ func (s *Service) enqueue(ctx context.Context, botID, channelKey, sourceKey, ori
 			// A retry of an answer that is stored already must not bind or wrap it again.
 			switch _, err := q.GetSubmission(ctx, m.ID); {
 			case errors.Is(err, sql.ErrNoRows):
-				if decision, err = answerContent(ctx, q, botID, conv.ID, m.AnswersQuestion, m.Content, origin); err != nil {
+				if decision, err = s.answerContent(ctx, q, botID, conv.ID, m.AnswersQuestion, m.Content, origin); err != nil {
 					return 0, err
 				}
 				content = decision.Content
 				answers = true
 			case err != nil:
-				return 0, err
-			}
-		}
-		if peerFromOrigin(origin) != "" && m.ChannelContext.AccountID != "" && !telegramSource {
-			if s.channelPairing == nil {
-				return 0, errors.New("channel pairing check is unavailable")
-			}
-			if err := s.channelPairing(ctx, q, botID, origin, m.ChannelContext.AccountID); err != nil {
 				return 0, err
 			}
 		}
@@ -942,10 +931,6 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 		s.waiting.Delete(p.ID)
 	}
 	return nil
-}
-
-func privateTelegramSource(peer string, source ChannelContext) bool {
-	return strings.HasPrefix(peer, "telegram:") && (source.AccountID != "" || source.SenderID != "")
 }
 
 var errInputSettled = errors.New("input is no longer pending")

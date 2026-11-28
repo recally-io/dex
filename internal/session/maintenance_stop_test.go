@@ -71,6 +71,7 @@ func TestUserMaintenanceStopDefersColdCancellationUntilRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := New(r.conn, next, time.Now, nil, nil)
+	bindTestChannelPolicy(service)
 	t.Cleanup(func() {
 		_ = service.ReleaseMaintenance(context.Background())
 		service.cancel()
