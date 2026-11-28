@@ -44,8 +44,7 @@ through a reverse proxy without [turning on authentication](#deploy-an-https-ent
 
 ### Access from other devices
 
-For the native development app on Apple silicon Macs and iPhones, see
-[Dex for Apple](native/README.md). It uses the web UI from the same Dex server.
+For Apple silicon Macs, download `Dex-<tag>-macOS-arm64.zip` from [GitHub Releases](https://github.com/vaayne/dex/releases). The app needs macOS 14 or later. It has an ad hoc signature and is not notarized. Unzip `Dex.app` and connect it to your existing Dex server. On iPhone, use Safari or build the native client. See [Dex for Apple](native/README.md).
 
 The API can run shell commands, so a host that is not loopback requires an
 access token:

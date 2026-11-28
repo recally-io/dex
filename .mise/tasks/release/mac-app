@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#MISE description="Package the Apple silicon Mac app for a Dex release"
+set -euo pipefail
+
+cd "${MISE_PROJECT_ROOT:?}"
+tag=${1:-v$(<VERSION)}
+if [[ $# -gt 1 || ! $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+  echo 'Usage: mise run release:mac-app [vX.Y.Z[-prerelease]]' >&2
+  exit 2
+fi
+
+# The archive keeps the full tag. Apple's short version contains only numbers and dots.
+version=${tag#v}
+version=${version%%-*}
+archive="Dex-${tag}-macOS-arm64.zip"
+out="$PWD/.local/release/$tag"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+cd native
+unset NSGO_NOTARY_KEY
+mise exec go@1.27.3 -- go tool nsgo build -target macos_arm64 \
+  -version "$version" -build-number "${GITHUB_RUN_NUMBER:-1}" \
+  -channel none -installers=false -open=false -sign=- -notarize= -output "$work/build"
+app="$work/build/Dex-${version}-macos_arm64/Dex.app"
+ditto -c -k --keepParent "$app" "$work/$archive"
+mkdir -p "$out"
+mv "$work/$archive" "$out/$archive"
+printf '%s\n' "$out/$archive"

@@ -2,6 +2,9 @@ name: Dex
 id: io.recally.dex
 version: 0.1.0
 
+icon:
+  png: ../shared/assets/dex.png
+
 dev:
   target: native
 

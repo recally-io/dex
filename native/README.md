@@ -2,6 +2,12 @@
 
 The app opens the workspace from an existing Dex server. It does not start Dex, bundle the web UI, or store the Dex access token in the app shell.
 
+## Download the Mac app
+
+Find `Dex-<tag>-macOS-arm64.zip` and `checksums.txt` on the same [GitHub Release](https://github.com/vaayne/dex/releases). The archive contains `Dex.app` for Apple silicon and macOS 14 or later. It does not include the Dex server. Unzip the archive and move `Dex.app` to Applications.
+
+The app has an ad hoc signature. Apple has not notarized it. macOS can block it on first launch because it cannot verify the developer. See [Apple's guide to opening downloaded apps](https://support.apple.com/en-us/102445). The release does not include an installable iPhone app.
+
 ## Connect to Dex
 
 - **Mac:** The initial address is `http://127.0.0.1:8787`. Use the port of your existing server if it differs. Plain HTTP is limited to `127.0.0.1` on macOS.
@@ -90,7 +96,7 @@ xcrun stapler validate "${MAC_DMG:?Set the notarized DMG path}"
 
 ## iOS TestFlight (reference only)
 
-Register the bundle ID and create the matching App Store Connect app record. Use an App Store distribution provisioning profile and its Apple Distribution identity. A development or Ad Hoc IPA cannot be used. Configure an App Store app icon in `nsgo.yaml` if one is not set. Confirm privacy and export compliance. Use a new build number for the app version. Set `IOS_STORE_PROFILE` to the absolute profile path, `IOS_DISTRIBUTION_ID` to the signing identity, and `IOS_BUILD_NUMBER` to the next build number.
+Register the bundle ID and create the matching App Store Connect app record. Use an App Store distribution provisioning profile and its Apple Distribution identity. A development or Ad Hoc IPA cannot be used. The build uses the same 1024 × 1024 [app icon](../shared/assets/dex.png) as macOS and the web UI. Confirm privacy and export compliance. Use a new build number for the app version. Set `IOS_STORE_PROFILE` to the absolute profile path, `IOS_DISTRIBUTION_ID` to the signing identity, and `IOS_BUILD_NUMBER` to the next build number.
 
 ```sh
 mise exec go@1.27.3 -- go tool nsgo build -target ios -channel store \
