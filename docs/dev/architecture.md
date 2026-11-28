@@ -1,421 +1,136 @@
 # Architecture
 
-This document is for developers who change dex. It is an overview: the runtime,
-the data owners, the message flow, and the failure behavior. Each subsystem has
-its own document, listed in [Subsystems](#subsystems).
-
 ## Runtime overview
 
 ![Server runtime boundaries and data owners](../assets/architecture.png)
 
 Source: [architecture.puml](../assets/src/architecture.puml).
 
-dex runs HTTP, channels, business services, and bot execution in one Go
+Dex runs HTTP, channels, business services, and bot execution in one Go
 process. Business services call `internal/engine` directly. The engine uses
-[PiG](https://github.com/MichaelKinsy/PiG) for durable execution, model access,
-and MCP. The browser receives typed transcript events through SSE.
+[PiG](https://github.com/MichaelKinsy/PiG) for execution, models, and MCP.
+The browser receives typed transcript events through SSE.
 
 ## Runtime modules
 
-`apps/web/` owns the React UI. Both the server and the native app embed its build output. Node and Bun are development tools. The installed app and server do not need them. `apps/native/` owns one NSGo app for macOS, iOS, and Android. Both clients use the icon in `apps/assets/`. The server and native app share the root Go 1.27.3 module. Only the native app imports NSGo.
+`cmd/dex` and `apps/native/internal/inapp` supply the embedded `apps/web`
+handler and the factories from `plugins/builtin` to `internal/app`. The app
+connects services without importing plugin implementations. The server
+mounts the supplied Web handler at `/`. See the
+[package index](../../.agents/rules/implementation.md#modules).
 
-The root `internal/` tree is the shared core. It does not depend on `apps/`.
-`cmd/dex` and `apps/native/internal/inapp` pass the web handler to `internal/app`.
-`internal/server` mounts that handler at `/` when one is set.
-`cmd/dex` does not depend on `apps/native/`.
-`cmd/dex-agent` does not depend on `apps/` or `internal/app`.
+The root `go.mod` serves both hosts. Core packages under `internal/` do not
+import `apps/`. `cmd/dex` does not import `apps/native/`, NSGo, the PiG TUI,
+or the PiG extension host. `cmd/dex-agent` does not import `apps/` or
+`internal/app`. The `check:native` task checks these boundaries.
 
-The [native client](../../apps/native/README.md) opens a local workspace or a selected Dex server. Remote workspaces use the server's origin, sign-in, and HTTPS connection without a native script bridge. When the server is offline, the connection screen stays available.
-
-For a local workspace, `apps/native/internal/inapp` starts `internal/app` inside the native app. It exposes an `http.Handler` to the app without an HTTP server, TCP listener, or loopback connection. WebKit loads `dex-local://workspace`; Android WebView intercepts `https://local.dex.internal` without making a network request. `apps/native/internal/webview` hosts the platform views and handles navigation. `apps/native/internal/bridge` serves assets and files, dispatches same-origin API calls to the handler, and forwards SSE frames as the handler flushes them. Only the local view has this bridge. The local handler does not require sign-in. Normal server authentication and cross-origin checks stay in place. The app starts the runtime when the local workspace opens and stops it when the user switches away or the app closes.
-
-The [module index](../../.agents/rules/implementation.md#modules) defines
-package ownership. `internal/app` connects the services. `cmd/dex` and
-`apps/native/internal/inapp` pass the factories from `plugins/builtin` to `internal/app`.
-`internal/app` does not import plugin implementations. Business services call
-`internal/engine`. Platform adapters implement the `internal/channel` contract.
-`internal/channel/delivery` owns command replay, the durable Webhook Queue, and
-reply delivery. `internal/app` registers the [Telegram policy](channels.md#shared-channels)
-for Telegram business rules. Telegram accepts only private chats. The engine
-uses one native store per bot.
-Optional [inbound webhooks](channels.md#inbound-webhooks) commit events before
-acknowledging them and use the same platform receive functions. The engine does
-not import dex business packages. Each business package defines its model tools.
-`internal/app` registers those [extensions](execution.md#tool-registration)
-and selects which sessions can use them.
-
-Tools and stdio MCP servers can start child processes. Bash has a default
-600-second timeout. An omitted or null `timeout` uses the default. An explicit
-`timeout` in seconds replaces it. PiG stops the shell process group and waits for it on timeout or cancellation.
-Use `process_start` for supervised long work. It has its own timeout defaults.
-Other tools do not receive the bash or background timeout defaults. MCP calls have
-a 600-second timeout, but remote work can continue after cancellation. A generic
-deadline cannot safely stop a tool that ignores cancellation.
-Bot execution itself stays in dex. There is no backend subprocess or serialized internal protocol.
+The native app starts and stops the local runtime when the Owner opens or
+leaves a local workspace. iOS and macOS load `dex-local://workspace`.
+Android intercepts `https://local.dex.internal`. The local bridge dispatches
+API calls directly to an `http.Handler` and forwards SSE without a TCP
+listener. A remote workspace uses the server's origin and sign-in. It has
+no local bridge. See [native storage and setup](../../apps/native/README.md).
 
 ## Service and updates
 
-`cmd/dex` runs the foreground server or manages a per-user launchd or systemd
-service. A non-loopback host always requires the access token. On loopback,
-`--require-token` makes Dex use the stored token even behind a local TLS proxy.
-Definitions store serve
-arguments, a small service PATH, and a configuration record that permits partial
-reinstall across template changes. Install does not copy the shell PATH. Daily
-updates add only the selected `gh` directory. Bot tools use the login shell
-environment separately.
+`cmd/dex` manages per-user services and CLI updates. See
+[service commands and recovery](../../README.md#run-and-manage-dex).
+`internal/server` serves `/api/system/*` through `internal/sysops` for release
+settings, upgrade progress, restart, hot backups of `control.sqlite` in
+`<data dir>/backups/`, and recent logs from an in-memory buffer. Upgrade verifies the replacement binary before
+an in-place restart via `syscall.Exec`.
 
-`internal/update` verifies GitHub release assets (falling back to unauthenticated
-public release downloads when no `GH_TOKEN` or `gh` credentials are present),
-stages beside the executable, verifies the staged binary with `version`, and
-retains `dex.previous`. `internal/sysops` coordinates in-process server
-operations for `/api/system/*`: persisting the release channel (`stable` or
-`prerelease`) in `system_settings`, checking and staging releases with byte
-progress, taking `VACUUM INTO` hot backups of `control.sqlite` in
-`<dataDir>/backups/` before upgrading or on demand, capturing recent `slog`
-records in an in-memory ring buffer, and waiting on the maintenance lease before
-shutting down HTTP/App cleanly and re-execing the binary in place via
-`syscall.Exec`. `session.Service` owns a two-minute maintenance lease.
-The engine closes admission and checks active operations, durable work, and
-pending settlement and memory commits. A busy check releases the gate and
-refuses maintenance. A global gate orders receipt commits, message withdrawal,
-and Monitor cancellation with lease confirmation. After lease confirmation,
-web input returns `409` before the service writes a receipt. A web receipt
-committed before confirmation can return `202` and remain pending until release.
-Channel input can also retain a pending business receipt. Reconciliation resumes
-admission after maintenance.
-The client keeps the same request ID when it retries.
-A process restart clears the in-memory lease.
-
-A remote runner reads the server release tag when it connects. The server serves
-runner assets for that tag through `/machine/{id}/release/{file}` after machine
-authentication. It streams assets to disk and verifies each archive before it
-adds the archive to the cache. The cache keeps past tags until an operator
-removes them. `dex-agent` uses the same executable verification and replacement
-code as `dex`. If re-exec fails, `dex-agent` restores the previous binary.
-
-New transcript acquisition uses the engine maintenance admission gate because
-opening a bot can resume stored work. Existing subscriptions remain
-independent of new admission.
-`GET /api/health` exposes native readiness as `runtimeReady`.
-Startup registers saved credentials and static models before it serves HTTP.
-Network model discovery runs in the background. Health and Settings remain
-available while discovery is pending. A cold bot cannot open during discovery
-because opening resumes all its stored conversations. Its input receipts stay
-pending and reconcile when discovery finishes. Direct history, reload, and
-model checks that need discovery return `503`. SSE clients reconnect.
-Shutdown cancels discovery and waits for its work to end. Startup failure and
-shutdown use one cleanup path. Cleanup stops scheduler jobs and channel bots
-before the session consumer, then closes execution resources and business storage.
-
-See [service commands and recovery](../../README.md#run-and-manage-dex).
+`session.Service` owns the two-minute maintenance lease. The engine closes
+admission and checks active operations, durable work, settlement, and memory
+commits. If busy, it reopens admission. A global gate orders receipt commits,
+withdrawal, and Monitor cancellation with lease confirmation. After confirmation,
+Web input gets `409` before receipt creation. Earlier commits can return `202`
+and remain pending. Channel input can also retain a pending receipt. Clients
+retry with the same request ID. Lease release or expiry resumes admission.
+A restart clears the in-memory lease. The gate also blocks new transcript
+acquisitions that can open a Harness, without closing existing subscriptions.
 
 ## Data ownership
 
-`control.sqlite` holds business facts: settings, bots, sessions, input
-receipts, channel pairings, the Webhook Queue (`channel_webhook_queue`), the Outbox,
-Tasks and their ledger (`tasks` and `task_entries`),
-and plugin tables. Core migrations own
-the core tables. Each enabled plugin applies its own `plugin_<name>_` tables at
-start ([plugins](plugins.md#plugin-migrations)). The Bot directory remains
-`<data dir>/agents/<id>/` across upgrades. It holds `workspace/`, `artifacts/`,
-`.agents/`, and `state.sqlite`. The last file holds native admission, runs,
-transcripts, and tool calls. Only the engine opens a bot execution store, and business
-code calls typed engine methods instead of reading it.
+`control.sqlite` holds settings, Bots, Sessions, input receipts, channel
+pairings, queues, Tasks, and plugin data. Core and plugin migrations own
+separate tables. See [plugin migrations](plugins.md#plugin-migrations).
 
-The standalone server defaults to `~/.dex`. `DEX_DATA_DIR` can change that
-path. The native app connects to a standalone server over HTTP or HTTPS.
-
-The in-process local workspace stores data in the `dex` subdirectory of NSGo's
-`cx.DataDir()`. On macOS, the default is
-`~/Library/Application Support/io.recally.dex/dex`. On iOS and Android, the
-path is inside the app's private data directory. Only macOS uses a non-empty
-`DEX_DATA_DIR` from the app's environment in place of this default. A file lock
-prevents two Dex runtimes from opening the same data directory.
+Each `<data dir>/agents/<id>/` holds a workspace, artifacts, `.agents/`, and
+`state.sqlite`. Only the engine opens the execution store. It owns native
+admission, the native Inbox, runs, transcripts, and tool calls. Business
+services use typed engine calls. A file lock prevents two runtimes from
+opening the same data directory.
 
 ## Message flow
 
-![Message flow](../assets/message-flow.png)
+![Native admission and business receipt settlement](../assets/message-flow.png)
 
-Source: [message-flow.puml](../assets/src/message-flow.puml)
+Source: [message-flow.puml](../assets/src/message-flow.puml).
 
-1. The browser opens `GET /api/bots/{botId}/sessions/main`, then sends
-   `POST /api/bots/{botId}/sessions/{sessionId}/messages` with a client UUID.
-   `session.Service.Send` rejects ordinary input when no model is selected.
-   It records the input intent and origin in `control.sqlite`.
-2. The session service creates an execution conversation on first use and stores
-   its reference. It calls `Bots.Submit` with the UUID as the stable native
-   request ID. PiG commits admission before it returns a handle. Only then
-   does the session service set `admitted_at` on the business receipt.
-3. If admission or the receipt write fails, reconciliation retries the same
-   request ID. A pending receipt alone does not prove native admission and
-   must not suppress that retry. Each Session has an independent delivery gate
-   and retry delay. SQLite receipt insertion order defines FIFO in that Session.
-   A blocked input does not hold the delivery gate of another Session of the same Bot.
-   Cold Harness initialization still waits for shared model discovery, extension
-   and MCP loading, and recovery. It publishes the Harness without opening the
-   default Runner. A Session opens the lease it needs after that shared barrier.
-   Sessions that select the same Runner can share its lease.
-   The engine does not hold its lease registry lock during remote preparation.
-   Receipt creation and native admission have distinct timestamps. Structured
-   logs correlate Session waits, native start, and settlement without logging
-   message content or remote errors. See the [slow input procedure](sessions.md#diagnose-a-slow-session-input).
-4. The engine runs the model and tools. Each browser subscription receives
-   typed transcript events through `live.Hub`. Queued input comes from the
-   native Inbox, not from a second control transcript.
-5. The session service waits on the native handle and stores the outcome in the
-   business receipt. The same transaction queues eligible final replies for the
-   channel input's destination. Each Outbox row delivers one platform message.
-   `notify_user` and Automation alerts queue messages without waiting for a
-   model outcome. A restart reacquires native outcomes by request ID; it does
-   not restart a second execution loop in control.
-   Telegram and Feishu/Lark status reactions observe these facts independently
-   of the outbox. See [Channels](channels.md#shared-channels).
+1. The client sends a message with a request ID. The session service saves
+   its intent and origin. It rejects ordinary input without a selected model.
+2. The session service creates and links an execution conversation on first
+   use. It calls `Bots.Submit` with the stable request ID. PiG commits admission
+   before returning a handle. Only then does control write `admitted_at`.
+3. If either write fails, reconciliation submits the same ID. A pending
+   business receipt alone does not prove native admission. Sessions have
+   independent delivery gates and retry delays. Receipt insertion order sets
+   the order within a Session. See [slow input diagnosis](sessions.md#diagnose-a-slow-session-input).
+4. The engine runs the model and tools. `live.Hub` streams the engine's typed
+   events. Queued input comes from the native Inbox.
+5. The session service stores the native outcome. The same transaction adds
+   any eligible channel reply to the Outbox. See [reply routing](sessions.md#input-and-replies)
+   and [shared delivery](channels.md#shared-channels).
 
-HTTP requests and paired channels authenticate at their entry points. Both
-represent the same Owner. Disconnecting a channel ends its reply route. It
-does not remove the authority of an input that Dex already accepted. See
-[Pairing and pending deliveries](channels.md#pairing-and-pending-deliveries).
+The two stores do not share a transaction. An interrupted creation or fork can
+leave an unreferenced native conversation. A restart reacquires admitted work
+by request ID. It does not guarantee that external actions occur once.
 
-A fork request can carry a UUID. Control commits its receipt with the new Session.
-A retry with the same source and boundary returns that Session; a mismatch returns
-`409`. A concurrent retry can create an extra native conversation before control
-rejects its receipt. That conversation has no control reference and is invisible.
+## Startup and shutdown
 
-Manual and automatic compaction use the native range selection and keep recent
-context unchanged. Dex supplies a local view of older context instead of calling
-a model for a summary. The view contains selected user and assistant text, with
-native entry IDs. It is limited to 4 KiB, including up to 1 KiB of manual compact
-instructions. It does not copy tool output, thinking, or attachments. Compaction
-does not delete entries from session history or change who can read them.
+Startup registers saved provider credentials and static models before HTTP
+starts. Network discovery runs in the background. `GET /api/health` exposes
+readiness as `runtimeReady`. Health and Settings remain available during
+discovery. A cold Bot cannot open during discovery, so its receipts can stay
+pending. History, reload, and model checks that need discovery return `503`.
+SSE clients reconnect. Cold open loads shared extensions and MCP before
+publishing a Harness. Each Session opens its Runner lease after that barrier.
 
-Manual compact with a UUID runs at most once per ID. Control records the session and
-instructions before the native call. The native transaction commits a request
-record with the compaction task. Every retry calls native admission again, so a
-control receipt alone cannot suppress a task that did not commit. A synchronous
-failure can be retried with the same ID. A crash after native commit does not
-create a second task. The control receipt also prevents reuse across bots.
-
-A client retry with the same UUID reuses the input intent and native admission.
-The session, input kind, text, attachments and send mode must match the first request.
-An omitted mode is the same as `followUp`. A mismatch returns `409`.
-The two stores do not share a transaction. Stable request IDs and receipt
-reconciliation cover the gap between their commits.
-
-## Subsystems
-
-Each subsystem has its own document. This overview gives only the boundaries.
-
-| Document                                              | Covers                                                                 |
-| ----------------------------------------------------- | ---------------------------------------------------------------------- |
-| [Bots](bots.md)                                       | Bots and the HTTP API, settings, memory, and bot tools                 |
-| [Sessions](sessions.md)                               | Main, Web sessions, child sessions, internal delegation, and Runners   |
-| [Tasks](tasks.md)                                     | Board, the Task ledger, access rules, Sources, and external runs       |
-| [Plugins](plugins.md)                                 | Optional Task sources: GitHub, Webhook, email, and the plugin boundary |
-| [Execution](execution.md)                             | The native engine boundary, background commands, and transcripts       |
-| [Files](files.md)                                     | Artifacts, file results, channel file delivery, and attachments        |
-| [Channels](channels.md)                               | Telegram, shared channels, Feishu and Lark, and WeChat                 |
-| [Skills and Integrations](skills-and-integrations.md) | Skills, MCP servers, the secret vault, `AGENTS.md`, and reload         |
-| [Automations](automations.md)                         | Schedules, runs, and results                                           |
-
-## Failure behavior
-
-- **dex exits.** On a graceful exit, dex stops its background commands and
-  stores `stopped`. After a crash, their rows show as `unknown` at the next
-  start and the processes can remain. Native execution and business receipts remain in their
-  separate SQLite stores. The next start registers interrupted child sessions before
-  Harness resume and reconciles input admission and receipt outcomes. A stable
-  request ID reacquires admitted work instead of creating another input.
-  This does not guarantee that external tool actions occur once.
-- **Admission succeeds but the receipt write fails.** Reconciliation submits
-  the same request ID, reacquires the native handle, and writes the receipt.
-  A pending receipt that never reached PiG is retried too.
-- **Crash between execution creation and saving its reference.** An empty
-  native conversation can remain. The next attempt creates a conversation.
-- **A native watch ends or a bot reloads.** The SSE connection closes.
-  The browser reconnects and receives a new snapshot.
-- **Model or tool error.** The submission becomes `unanswered` with a reason.
-  The transcript shows an error item. A tool call that ended without a result
-  shows as failed.
-- **Crash between a memory edit and its commit.** The engine commits the
-  change as `Recover uncommitted memory changes` when it opens the memory
-  again.
-- **Dream fails or stops.** Its message becomes `unanswered`, and the next
-  dream, 24 h later, reads the same messages again.
-- **dex not running at an automation's time.** The next check runs the newest
-  missed time when it is at most 1 h old; otherwise it records that time as
-  skipped. It ignores the older missed times.
-- **Telegram API error.** The bot retries `getUpdates` after 5 s, from the
-  first update that it did not store. The Outbox retries temporary send errors
-  with backoff and resumes after restart. A permanent error marks the delivery
-  failed and does not block other peers. Telegram does not provide an idempotency
-  key, so a crash before the local receipt commit can duplicate the message.
-- **WeChat API error.** A temporary receive or runtime read error retries after
-  5 s without a settings change or cursor advance. A permanent destination
-  rejection marks the delivery failed. Either `ret == -14` or
-  `errcode == -14` pauses API calls for 1 h and sets status to `needs_login`.
-  A fresh QR login clears the pause and wakes the sender. Pending replies
-  remain available for delivery.
+Shutdown cancels and joins discovery. The cleanup path also handles startup
+failure. It stops scheduler jobs and Channels before the session consumer,
+then closes execution resources and business storage. Recovery registers
+interrupted child work before Harness resume. Reload or an ended native watch
+closes its SSE stream. The browser reconnects for a new snapshot.
 
 ## Security
 
-In `local` mode, bot tools (`read`, `write`, `edit`, `bash`) run on the host
-without a sandbox, inside the selected project directory or bot workspace.
-Bots that use a remote Runner inherit its process environment.
-dex sends the configured 1Password credentials and only the vault values that
-an individual command requests. The HTTP server listens on
-`127.0.0.1:8787` by default. A loopback service needs no sign-in unless
-`--require-token` or a foreground `DEX_TOKEN` enables it. A non-loopback
-service always protects the admin API. Before you expose a loopback service
-through a TLS proxy, follow the [authenticated HTTPS setup](../../README.md#deploy-an-https-entry-point).
-A chat channel must allow only known user IDs: the settings refuse a
-Telegram bot without allowed users. WeChat captures the owner ID from QR
-confirmation and rejects a login without that ID. Other WeChat senders never
-reach the bot. The API refuses cross-site writes
-(`http.CrossOriginProtection`), so another web page in the user's browser
-cannot send messages or change settings. [Channel approval pages](channels.md#owner-channel-tools)
-use the same cross-origin check. When dex requires sign-in, channel approval
-pages require a web session cookie.
+The Local Runner and control-host stdio MCP servers run as the Dex user. They
+can read files that user can read. A Machine Runner uses its own account's
+permissions. See [Runner selection](sessions.md#session-runners) and
+[tool environment and vault](skills-and-integrations.md#tool-environment-and-mcp).
 
-`control.sqlite` holds provider keys, manual channel tokens, WeChat context
-tokens, plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain
-text. Telegram manager and managed bot tokens stay in the private [vault](skills-and-integrations.md#secret-vault).
-WeChat logs exclude credentials and remote error text. Dex creates the data
-directory with mode 0700. The API never returns a key or a token.
+The HTTP API checks access tokens on non-loopback listeners and uses
+`http.CrossOriginProtection` for cross-site writes. Before exposing the
+loopback listener through a proxy, follow the [HTTPS setup](../../README.md#deploy-an-https-entry-point).
+Paired private input has Owner authority. Revoking a pairing ends its reply
+route without revoking input that Dex already accepted.
 
-Uploads: a file name with a path, a control character, or more than 255
-bytes is refused. An upload ID must be a UUID in its normal form, so it
-cannot leave the uploads directory. `GET /api/bots/{botId}/uploads/{id}` sends PNG, JPEG,
-GIF and WebP inline with their type, and every other file as
-`application/octet-stream` with `Content-Disposition: attachment`. All
-responses have `X-Content-Type-Options: nosniff`, so an uploaded HTML or SVG
-file does not run in the dex origin.
+Dex creates its data directory with mode `0700`. Restrict access to the
+complete directory and its backups. `control.sqlite` can contain plaintext
+provider and channel credentials, Source secrets, and message bodies. Managed
+Telegram credentials, vault entries, and MCP OAuth grants use private encrypted
+files. Treat shared memory as input data. A poisoned memory entry can reach
+later Sessions; Git history records the edits.
 
-A stdio MCP server runs on the control host as the dex user, without a
-sandbox. It gets the explicit bot environment plus its own `env`.
-`control.sqlite` stores any plain MCP credentials in declarations as plain
-text, within the same trust boundary as provider keys. Use vault references
-in `env` and `headers`. The Web Add dialog saves secret header values to the
-vault. Dex keeps static headers on the configured origin. The Integrations API
-and `mcp_server_list` show status,
-tool names, and the unresolved references. `mcp_server_get` hides plain
-environment and header values and URL queries. A failed server shows a safe
-error, such as an HTTP status or the name of a missing secret. To see the full
-error, run the server by hand. Remote HTTP MCP connections can use
-[browser OAuth](skills-and-integrations.md#mcp-browser-authorization). Dex stores those
-grants in private vault files and sends bearer tokens only to the authorized
-MCP endpoint.
+## Subsystems
 
-Every session reads the memory, including Telegram chats of each allowed user.
-A memory entry can carry a prompt injection from a web page or a file to
-later sessions; the rules tell the bot that memory is data, not instructions,
-and git history shows each change.
-
-Control does not log the Telegram token. Bot API errors drop the request URL,
-which holds the token. Local tool and stdio MCP processes receive the login
-shell environment and the configured 1Password credentials. A call or server
-can override variables explicitly. The engine does not change the dex process
-environment. The login shell starts from six process keys, so dex settings
-such as `DEX_TOKEN` do not reach tools unless a shell rc file exports them.
-
-The [vault](skills-and-integrations.md#secret-vault) encrypts shared and bot-level
-secrets with age. Only the control host resolves references. It passes values
-in the process environment, not in command arguments. It masks exact values
-in final tool results and Process wake-ups. Local tools run as the dex
-user and have the same access to the control files as that user.
-
-## Limits
-
-- Harnesses stay open until shutdown or reload of that bot.
-- The memory repo is local; dex does not pull or push. Two sessions that change
-  the memory at the same time can land in one commit, under the source of
-  the session that settles first.
-- An MCP server that drops its connection stays down until a reload.
-- dex does not delete uploads. A file that the user removes before sending,
-  or that a message never uses, stays in `workspace/uploads/`. The files are
-  in the bot workspace, so the bot's tools can change or delete them; the
-  transcript then shows the changed file, or a broken link.
-
-## Simplification review
-
-Keep the native execution boundary. The engine owns execution and transcript
-state. Business services own receipts, channel reply delivery, child session links, and
-settings. Business code calls typed methods and never reads execution SQLite.
-The two stores retain separate responsibilities inside one process.
-
-The API uses the automation service types and `bot.Bot` through
-OpenAPI `x-go-type` declarations. The generated API depends on those services;
-the services do not depend on HTTP types. This removes a second model and the
-field conversion layer. The Go JSON tags must match the OpenAPI schema. HTTP
-tests check empty arrays and optional fields at this boundary.
-
-Provider responses keep their own API type. The service's provider input can
-hold an API key. The response type cannot hold that key. Keep this conversion
-as the boundary that prevents secrets from reaching the browser.
-
-Keep input intents and channel delivery work in SQLite. A coalesced wake
-signal triggers reconciliation; it does not carry work. Native request IDs
-make repeated admission safe. The in-memory waiting set only joins outcomes;
-it is not the source of execution state.
-
-Keep one transcript projection in the engine. History, snapshots, and live
-events use durable entries and the native Inbox. The live hub owns transport
-and empty-session attachment, with no second transcript or execution model.
-The Web client also displays [explicit Web notifications](sessions.md#web-notifications).
-That projection does not write native entries.
-
-The tests cover separate behavior and failure cases. Keep restart, duplicate
-message, multiple browser streams, model errors, tool results, and DST cases.
-Do not remove these cases to reduce the test file size. The schedule iterator tests cover time arithmetic in isolation.
-
-## Session Monitors
-
-The scheduler reads due rows in `control.sqlite` (`monitors`).
-
-Main and writable Sessions, including child Sessions, can set Monitors and start Processes.
-Dreams have neither tool group. Both groups use the same `monitors` extension.
-`monitor_list` lists only scheduled and check Monitors in the calling session.
-`monitor_cancel` accepts the `schedule-` ID from the tool or the raw ID from
-HTTP. The session shares a cap of 32 active Monitors and Processes. Both types
-of wake-up count toward the same depth limit of six.
-
-`monitor_set` takes `at` or `delaySeconds`, and a prompt. Use
-`maxRuns` (1–100), `intervalSeconds` (at least 60 for multiple runs), and an
-optional `expiresAt` for repeated checks. A check Monitor takes `checkCommand`.
-Repeated and check Monitors have a maximum lifetime of seven days. `env` is
-valid only with `checkCommand`. It overrides environment variables for that
-check. Use non-secret values: dex stores these arguments.
-
-`process_start` starts a [Process](execution.md#session-processes).
-It can wake the session on exit or in batches of stdout lines. Use `wake: none`
-for a command that sends no wake-up. A bot can run at most eight commands.
-
-Checks use the target session's Bash environment, variables, and saved
-project directory. Dex does not use a separate sandbox or give the check new
-credentials. Exit `0` saves a baseline on the first success and queues only
-when the SHA-256 of the combined output changes. Exit `10` queues a terminal
-event even when the output did not change. The shell has a 20-second timeout.
-Check output must fit in 16 KiB for comparison. Dex does not save or inject the
-raw output. Timeout, oversized comparison output, and other nonzero exits
-stop the Monitor with a visible failure. Each attempt counts toward the run
-limit. Dex does not replay missed intervals or overlap checks.
-
-A script claim is durable. On restart an unfinished claim stops with an
-interrupted outcome, rather than rerunning a command whose effect is not
-known. A committed baseline and the next due time survive restart. Dex
-commits the result and any follow-up intent together with a stable request
-ID. The scheduler still checks due Monitors in one serial batch. A finish can
-wait for its own Session gate so it cannot race explicit Monitor cancellation.
-Ordinary inputs do not use the scheduler. The normal Session dispatcher admits
-the Monitor intent as a follow-up. Session cancellation, Clear, Monitor
-cancellation, archive, and changed target authority block stale results.
-The engine's Stop entry point applies task or Session cancellation. A task
-Stop uses the exact native task ID and leaves Monitors alone. See
-[Sessions](sessions.md) for child results and native input recovery.
-Child results use `session_result`, Monitor and Process wakes use `wake`, and
-[Task wakes](tasks.md#coalesced-main-wakes) use `task_wake`. Monitor
-cancellation is a separate action. Dex rechecks the target before native admission. Cancellation
-withdraws any Monitor inputs that are still queued. It does not interrupt a
-prompt that already started. An in-flight check can finish within its time
-limit, but it cannot queue a new prompt after cancellation. Dex does not move
-a scheduled check to a different Session, Runner, or project directory.
-[Automations](automations.md) use a separate scheduling path.
+- [Bots](bots.md): settings, memory, and archive.
+- [Sessions](sessions.md): Main, child sessions, and Runners.
+- [Tasks](tasks.md): Board, Task access, and external runs.
+- [Plugins](plugins.md): optional Task Sources.
+- [Execution](execution.md): engine, transcript, Monitors, and Processes.
+- [Files](files.md): artifacts, uploads, and channel file delivery.
+- [Channels](channels.md): pairing, Webhook Queue, and Outbox.
+- [Skills and Integrations](skills-and-integrations.md): skills, MCP, vault, and reload.
+- [Automations](automations.md): schedules, runs, and results.

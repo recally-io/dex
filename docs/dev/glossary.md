@@ -8,8 +8,7 @@ storage, and execution boundaries.
 - **Owner**: The person who operates the Dex instance, its Bots, and its paired
   Channels.
 - **Bot**: An assistant with its own model, instructions, skills, default
-  Runner, Channels, and Automations. Its directory remains `<data dir>/agents/<id>/`
-  across upgrades. A Telegram bot token belongs to a Channel.
+  Runner, Channels, and Automations. Its directory is `<data dir>/agents/<id>/`. A Telegram bot token belongs to a Channel.
 - **Session**: A Bot's transcript and execution context. **Main** is shared
   by Web and Channels. The Owner can open a separate writable Web Session.
   A **child Session** has a parent, possibly in another Bot. A separate
@@ -18,7 +17,7 @@ storage, and execution boundaries.
   **Assignee** is the Bot responsible for it. A **Reviewer** can be the Owner
   or another Bot. Tasks can have subtasks, sibling dependencies, and linked
   Sessions across Bots. See [Tasks](tasks.md).
-- **Automation**: A recurring schedule that sends a prompt to its own Session
+- **Automation**: A schedule that sends a prompt to its own Session
   or a bound Session. A run requires an explicit outcome report.
 - **Project**: The selected working directory (`cwd`) for a Session or
   Automation. It provides project skills and `<cwd>/AGENTS.md`.
@@ -26,7 +25,7 @@ storage, and execution boundaries.
 ## Views and navigation
 
 - **Bots**: Select a Bot. Its workspace has **Sessions**, **Automations**, and
-  Bot **Settings** (General, Skills, Integrations, Secrets).
+  Bot **Settings**, with separate Integrations, Channels, and Secrets pages.
 - **Board** (`/board`): The single global workspace across Bots. It shows Tasks,
   **Needs you**, and grouped Automation **Updates**. **Board attention** covers
   active questions, Owner reviews, Automations that need a model, held Source
@@ -74,8 +73,6 @@ storage, and execution boundaries.
 - **Source**: An inbound event feed, such as GitHub, Webhook, or Email. Its
   **Plugin** implements routing to Tasks through the core event store. Source
   switches apply at server restart.
-
-Skills, Channels, MCP servers, and Sources do not share a runtime abstraction.
 
 ## Internal terms
 

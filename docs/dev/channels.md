@@ -8,9 +8,8 @@ This document describes the channel adapters and how they share delivery.
 have a bot token. By default, it reads messages with `getUpdates` long polling,
 so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-webhooks).
 
-- Paired private chats share Main. The adapter ignores all non-private messages,
-  edits, and callbacks before it handles commands or downloads files. A saved
-  token without allowed users waits for pairing.
+- Paired private chats share Main. The adapter accepts messages, edits, and
+  callbacks only from private chats. A token with no allowed user waits for pairing.
 - The Telegram channel page creates a link with the bot username from `getMe` and a
   random code. The code expires after 10 minutes. `telegram_settings` stores
   the code and expiry. Pairing is available only while the allowlist is empty. One atomic SQLite
@@ -63,11 +62,8 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
   record. Location, contact, and poll inputs keep their available fields as text.
   Quoted files are not downloaded. Media bytes alone do not prove that a model
   can understand their content.
-- Incoming albums persist each member before polling can acknowledge it. A batch
-  closes after 800 ms without a new member, 3 seconds from its first member, or
-  ten files. Admission uses the existing native input path. Source aliases stay
-  available after temporary input data is cleared. Late members form an explicit
-  continuation. Each outgoing file has its own Outbox row. The sender keeps the byte snapshot until the row ends.
+- See [file delivery and albums](files.md#telegram) for batch limits, replay,
+  and outgoing file snapshots.
 - Transcription is off by default. `options.stt` requires a saved custom
   provider, an audio model, and consent to send audio. The provider must have
   an explicit base URL and support OpenAI-compatible `/audio/transcriptions`.
@@ -76,9 +72,10 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
   stay references in storage. Channel settings contain no second API key. HTTPS is required except
   for loopback HTTP. Redirects, provider fallback, and automatic provider retries
   are disabled. Audio can leave the host and can incur provider charges.
-- Transcription defaults are 30 seconds per request, 20 MiB per input or response,
-  and 300 seconds of Telegram-reported input duration.
-  STT does not decode audio to verify duration. `telegram_effects` retains staged
+- Transcription defaults to 30 seconds per request, 20 MiB per input, and
+  300 seconds of Telegram-reported duration. The response limit is the smaller
+  of 64 KiB and the configured byte limit. Dex does not decode the audio to
+  verify duration. `telegram_effects` retains staged
   upload ownership and provider results before native admission. It clears staged
   references after a business or album receipt owns the upload. Empty, failed, or
   unknown transcription keeps the original audio and an explicit note. Unknown
@@ -264,9 +261,9 @@ message bodies and channel credentials.
 
 ## Shared channels
 
-The app owns a registry with one Manager per bot. Startup restores all bots' bots.
-Creating a bot adds its Manager. Shutdown stops all Managers before the database closes.
-Uploads use the bot's bot directory. Session notifications
+The app creates one Manager for each active Bot. The Manager runs that Bot's
+configured channels. Shutdown stops all Managers before the database closes.
+Uploads use the Bot's workspace. Session notifications
 wake all Managers; each Manager reads only its bot's replies and commands. This fan-out
 is a limit: route notifications by bot if wakeups become costly.
 
@@ -310,12 +307,9 @@ checks the actor, target, and context revision in the callback claim
 transaction. The Session service checks them again in the effect transaction.
 A native rejection settles the input receipt without setting `admitted_at`.
 
-A peer names a remote destination, such as `telegram:7`. Owner input from all
-channels enters the bot's bot `main` session with that peer as origin.
-Dex checks pairing at intake. The source receipt saves the account and peer for replies and labels the transcript.
-Channel input cannot select a session. The Sessions list excludes
-per-peer sessions. Main and separate Web sessions are writable on the web. Automation
-transcripts have no web composer.
+A peer names a remote destination, such as `telegram:7`. Owner input from all channels enters Main with that peer as origin. Dex checks
+pairing at intake. The receipt saves the account and peer. Ordinary channel
+input cannot select a Session. See [reply routing](sessions.md#input-and-replies).
 
 `/clear`, `/new`, `/stop`, and `/help` use durable command
 receipts. `/clear` and its alias `/new` use `channel:<source key>` as the stable
@@ -346,7 +340,9 @@ messaging platform like any other message.
 
 Each platform has one durable sender. All platform message bodies, including command acknowledgements and Automation alerts, go through the Outbox. Direct channel inputs can queue final replies or a short error. Ordinary Web and background output stay in the transcript. Background runs can call `notify_user` to queue a message before the run ends. The tool uses the configured default or an explicit paired channel. If a platform has multiple targets, specify `channel:target`.
 
-The key `(event_id, channel, target)` identifies one message. An event can have independent deliveries to different destinations. The sender freezes the platform message before it sends. Confirmation marks it `sent`. Temporary errors keep it `pending`, with backoff from 5 to 320 seconds or the platform wait if longer. A permanent rejection marks it `failed`. No failure changes the destination. Feishu and WeChat use a stable key for retries. Telegram can duplicate a message if the platform accepts it before a crash and the receipt does not commit. The sender checks that the Outbox row is still pending immediately before each send. The Telegram policy binds callback buttons to the remote message in the same transaction that records confirmation.
+The key `(event_id, channel, target)` identifies one message. An event can have independent deliveries to different destinations. The sender freezes the platform message before it sends. Confirmation marks it `sent`. Temporary errors keep it `pending`, with backoff from 5 to 320 seconds or the platform wait if longer. A permanent rejection marks it `failed`. A temporary failure also expires
+when the row is at least 24 hours old and has at least 20 attempts.
+No failure changes the destination. Feishu and WeChat use a stable key for retries. Telegram can duplicate a message if the platform accepts it before a crash and the receipt does not commit. The sender checks that the Outbox row is still pending immediately before each send. The Telegram policy binds callback buttons to the remote message in the same transaction that records confirmation.
 
 Telegram and Feishu/Lark can show status on an authorized incoming message.
 `delivery` starts observing only after the input intent commits. The native
@@ -461,7 +457,7 @@ server's reconnect interval. A socket with no data for two ping intervals
 reconnects. A pong that changes the ping interval also resets the next ping.
 The ping timer and read deadline use the same interval.
 Fragment buffers expire after 5 seconds. One connection allows at most 64
-fragmented events, 256 fragments per event, and 4 MB per event.
+fragmented events, 256 fragments per event, and 4 MiB per event.
 
 The Feishu channel page shows runtime status and supports QR app creation and
 manual credentials. The form keeps the saved Feishu or Lark brand unless the
@@ -470,8 +466,7 @@ user changes it. QR setup requests `im:message`, `im:message.p2p_msg:readonly`, 
 until approval or expiry. Registration requests release the settings lock
 while they wait for the accounts service. Cancellation or replacement rejects
 late responses. Lark tenants use the Lark accounts service. Setup
-saves the creator's `open_id` with the app credentials through
-`settings.Service`. Manual setup requires a one-time code sent in a private
+saves the creator's `open_id` with the app credentials through `bot.Service`. Manual setup requires a one-time code sent in a private
 message. The code expires after 10 minutes. A credential change clears owner
 authorization. The settings API never returns the saved app secret.
 
@@ -486,16 +481,17 @@ place.
 The bot ignores groups and other users. Text mentions are removed. Rich posts
 become text and image attachments. Code blocks keep their text and language
 in Markdown fences. Repeated `/pair` messages never reach the bot.
-Message resources pass through `upload.Store`, with its 20 MB file limit and 10 attachments per message.
-The shared channel manager handles `/clear`, `/new`, `/stop`, `/help`, and `/feedback`. A source key contains `feishu:<app ID>:<message ID>`. The WebSocket receiver acknowledges valid bot
-input after durable admission succeeds. Invalid content, rejected resource access,
+Message resources pass through `upload.Store` with a 20 MiB limit per file
+and 10 attachments per message. The shared manager handles ordinary commands.
+The source key is `feishu:<app ID>:<message ID>`. The WebSocket receiver
+acknowledges valid input after the business receipt commits. Invalid content, rejected resource access,
 and files with invalid names or excessive size are acknowledged and ignored.
 Storage and temporary platform failures get a 500 acknowledgement for retry.
 A rejected resource removes uploads already saved by that attempt. After input
 admission, cleanup removes files only when no stored receipt owns them. An
 uncertain receipt lookup keeps the files.
 
-Feishu sends one final card and no preview. A long answer sends an extract and keeps the full answer in Web. Feishu uses a stable UUID derived from the delivery ID. A definite card rejection with code `230001` allows a plain text fallback. Other errors do not change the format.
+Feishu sends one final card without a preview. Outbound media are not supported. A long answer sends an extract and keeps the full answer in Web. Feishu uses a stable UUID derived from the delivery ID. A definite card rejection with code `230001` allows a plain text fallback. Other errors do not change the format.
 Network failures, server errors and rate limits get at most
 3 attempts per token. JSON calls and downloads share authorization and one
 token refresh. A token rejection can therefore cause up to 6 API attempts,
@@ -505,11 +501,9 @@ WebSocket downloads use the socket session context. Webhook downloads use the
 bot context.
 Durable admission uses the bot lifetime, so a disconnect cannot cancel a stored
 message while it waits for queue space. JSON responses remain
-bounded to 4 MB and download error responses to 1 MB. Retry delays are
+bounded to 4 MiB and download error responses to 1 MiB. Retry delays are
 200 ms and 800 ms; `Retry-After`
 can extend a delay to at most 2 seconds. Reply delivery remains at least once.
-The standard `mise run check` task includes local platform tests and native HTTP
-E2E tests for Feishu. These tests make no real platform requests.
 
 ## WeChat
 
@@ -539,18 +533,14 @@ The settings API does not return them. Login initializes the runtime row; bot
 reads use SELECT. A missing row is a storage invariant error and retries with
 an error status.
 
-Message IDs retain the full protocol `uint64` range. Context watermarks use
-20-digit decimal TEXT so SQLite can compare them without signed truncation.
-The context guard retains the existing assumption that larger message IDs are
-newer. The [official Tencent client 2.4.10](https://registry.npmjs.org/@tencent-weixin/openclaw-weixin/-/openclaw-weixin-2.4.10.tgz)
-declares `uint64` IDs but provides no
-numeric chronology guarantee in its protocol types or receive loop. This
-assumption remains unverified; no new ordering mechanism is introduced.
+Message IDs use the full `uint64` range. SQLite compares zero-padded
+20-digit text watermarks. Dex assumes that larger IDs are newer. Platform
+ordering is unverified.
 
 Text and voice transcription become message text. Quoted text gets a
 `[引用: ...]` prefix. A video becomes a placeholder. Images and files pass
 through CDN download and AES-128-ECB decryption into `upload.Store`, with the
-same limits as web uploads: 10 files per message and 20 MB per file. Invalid
+same limits as Web uploads: 10 files per message and 20 MiB per file. Invalid
 media is rejected. CDN HTTP 408 and 429 are temporary failures. A temporary
 download or storage error keeps the batch cursor unchanged. Existing submission
 and command receipts are checked before attachment downloads. An interrupted
@@ -560,4 +550,7 @@ removes its new uploads before admission. Admitted submissions keep their files.
 While a submission is pending, the bot sends typing status every 5 s. Final
 answers keep supported Markdown. Long answers send an extract and refer to Web.
 Unanswered submissions send a short error message. The durable sender reads
-the saved context token before each send, including after a restart.
+the saved context token before each send, including after a restart. A temporary
+receive or runtime read error retries after 5 seconds. Either `ret == -14` or
+`errcode == -14` pauses calls for one hour, sets `needs_login`, and keeps pending
+replies. The pause survives restart. A fresh QR login clears it and wakes the sender.

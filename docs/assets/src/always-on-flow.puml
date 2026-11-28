@@ -17,36 +17,38 @@ skinparam BackgroundColor #ffffff
 title dex: User and System Turns
 top to bottom direction
 
-rectangle "User inputs\nWeb / Telegram / Feishu / WeChat" as user_in
+rectangle "User inputs\nWeb / Telegram / Feishu / Lark / WeChat" as user_in
 rectangle "Internal producers\nChild results, Process and Task wakes" as sys_in
+rectangle "Automation scheduler" as auto
 database "monitors\nPrompt or script; bounded runs and lifetime" as monitors
 rectangle "Scheduler\nCheck target and claim due work" as sched
 
 database "Input Queue (submissions)\nDurable receipts and deduplication" as queue
 
 package "Native PiG session run (QueueAll boundary batching)" as run {
-  rectangle "User Turn\nlive.Run.Inputs has user message\nLive stream + auto reply on settle" as user_turn
+  rectangle "User Turn\nAt least one user input in the answer\nLast user input selects the route" as user_turn
   rectangle "System Turn\nNo user input in the batch\nNo automatic channel reply" as sys_turn
 }
 
-rectangle "Explicit exit tools\nnotify_user\nsession_report (report to parent)" as tools
+rectangle "Session tools, when allowed\nnotify_user, session_report, monitor_set" as tools
 database "Outbox (outbox_messages)\nOne message per destination" as outbox
 rectangle "Channel senders\nConfirm or retry one message" as dispatch
 
 monitors --> sched : Due check
-sched --> queue : Monitor wake or Automation message
+sched --> queue : Monitor wake
+auto --> queue : Automation prompt
+queue --> sys_turn : System inputs only
 user_in --> queue : message
 sys_in --> queue : session_result / wake / task_wake
 
 queue --> user_turn : Batch includes user message
-queue --> sys_turn : System inputs only
 
-user_turn --> outbox : Final reply to a channel input
+user_turn --> outbox : Reply if the selected route is a Channel
 sys_turn --> tools : Optional tools
 tools --> outbox : notify_user
 tools --> monitors : monitor_set (bounded)
 
-sched --> outbox : Automation alerts
+auto --> outbox : Eligible Automation alerts
 outbox --> dispatch : Deliver one platform message
 note right of sys_turn
   Processes with wake="none" send no wake-up.

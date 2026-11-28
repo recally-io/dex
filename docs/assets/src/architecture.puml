@@ -49,16 +49,17 @@ skinparam stereotypeEBorderColor #5b6b8c
 skinparam stereotypeIBackgroundColor #d9e3f4
 skinparam stereotypeIBorderColor #5b6b8c
 skinparam BackgroundColor #ffffff
-title dex: one process, separate data owners
+title Dex server: one process, separate data owners
 top to bottom direction
 rectangle "Browser
 React UI" as browser
 rectangle "Channels
-Telegram / Feishu / WeChat" as channels
-package "dex: one Go process" as runtime {
+Telegram / Feishu / Lark / WeChat" as channels
+package "cmd/dex: one Go process" as runtime {
+  rectangle "HTTP API + embedded UI" as http
+  rectangle "Channel adapters + delivery" as delivery
   rectangle "Business services
-HTTP, Sessions, Tasks, Automations
-Input receipts + channel outbox" as business
+Sessions, Tasks, Automations" as business
   rectangle "Native engine
 One PiG Harness per bot
 Models + tools + MCP + memory" as engine
@@ -73,16 +74,20 @@ Native admission and native Inbox
 Runs, transcripts, tool calls" as adb
 folder "Local bot files
 agents/<id>/workspace
+agents/<id>/artifacts
 memory/ (shared Git repo)" as files
 rectangle "Model providers" as models
-browser --> business : HTTP commands
-channels <--> business : Durable input + reply delivery
+browser --> http : HTTP
+http --> business : API calls
+channels <--> delivery : Intake + replies
+delivery --> business : Input intents
+delivery --> cdb : Webhook Queue + Outbox
 business --> cdb : Business facts
 business --> engine : Typed methods + stable request IDs
 engine --> adb : Execution authority
 engine --> files : Explicit tool environment + memory commits
 engine --> models : Model requests
-browser --> live : Subscribe
+http --> live : Open SSE
 live --> engine : Watch + History (typed)
 live --> browser : Snapshot / item / append / run
 note bottom of engine

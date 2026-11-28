@@ -10,8 +10,8 @@ and input before it exposes automation data or changes. These tools require a
 user turn in Main or a top-level Web session.
 
 Updates are partial. An enabled-only update pauses or resumes an automation
-without replacing its prompt or project directory. Creation inherits the
-calling session's project when `cwd` is omitted. A run result includes
+without replacing its prompt or project directory. Creation copies the calling Session's saved project and Runner selection.
+An explicit change of Runner clears the project unless the call also sets it. A run result includes
 its session ID so the bot can link to the saved transcript. Tool results name
 the duplicate-finding flag `repeatedFinding` to distinguish it from execution
 counts. The HTTP API keeps its `duplicate` field. The tools do not provide deletion.
@@ -22,10 +22,12 @@ automation change or run input. Replay returns the saved result. It does not
 repeat the write or advance the schedule. A new mutation requires an active
 user input; a saved receipt can still be read after that input settles.
 
-An automation runs a prompt on a schedule.
+## Schedule and target
+
 [`automation.Service`](../../internal/automation/automation.go) stores
-automations and their runs in `control.sqlite`. One scheduler job calls its
-`Check` every minute for all bots. Each row supplies its owning bot ID.
+Automations and runs in `control.sqlite`. One scheduler job checks all Bots
+every minute. It considers only the newest missed time. If it is more than
+one hour old, the job records it as skipped.
 `Check` posts the prompt of each automation whose
 `next_due_at` has come, as a message to its session (`automation:<id>`, or
 `automation:<id>:<run id>` for a new session each run), or to a saved existing
@@ -42,8 +44,7 @@ counts as overlap. Stop and Clear work on the session as usual.
 The Automation API and tools select a Runner with `runnerId`. An empty value
 follows the bot. `local` or an SSH Machine ID from `runner_list` pins the Runner.
 The owner cannot select
-a Sandbox or Outbound Machine as an explicit override. `automation_create`
-uses the calling session's Runner and cwd by default. A run never falls back to
+a Sandbox or Outbound Machine as an explicit override. A run never falls back to
 another machine. Before a run, outside any transaction, `Preflight` resolves the
 effective Runner. A removed Runner skips the run. Preflight opens an SSH
 Runner with a 15-second timeout. It does not open a Sandbox or an Outbound
@@ -65,9 +66,8 @@ The `automation_notification_targets` table stores authorized recipients. The
 `automation_tool_operations` table stores committed tool results for replay.
 A user can select a primary notification target for each bot. Each automation can
 turn notifications off, follow the primary target, or select another authorized
-recipient of that bot. Existing automations keep notifications off. The API keeps
-an omitted notification field on update. New automations created in the dialog or
-by the automation tool follow the primary target. With no primary target, the run
+recipient of that bot. If an update omits the notification field, Dex keeps the saved value. The
+Web dialog and creation tool default to the primary target. With no primary target, the run
 has no channel delivery.
 
 A settled automation with a resolved authorized target saves one delivery with the
@@ -100,8 +100,8 @@ Only an Automation input can write a report with `automation_report`, including 
 bound to an existing Session. The tool checks the current input's source receipt before it writes a result. Bound
 Automation inputs include reporting instructions. A failed Automation run in a child
 session does not send an automatic child error to the parent. The tool stores
-an explicit `changed`, `unchanged`, or `failed` outcome, a summary, and an optional change
-key. The report is provisional while the run is active. Submission settlement
+an explicit `changed`, `unchanged`, or `failed` outcome, a summary of 1 to 1000 characters, and an optional change key of at
+most 200 characters. The report is provisional while the run is active. Submission settlement
 and the final run outcome commit together. Missing reports and execution errors
 produce `failed`. Answer text cannot imply `unchanged`. Skipped runs have no
 outcome.
@@ -125,6 +125,8 @@ The owner can inspect recent delivery records in the Outbox panel of a
 read-only Automation transcript. A pre-start skip has no transcript. Its record
 stays in the Outbox of the conversation that owns the row. Automation records do
 not add notification entries to the Main timeline.
+
+## Results
 
 `automation_runs.read_at` and `dismissed_at` hold result state. `GET /api/automations/results`
 uses one query across all Bots. It joins runs, Automations, Bots, and inputs.

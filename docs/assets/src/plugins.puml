@@ -54,7 +54,8 @@ top to bottom direction
 rectangle "Sources\nGitHub / Webhook / Email" as sources
 rectangle "Browser\nOwner API + UI" as browser
 package "dex: one Go process" as runtime {
-  rectangle "cmd/dex\nPlugins of the build" as cmd
+  rectangle "cmd/dex or native in-app host" as host
+  rectangle "plugins/builtin\nPlugin factories" as builtin
   rectangle "internal/app\nBuild, check, keep enabled" as app
   rectangle "internal/server\n/hooks/<name>/ without token\n/api/plugins/<name>/ with token" as server
   package "plugins/<name>" as plugin {
@@ -66,7 +67,8 @@ package "dex: one Go process" as runtime {
   rectangle "Engine + scheduler" as core
 }
 database "control.sqlite\nenabled_plugins\napplied_plugin_migrations" as cdb
-cmd --> app : Factories
+host --> builtin : Select factories
+host --> app : Pass factories
 app --> cdb : Read enabled_plugins,\nmigrate enabled plugins
 app --> server : Mount enabled plugins
 app --> core : Jobs + tools

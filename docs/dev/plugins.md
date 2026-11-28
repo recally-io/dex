@@ -56,9 +56,8 @@ nothing.
 2. dex rejects a name that is not lowercase ASCII letters, a name used twice,
    and hooks without a body limit.
 3. dex keeps the plugins that have a row in `enabled_plugins`. A plugin
-   without a row is off. The core migrations turn `github` on, because GitHub
-   ran before plugins existed. dex logs a warning for an enabled name that is
-   not in the build.
+   without a row is off. Core migrations enable `github` by default. Dex warns about an enabled
+   name that is absent from the build.
 4. dex applies the migrations of each enabled plugin. If they fail, dex logs
    the error and skips that plugin. The core and the other plugins run, and
    `GET /api/settings/sources` shows the error. The owner can turn the plugin
@@ -67,7 +66,7 @@ nothing.
    and gives their tools to the engine.
 
 The owner turns a Source on or off with `PUT /api/settings/sources/{name}` or
-in Global Integrations. `GET /api/settings/sources` lists each Source in the
+in **Settings → Integrations**. `GET /api/settings/sources` lists each Source in the
 build, with its stored choice and whether its plugin runs now. The choice applies after a
 restart. Deliberate limit: reload the plugin routes, jobs, and tools in place
 if restarts become a problem.
@@ -110,10 +109,6 @@ in the shared table, so the versions of two plugins do not mix. Goose runs each
 file in a transaction, so a failed file leaves no table and no version. Turning
 a plugin off keeps its tables and rows. When it is on again, dex applies only
 the new versions. dex has no uninstall step.
-
-To roll back the Bot rename, roll back plugin version 2 for each migrated
-plugin before you roll back the core rename. SQLite changes the foreign-key
-target back to `agents` when the core table changes its name.
 
 ## Add a plugin
 
@@ -220,7 +215,7 @@ source with `PUT /api/plugins/email/sources/{sourceId}` and disables it with
 `DELETE` on the same path. The namespace is `email/<sourceId>`, and the author
 class is `SOURCE`.
 
-The parser uses only the Go standard library. The event type is
+The event type is
 `email.received`, and the change key is the Message-ID, so a retry does not add
 a second entry. `Message-ID`, `In-Reply-To`, and `References` become `message`
 objects, newest first, up to 16. A key longer than 200 bytes becomes its
@@ -257,6 +252,3 @@ write-only. Use an app password. The `email/imap-pull` job runs every minute.
 - Dedupe: Pull and the hook share the change key, the Message-ID. A message that
   arrives by both paths adds one entry.
 - Each save resets the cursor, so the next run starts after the newest message.
-
-The client is `github.com/emersion/go-imap/v2`, because the standard library
-has no IMAP client.

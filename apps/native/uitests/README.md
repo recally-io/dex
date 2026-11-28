@@ -1,6 +1,8 @@
 # Native UI acceptance
 
-Run this check on an Apple silicon Mac with the project tools, Xcode, an iOS Simulator runtime, XcodeGen, Caddy, OpenSSL and jq. Use only the QA fixture. Do not point these tests at an installed Dex instance.
+Use only the QA fixture. Do not point the tests at an installed Dex instance.
+For Apple checks, use an Apple silicon Mac with Xcode, an iOS Simulator runtime,
+and XcodeGen. The shared fixture also needs Caddy, OpenSSL, jq, and the project tools.
 
 ## Start the fixture
 
@@ -28,11 +30,13 @@ The test clears the app on that emulator, signs in, sends a message to `faux/ech
 
 ## Test iOS
 
-Build with `mise run apple:build`. In a second terminal, pass the fixture values to the runner:
+Run `mise run apple:build`. Set `SIM_APP` to the resulting iOS Simulator
+`Dex.app` path. In a second terminal, pass that path and the fixture values to
+the runner:
 
 ```sh
 mise exec -- bash apps/native/uitests/run-ios.sh \
-  .local/apple-v1/build/dev/Dex-0.1.0-ios_simulator/Dex.app \
+  "${SIM_APP:?Set the simulator app path}" \
   "$fixture_dir" "$primary" "$alternate" "$no_token" "$navigation" \
   .local/apple-v1/qa/ios
 ```

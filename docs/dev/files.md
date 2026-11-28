@@ -5,13 +5,9 @@ file delivery, and attachments.
 
 ## Artifacts and file delivery
 
-Each bot has one artifacts directory at
-`<data dir>/agents/<bot ID>/artifacts/`. Its immediate regular files are the
-complete artifact list for every conversation in that bot. Names, sizes, and
-modification times come from directory entries and stat. No manifest,
-conversation route, stable ID, operation receipt, deduplication, migration, or
-deleted marker is used. Existing disk files stay untouched and use their current
-physical names. Links and subdirectories are not files in this view.
+Each Bot lists the regular files directly under `<data dir>/agents/<bot ID>/artifacts/`.
+The list uses file names, sizes, and modification times. It excludes links
+and subdirectories.
 
 The header icon opens Artifacts. Rename and delete use filesystem operations in
 that bot directory. Existing target names are conflicts, not silent replacements.
@@ -29,6 +25,8 @@ are not changed by artifact rename or delete. The tool returns the actual bot
 file URL. A parent in another bot can link to that URL; it does not receive a
 shared artifact entry or a second copy. Continue editing uses the current
 writable conversation, or creates a Session for a read-only conversation.
+
+### Telegram
 
 For a Telegram Main input, `deliver_file` also queues a native file for that input's
 original recipient. The tool caller supplies the native execution, source receipt,
@@ -49,28 +47,13 @@ with the same bytes. Network failures are retried without an immediate fallback.
 
 Each Telegram input stores the sender and public bot account ID. Unpairing fails pending deliveries and removes their byte snapshots. A later pairing does not revive the failed deliveries. Flood control keeps the account cooldown and Outbox retry time across restart.
 
-Telegram also accepts voice, audio, video, video notes, animations and stickers.
-The adapter keeps the original upload bytes and records the media type. Video notes
-remain video files. Animated stickers remain files with a type description.
-Voice and audio input states that automatic transcription is not configured.
-No speech provider, frame extractor, codec installer or cloud fallback runs automatically.
-Location, contact and poll messages become text with their supplied fields.
-
-Reply quotes and forward headers enter the ordinary model input as context, not as
-caller identity. The outer authenticated sender keeps authority. The adapter does not
-download quoted attachments. A pending Question keeps the user's answer text before
-the existing question wrapper is added, so quote text cannot change an approval.
-Forwarded text is not treated as a channel command.
+See [Telegram input](channels.md#telegram) for accepted media, quotes, and
+optional audio transcription.
 
 Explicit file results use native MP3/M4A audio, Opus voice, MP4 video and GIF animation
 methods when the detected container supports that route. A definitive media rejection
 falls back to a document with the original bytes. The platform still checks the codec;
 container routing does not prove that a real Telegram service can decode the file.
-
-The existing Goldmark version parses GFM. Telegram rendering maps task checkboxes,
-strikeout, numbered lists, blockquotes and code languages to supported text or HTML.
-Tables use plain cell text in a preformatted block. Image links keep their label and
-safe URL without fetching the image. Raw HTML remains escaped. The renderer sends an extract if the full text does not fit a single message.
 
 Album members commit their upload references to `telegram_album_members` before
 polling ACK. Collection closes after 800 ms without a new member, at three seconds,
@@ -90,12 +73,10 @@ discard unsubmitted batches without deleting files owned by an existing input.
 An interrupted cleanup retries from the retained references. Rejected files use
 the existing attachment error reply and do not enter the native album.
 
-The adapter accepts only private chats.
-
 ## Attachments
 
 1. The browser sends each file as `POST /api/bots/{botId}/uploads` (multipart, one file,
-   at most 20 MB). [`upload.Store`](../../internal/upload/upload.go) writes
+   at most 20 MiB). [`upload.Store`](../../internal/upload/upload.go) writes
    it to `workspace/uploads/<UUIDv7>/<name>` and returns its ID, name, size,
    type (from the content) and workspace path. The directory is the only
    record of an upload.
@@ -107,4 +88,11 @@ The adapter accepts only private chats.
    also prepares images for a model with image input. The `dex.user` entry
    keeps the attachments, so the transcript shows the files and the text
    without the list.
-4. `GET /api/bots/{botId}/uploads/{id}` serves a file for the transcript.
+4. `GET /api/bots/{botId}/uploads/{uploadId}` serves the file. Only PNG,
+   JPEG, GIF, and WebP are inline. Other files use `application/octet-stream`
+   and `Content-Disposition: attachment`. Responses set `nosniff`.
+
+Upload IDs must be canonical UUIDs. Names cannot contain path separators or
+control characters and may use at most 255 bytes. Removing a composer
+attachment does not delete the upload. Bot tools can change or delete files
+in the workspace; the transcript can then show changed content or a broken link.

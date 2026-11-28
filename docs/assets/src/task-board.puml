@@ -74,9 +74,9 @@ core --> wake : Signal after commit
 wake --> runtime : Wake target Main\n(no nested gates)
 runtime --> adb : Native execution
 note bottom of cdb
-  Every Task state change writes one
-  append-only ledger row in the same
-  transaction. External text stays out
-  of model context and wakeups.
+  Task projection changes and their
+  ledger entries commit together.
+  A heartbeat updates the run lease
+  without adding a ledger entry.
 end note
 @enduml
