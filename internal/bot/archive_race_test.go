@@ -69,6 +69,36 @@ func TestUserCannotReplaceWechatAccountAfterArchiveCommit(t *testing.T) {
 	}
 }
 
+func TestUserCannotDisconnectWechatAfterArchiveCommit(t *testing.T) {
+	t.Parallel()
+	// Given a connected account, archive the bot as the runtime stops.
+	q, writer, id := archiveRaceDB(t)
+	ctx := t.Context()
+	if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{BotID: id, Token: "old-token", BaseUrl: "https://example.com", WechatBotID: "old-bot", Owner: "old-owner"}); err != nil {
+		t.Fatal(err)
+	}
+	var archiveErr error
+	var started bool
+	s := bot.New(q, writer, new(sync.Mutex), nil, "", nil)
+	s.ConfigureWechat(wechat.Options{}, func(_ string, cfg *wechat.Config) {
+		if cfg == nil {
+			archiveErr = db.ArchiveBot(ctx, q, id, time.Now())
+		} else {
+			started = true
+		}
+	})
+
+	// When disconnect continues after the archive, then credentials stay saved and the runtime stays stopped.
+	disconnectErr := s.DeleteWechat(ctx, id)
+	if archiveErr != nil {
+		t.Fatal(archiveErr)
+	}
+	cfg, err := s.WechatConfig(ctx, id)
+	if !errors.Is(disconnectErr, db.ErrBotArchived) || err != nil || cfg == nil || cfg.BotID != "old-bot" || started {
+		t.Fatalf("after archive: disconnect err=%v saved credentials=%t read err=%v start requested=%t", disconnectErr, cfg != nil, err, started)
+	}
+}
+
 func TestUserCannotSaveTelegramSettingsAfterArchiveCommit(t *testing.T) {
 	t.Parallel()
 	// Given saved Telegram credentials and a request to replace them.

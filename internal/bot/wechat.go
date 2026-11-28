@@ -158,7 +158,9 @@ func (s *Service) deleteWechat(ctx context.Context, botID string) error {
 		return err
 	}
 	s.onWechat(botID, nil)
-	if err := s.q.DeleteWechatSettings(ctx, botID); err != nil {
+	if err := db.WriteActiveChannel(ctx, s.db, botID, func(q *sqlc.Queries) error {
+		return q.DeleteWechatSettings(ctx, botID)
+	}); err != nil {
 		if previous != nil && db.CanStartChannel(ctx, s.q, botID) {
 			s.onWechat(botID, previous)
 		}
