@@ -53,7 +53,7 @@ func (p *Policy) RunCommand(ctx context.Context, c sqlc.ChannelCommand, runShare
 		return answer, handled, err
 	}
 	answer, err = runShared(ctx, target.ID)
-	if errors.Is(err, ErrTelegramUnauthorized) || errors.Is(err, session.ErrChannelUnauthorized) {
+	if errors.Is(err, ErrTelegramUnauthorized) {
 		// A rejected Clear still wakes the sender, as a completed Clear does.
 		return "", c.Command != "/stop", nil
 	}

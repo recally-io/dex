@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -34,10 +35,31 @@ func bindSessionChannels(sessions *session.Service) {
 			}
 			return pairing.RequirePairedChannel(ctx, q, botID, peer, source.AccountID)
 		},
-		CheckCommandIn: telegrampolicy.CheckCommandIn,
+		CheckCommandIn: checkChannelCommandIn,
 		Route:          channelRoute,
 	})
 	sessions.ConfigureChannelStaging(telegrampolicy.LookupStagedSourceIn, telegrampolicy.CheckInputIn, telegrampolicy.DiscardStagedIn)
+}
+
+func checkChannelCommandIn(ctx context.Context, q *sqlc.Queries, source, botID string, sessionID int64) error {
+	if source == "" {
+		return nil
+	}
+	if err := telegrampolicy.CheckCommandIn(ctx, q, source, botID, sessionID); err != nil {
+		return err
+	}
+	command, err := q.GetChannelCommand(ctx, source)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // An ordinary input has no command receipt.
+	}
+	if err != nil {
+		return err
+	}
+	// Revocation ends delivery even if the user pairs again before the effect acquires the writer.
+	if command.DeliveredAt.Valid || command.BotID != botID {
+		return session.ErrChannelUnauthorized
+	}
+	return nil
 }
 
 func channelRoute(peer string) session.ChannelRoute {
