@@ -120,6 +120,40 @@ final class AppleSmoke: XCTestCase {
         return history.items.contains { $0.model == "faux/echo" && $0.text == "echo: " + message }
     }
 
+    // The empty workspace changes layout on its first message. Measure an existing chat.
+    private func seedViewportChat() async throws -> String {
+        let data = try await api("/sessions/main")
+        let session = try JSONDecoder().decode(Session.self, from: data).id
+        let marker = "baseline\(UUID().uuidString.prefix(6))"
+        _ = try await api("/sessions/\(session)/messages", json: ["id": UUID().uuidString, "text": marker])
+        return marker
+    }
+
+    @MainActor
+    func testUserCanSendWithoutZoomingInDex() async throws {
+        let marker = try await seedViewportChat()
+        connect(try XCTUnwrap(fixture["primary"]))
+        signIn(try XCTUnwrap(fixture["token"]))
+        wait(reply(to: marker))
+        checkChatViewport(in: app, dismissBeforeSend: true)
+    }
+
+    @MainActor
+    func testUserCanSendWithoutZoomingInSafari() async throws {
+        let marker = try await seedViewportChat()
+        let origin = try XCTUnwrap(fixture["primary"])
+        app = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        app.open(try XCTUnwrap(URL(string: origin + "/b/default")))
+        wait(signInTitle)
+        let tip = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "View Bookmarks, Share Menu")).firstMatch
+        if tip.exists {
+            app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.907, dy: 0.710)).tap()
+        }
+        signIn(try XCTUnwrap(fixture["token"]))
+        wait(reply(to: marker))
+        checkChatViewport(in: app, dismissBeforeSend: false)
+    }
+
     func testUserCannotConnectToUntrustedTLS() throws {
         wait(control("Connect to Dex"))
         capture("01-first-launch")

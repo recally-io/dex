@@ -45,7 +45,7 @@ id="io.recally.dex.qa.mac.$(uuidgen | tr '[:upper:]' '[:lower:]')"
 ) > "$output/mac-build.log" 2>&1
 app=$(find "$work/build" -type d -name Dex.app -print -quit)
 [[ -n "$app" ]]
-cp "$source/project.yml" "$source/AppleSmoke.swift" "$source/MacSmoke.swift" "$work/"
+cp "$source/project.yml" "$source/AppleSmoke.swift" "$source/FocusZoom.swift" "$source/MacSmoke.swift" "$work/"
 plutil -create xml1 "$work/Fixture.plist"
 plutil -insert app -string "$app" "$work/Fixture.plist"
 plutil -insert home -string "$work/home" "$work/Fixture.plist"

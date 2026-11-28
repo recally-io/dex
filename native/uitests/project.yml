@@ -8,6 +8,7 @@ targets:
     platform: iOS
     sources:
       - AppleSmoke.swift
+      - FocusZoom.swift
       - path: Fixture.plist
         buildPhase: resources
     settings:

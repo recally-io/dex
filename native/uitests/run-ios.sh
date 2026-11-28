@@ -40,7 +40,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-cp "$source/project.yml" "$source/AppleSmoke.swift" "$source/MacSmoke.swift" "$work/"
+cp "$source/project.yml" "$source/AppleSmoke.swift" "$source/FocusZoom.swift" "$source/MacSmoke.swift" "$work/"
 plutil -create xml1 "$work/Fixture.plist"
 plutil -insert bundle -string "$bundle" "$work/Fixture.plist"
 plutil -insert primary -string "$primary" "$work/Fixture.plist"
@@ -93,8 +93,19 @@ run_attachment() {
   run_test attachment testUserAttachesAndSendsAnImage
 }
 
+run_focus() {
+  local failed=0
+  run_test focus-dex testUserCanSendWithoutZoomingInDex || failed=1
+  run_test focus-safari testUserCanSendWithoutZoomingInSafari || failed=1
+  return "$failed"
+}
+
 "${xcode[@]}" build-for-testing > "$output/ui-build.log" 2>&1
 case ${QA_IOS_ONLY:-all} in
+  focus)
+    xcrun simctl keychain "$device" add-root-cert "$fixture/ca.pem"
+    run_focus
+    ;;
   attachment)
     xcrun simctl keychain "$device" add-root-cert "$fixture/ca.pem"
     run_attachment
@@ -111,10 +122,12 @@ case ${QA_IOS_ONLY:-all} in
     run_attachment || attached=$?
     reinstall
     run_test navigation testUserSeesDifferentPromptsForLinksAndSilentOAuth || navigated=$?
-    (( ${untrusted:-0} == 0 && ${trusted:-0} == 0 && ${switched:-0} == 0 && ${attached:-0} == 0 && ${navigated:-0} == 0 ))
+    reinstall
+    run_focus || focused=$?
+    (( ${untrusted:-0} == 0 && ${trusted:-0} == 0 && ${switched:-0} == 0 && ${attached:-0} == 0 && ${navigated:-0} == 0 && ${focused:-0} == 0 ))
     ;;
   *)
-    printf 'QA_IOS_ONLY must be all or attachment.\n' >&2
+    printf 'QA_IOS_ONLY must be all, attachment or focus.\n' >&2
     exit 2
     ;;
 esac
