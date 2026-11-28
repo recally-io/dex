@@ -25,6 +25,11 @@ does not grow on each run.
 The native job builds darwin and linux for amd64 and arm64 without cgo.
 When you add a step to `check` in `mise.toml`, add it to the workflow too.
 
+The [Apple client workflow](../../.github/workflows/apple-client.yml) tests the separate
+client module on macOS when client inputs change. It builds development apps for
+Apple silicon and iOS Simulator. It does not use signing credentials or publish apps.
+See the [Apple client guide](../../native/README.md) for device and distribution builds.
+
 ## Releases
 
 Prepare and publish releases from a `release/*` branch. Do not bump the version

@@ -103,8 +103,10 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 	switch {
 	case token != "":
 		slog.Info("the API requires DEX_TOKEN")
-	case requireToken:
+	case requireToken && !cfg.Loopback():
 		slog.Warn("the API accepts network connections over plain HTTP and requires the stored token; print it with: dex token")
+	case requireToken:
+		slog.Info("the API requires the stored token; print it with: dex token")
 	}
 
 	var restartExec string

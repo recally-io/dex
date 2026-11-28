@@ -42,12 +42,11 @@ type Status struct {
 // LoopbackClient never uses a proxy or follows redirects. Callers set request deadlines.
 var LoopbackClient = &http.Client{Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 
-// Request is an API request to the service at c. A service on a host that is not loopback
-// requires its stored token, so the request reads it from the data directory.
+// Request reads the stored token from the data directory when the service requires it.
 func Request(ctx context.Context, c Config, method, path string) (*http.Request, error) {
 	//nolint:gosec // G704: the configured local service address.
 	req, err := http.NewRequestWithContext(ctx, method, c.URL()+path, nil)
-	if err != nil || c.Loopback() {
+	if err != nil || !c.RequiresToken() {
 		return req, err
 	}
 	token, err := settings.StoredToken(ctx, c.DataDir)

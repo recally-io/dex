@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Run the Apple client tests with a macOS window and real WebKit"
+set -euo pipefail
+cd "${MISE_PROJECT_ROOT:?}/native"
+# Only the headless host can select an iPhone environment on a Mac.
+mise exec go@1.27.3 -- go tool nsgo test -run '^TestUserOnPhoneCannotSaveAnHTTPAddress$' .
+exec mise exec go@1.27.3 -- go tool nsgo test -target macos .

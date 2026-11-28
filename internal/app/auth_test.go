@@ -77,13 +77,14 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 	if resp := d.request(t, http.MethodPost, "/api/session", `{"token":"wrong"}`, nil); resp.StatusCode != http.StatusUnauthorized || len(resp.Cookies()) != 0 {
 		t.Fatalf("sign-in with a wrong token: %d %v", resp.StatusCode, resp.Cookies())
 	}
-	resp := d.request(t, http.MethodPost, "/api/session", `{"token":"`+token+`"}`, nil)
+	// A forwarded protocol header does not change the HTTP cookie policy.
+	resp := d.request(t, http.MethodPost, "/api/session", `{"token":"`+token+`"}`, map[string]string{"X-Forwarded-Proto": "https"})
 	cookies := resp.Cookies()
 	if resp.StatusCode != http.StatusNoContent || len(cookies) != 1 {
 		t.Fatalf("sign-in: %d %v", resp.StatusCode, cookies)
 	}
 	c := cookies[0]
-	if !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Domain != "" || c.Path != "/" {
+	if c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Domain != "" || c.Path != "/" {
 		t.Fatalf("session cookie: %+v", c)
 	}
 	session := map[string]string{"Cookie": c.String()}
@@ -151,12 +152,12 @@ func TestStoredTokenOfAnOlderDatabaseIsEmpty(t *testing.T) {
 	}
 }
 
-func TestUserUpdaterHoldsMaintenanceOnANetworkHost(t *testing.T) {
+func TestUserUpdaterHoldsMaintenanceOnAProtectedLoopbackHost(t *testing.T) {
 	t.Parallel()
-	// Given a service on a wildcard host, which requires the stored token.
+	// Given a loopback service that requires the stored token.
 	dataDir := t.TempDir()
 	d := startDexWith(t, app.Config{DataDir: dataDir, RequireToken: true})
-	c := service.Config{Host: "0.0.0.0", Port: d.srv.Listener.Addr().(*net.TCPAddr).Port, DataDir: dataDir}
+	c := service.Config{Host: "127.0.0.1", Port: d.srv.Listener.Addr().(*net.TCPAddr).Port, DataDir: dataDir, RequireToken: true}
 
 	// When a local client acquires and releases maintenance, then the stored token admits it.
 	for _, method := range []string{http.MethodPost, http.MethodDelete} {

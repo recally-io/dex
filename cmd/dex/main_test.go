@@ -65,6 +65,7 @@ func TestUserLeadingFlagsSelectServe(t *testing.T) {
 
 func TestUserTokenSelection(t *testing.T) {
 	loopback, network := service.Config{Host: "127.0.0.1"}, service.Config{Host: "0.0.0.0"}
+	protectedLoopback := service.Config{Host: loopback.Host, RequireToken: true}
 	own := "user-token-0123456789abcdefghijklmnopqrstuvwxyz"
 	for _, tc := range []struct {
 		name       string
@@ -77,7 +78,8 @@ func TestUserTokenSelection(t *testing.T) {
 		{"loopback without DEX_TOKEN", nil, loopback, false, "", false},
 		{"network host uses the stored token", nil, network, false, "", true},
 		{"DEX_TOKEN turns auth on for loopback", &own, loopback, false, own, true},
-		{"the service ignores DEX_TOKEN", &own, network, true, "", true},
+		{"explicit token requirement on loopback", nil, protectedLoopback, false, "", true},
+		{"the service ignores DEX_TOKEN", &own, protectedLoopback, true, "", true},
 	} {
 		if tc.env == nil {
 			t.Setenv("DEX_TOKEN", "")
@@ -130,10 +132,11 @@ func TestUserReinstallKeepsStoredOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// When reinstall supplies only the port, retain boot options but replace the old PATH.
+	// When reinstall changes the port and requires a token, retain other boot options.
 	t.Setenv("PATH", "/transient/install-shell/bin")
-	got, err := parseInstallConfig(m, []string{"--port", "18788"})
+	got, err := parseInstallConfig(m, []string{"--port", "18788", "--require-token"})
 	stored.Port = 18788
+	stored.RequireToken = true
 	stored.Path = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 	if runtime.GOOS == "darwin" {
 		stored.Path = "/opt/homebrew/bin:" + stored.Path
