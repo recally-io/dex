@@ -32,8 +32,7 @@ See the [Apple client guide](../../native/README.md) for device and distribution
 
 ## Releases
 
-Prepare and publish releases from a `release/*` branch. Do not bump the version
-or tag a release on `main`.
+Prepare and tag releases on a `release/*` branch. On `main`, `VERSION` tracks the newest stable release prepared for publication. Keep candidate versions on their release branches.
 
 1. For a new release series, cut a release branch from the reviewed commit that
    starts that series. For example, cut `release/v0.20.0` from the selected
@@ -49,30 +48,28 @@ or tag a release on `main`.
    [CHANGELOG.md](../../CHANGELOG.md) into a dated section. A version with a
    hyphen, such as `0.20.0-rc.1`, makes a prerelease. Review the notes and commit
    the version bump separately from the fixes.
-4. Push the updated release branch. Start
+4. For a stable release, open a PR to `main` before publication. Copy the final dated changelog section and its compare link. Remove only the shipped entries from `[Unreleased]`. Update `VERSION` and the `[Unreleased]` compare link for the newest stable line. For an older maintenance release, keep the newer version and compare baseline on `main`. Do not replace the whole changelog or copy candidate bumps. Merge this PR after Check passes.
+5. Push the updated release branch. Start
    [Release](../../.github/workflows/release.yml) with
    `gh workflow run release.yml --ref <release-branch>`. The workflow reads the
-   branch's `VERSION`, runs Check, and packages the Apple silicon app on macOS.
+   branch's `VERSION` and requires a nonempty changelog section for the exact tag. For a stable tag, it also checks `origin/main` for matching notes and a stable version at least as new. It then runs Check and packages the Apple silicon app on macOS.
    Once both jobs pass, it creates the `v<VERSION>` tag on the tested commit
    and runs [GoReleaser](../../.goreleaser.yaml) on Ubuntu.
-5. For fixes that are not yet on `main`, start a separate branch from `main`,
+6. For fixes that are not yet on `main`, start a separate branch from `main`,
    cherry-pick the fix commits with `git cherry-pick -x`, and open a pull request
-   to `main`. Do not cherry-pick the release version bump. If a fix needs a
-   changelog note on `main`, put it under `[Unreleased]`.
+   to `main`. Reconcile the notes in step 4 so that these fixes do not appear twice.
 
 ### Release artifacts
 
 GoReleaser builds `dex` for Linux and macOS, x64 and arm64, and uploads a
-draft release with one `dex_<tag>_<os>_<arch>.tar.gz` for each platform,
-`checksums.txt`, and notes from [CHANGELOG.md](../../CHANGELOG.md) (or from the
-pull requests when no matching changelog section exists). GoReleaser builds the
+draft release with `dex_<tag>_<os>_<arch>.tar.gz` and `dex-agent_<tag>_<os>_<arch>.tar.gz` for each platform, `checksums.txt`, and the matching release notes from [CHANGELOG.md](../../CHANGELOG.md). GoReleaser builds the
 web UI once and embeds it in each Go binary. Smoke tests start the Linux
 (amd64 and arm64) and macOS arm64 binaries on their own platforms. When all
 smoke tests pass, the workflow publishes the draft. dex reads its version from
 the tag. The workflow also accepts a `v*` tag push. Use the release-branch
 procedure above for planned releases and patches.
 
-Every release includes `Dex-<tag>-macOS-arm64.zip`, including stable releases. GoReleaser adds the Mac ZIP to the draft and includes its SHA-256 in `checksums.txt`. The Mac smoke job downloads that ZIP, verifies its checksum, extracts `Dex.app`, and checks the code signature, architecture and version before publication. The app uses an ad hoc signature; the release does not need Apple credentials. This workflow does not publish iPhone or simulator builds.
+Starting with the v0.21.0 series, both candidate and stable releases include `Dex-<tag>-macOS-arm64.zip`. The published v0.20.0 release predates the Mac app. GoReleaser adds the Mac ZIP to the draft and includes its SHA-256 in `checksums.txt`. The Mac smoke job downloads that ZIP, verifies its checksum, extracts `Dex.app`, and checks the code signature, architecture and version before publication. The app uses an ad hoc signature; the release does not need Apple credentials. This workflow does not publish iPhone or simulator builds.
 
 On an Apple silicon Mac, run `mise run release:mac-app` to build the same ZIP without creating a tag or publishing a release. The task reads `VERSION` by default, or accepts a tag such as `v1.2.3`. Find the ZIP in `.local/release/<tag>/`. The filename keeps the full tag. The app uses the numeric part for `CFBundleShortVersionString` and the workflow run number (locally, `1`) for `CFBundleVersion`.
 

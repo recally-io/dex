@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Connect the Mac or iPhone app to an existing Dex server. Switch servers from Settings or the sign-in page. Mac releases include an ad hoc signed Apple silicon app; iPhone builds still require Xcode (#382, #383, #384).
+
+### Fixed
+
+- Keep the chat input at a readable size on iPhone in Safari and the app (#379, #381).
+
 ## [v0.20.0] - 2026-11-27
 
 This release covers all changes since `v0.19.1`, including `v0.20.0-rc.1` to `v0.20.0-rc.7`.
