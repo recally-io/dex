@@ -62,6 +62,9 @@ const (
 	OriginSessionResult Origin = "session_result"
 	OriginWake          Origin = "wake"
 	OriginOther         Origin = "other"
+	// OriginNativeResult is the result of a child turn with a native answer. Only Dex writes it, with
+	// the child in result_child_id. It authorizes what OriginSessionResult does and the Assignee Main's closeout.
+	OriginNativeResult Origin = "native_result"
 )
 
 type Action string
@@ -71,6 +74,7 @@ const (
 	ActionDispatchExternal Action = "dispatch_external"
 	ActionLinkObject       Action = "link_object"
 	ActionTransition       Action = "transition"
+	ActionComplete         Action = "complete"
 	ActionSubmitReview     Action = "submit_review"
 	ActionReview           Action = "review"
 	ActionSplit            Action = "split"
@@ -120,6 +124,7 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 	assigneeMain := main && actor.isAssignee(task)
 	user := origin == OriginUser
 	interactive := user || origin == OriginTaskWake
+	nativeResult := origin == OriginNativeResult
 	// A top-level Session can rename a Task or link its own child on user turns.
 	assigneeUserSession := session && user && actor.isAssignee(task)
 	switch action {
@@ -130,7 +135,7 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 		if owner {
 			return user, nil
 		}
-		if !interactive && origin != OriginSessionResult {
+		if !interactive && origin != OriginSessionResult && !nativeResult {
 			return false, nil
 		}
 		if main || session {
@@ -139,8 +144,12 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 		return actor.bound(ctx, q, task.ID)
 	case ActionRename, ActionLinkSession:
 		return interactive && (owner || assigneeMain) || assigneeUserSession, nil
-	case ActionDispatchExternal, ActionTransition, ActionSubmitReview:
+	case ActionDispatchExternal, ActionTransition:
 		return interactive && (owner || assigneeMain), nil
+	case ActionComplete, ActionSubmitReview:
+		// On a native child result, the Assignee's Main can close out the work it delegated.
+		// Lifecycle rules still apply: a Task with a Reviewer must go through review.
+		return interactive && owner || (interactive || nativeResult) && assigneeMain, nil
 	case ActionReview:
 		return owner && user || interactive && main && actor.isReviewer(task), nil
 	case ActionSplit:

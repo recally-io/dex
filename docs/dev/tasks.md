@@ -91,7 +91,10 @@ completion requires no Reviewer. Submission for review records `review_seq`.
 Approval moves the Task to `done` and must match the current `reviewSeq`.
 A stale approval returns `409`. A request for changes requires a note, moves
 the Task to `in_progress`, and wakes the Assignee's Main. Session or run
-completion does not change Task status.
+completion does not change Task status. On the turn of a native child result,
+the Assignee's Main checks the acceptance conditions and can request `done` or
+`in_review` with `task_update`. The lifecycle rules still apply. Dex makes no
+automatic status change for the result.
 
 Delegation to another Bot defaults to review by the delegating Bot if no
 Reviewer is set. Owner-created and self-assigned subtasks have no Reviewer
@@ -107,9 +110,13 @@ Tasks linked to that exact Session. A scoped token grants access to one Task
 and one external run. A child link does not give its Bot's Main access.
 
 For Bot tools, **interactive** means a user turn or a `task_wake`. A child
-result (`session_result`) can authorize a note or artifact. A Monitor or
-Process `wake` cannot authorize Task writes. Reads do not require an
-interactive turn.
+result (`session_result`) can authorize a note or artifact. A **native child
+result** is the `session_result` that Dex writes when a child turn settles
+with a native answer. It has the child in `result_child_id` and the answer in
+`native_answer_id`. A rejected, failed, or interrupted child turn, a
+`session_report`, a child message, and the failure notice of a child input
+without a parent turn give an ordinary child result. A Monitor or Process
+`wake` cannot authorize Task writes. Reads do not require an interactive turn.
 
 | Action                                                      | Bot access                                                                                                                            | Other access and limits                                          |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -117,7 +124,8 @@ interactive turn.
 | Post note or artifact (`task_post`)                         | Assignee or Reviewer in Main or top-level Session, or a linked child. Requires an interactive turn or a child result.                 | Owner or scoped run token.                                       |
 | Link external object (Source tool)                          | Assignee or Reviewer in Main or top-level Session. Requires an interactive turn or a child result.                                    | Owner.                                                           |
 | Rename or link Session (`task_update`)                      | Assignee Main on an interactive turn, or Assignee top-level Session on a user turn. The Session must be a direct child of the caller. | Owner.                                                           |
-| Change ordinary status or submit for review (`task_update`) | Assignee Main on an interactive turn.                                                                                                 | Owner. Lifecycle rules still apply.                              |
+| Start or move to `ready` or `backlog` (`task_update`)       | Assignee Main on an interactive turn.                                                                                                 | Owner. Lifecycle rules still apply.                              |
+| Finish or submit for review (`task_update`)                 | Assignee Main on an interactive turn or a native child result. A Task with a Reviewer cannot go directly to `done`.                   | Owner. Lifecycle rules still apply.                              |
 | Review (`task_review`)                                      | Reviewer Main on an interactive turn.                                                                                                 | Owner.                                                           |
 | Create subtask (`task_split`)                               | Parent Assignee Main on an interactive turn.                                                                                          | Owner. The parent must be open and have user root authorization. |
 | Reassign open Task (`task_assign`)                          | Assignee Main or the parent Assignee's Main on an interactive turn. The parent path requires user root authorization.                 | Owner.                                                           |

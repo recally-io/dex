@@ -48,6 +48,7 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 	}{
 		{"post", 'p', tasksvc.ActionPost},
 		{"transition", 't', tasksvc.ActionTransition},
+		{"complete", 'f', tasksvc.ActionComplete},
 		{"link-session", 'k', tasksvc.ActionLinkSession},
 		{"rename", 'n', tasksvc.ActionRename},
 		{"submit-review", 's', tasksvc.ActionSubmitReview},
@@ -65,35 +66,37 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 		{"session-result", tasksvc.OriginSessionResult},
 		{"wake", tasksvc.OriginWake},
 		{"other", tasksvc.OriginOther},
+		{"native-result", tasksvc.OriginNativeResult},
 	}
 	for _, row := range []struct {
 		name                      string
 		actor                     tasksvc.Actor
 		read                      bool
 		user, wake, result, other string
+		native                    string
 	}{
-		{"owner", tasksvc.Owner, true, "ptknsrdcl", "tknsd", "", ""},
-		{"assignee-main", actorAt(1), true, "ptknsdc", "ptknsd", "p", ""},
-		{"reviewer-main", tasksvc.Bot("reviewer"), true, "prc", "pr", "p", ""},
-		{"unrelated-main", actorAt(2), false, "c", "", "", ""},
-		{"linked-main", actorAt(7), false, "c", "", "", ""},
-		{"assignee-session", actorAt(6), true, "pknc", "p", "p", ""},
-		{"linked-bot-session", actorAt(8), false, "c", "", "", ""},
-		{"unlinked-assignee-child", actorAt(3), false, "", "", "", ""},
-		{"linked-session", actorAt(4), true, "p", "p", "p", ""},
-		{"unlinked-session-same-bot", actorAt(5), false, "", "", "", ""},
-		{"unrelated-bot-linked-session-id", tasksvc.SessionBot("other", 4), false, "", "", "", ""},
-		{"external-run", tasksvc.ExternalAgent("external-run"), true, "p", "p", "p", ""},
-		{"session-run-as-external-run", tasksvc.ExternalAgent("session-run"), false, "", "", "", ""},
-		{"unbound-external-run", tasksvc.ExternalAgent("unknown-run"), false, "", "", "", ""},
-		{"source", tasksvc.Source, false, "", "", "", ""},
-		{"system", tasksvc.System, false, "", "", "", ""},
+		{"owner", tasksvc.Owner, true, "ptfknsrdcl", "tfknsd", "", "", ""},
+		{"assignee-main", actorAt(1), true, "ptfknsdc", "ptfknsd", "p", "", "pfs"},
+		{"reviewer-main", tasksvc.Bot("reviewer"), true, "prc", "pr", "p", "", "p"},
+		{"unrelated-main", actorAt(2), false, "c", "", "", "", ""},
+		{"linked-main", actorAt(7), false, "c", "", "", "", ""},
+		{"assignee-session", actorAt(6), true, "pknc", "p", "p", "", "p"},
+		{"linked-bot-session", actorAt(8), false, "c", "", "", "", ""},
+		{"unlinked-assignee-child", actorAt(3), false, "", "", "", "", ""},
+		{"linked-session", actorAt(4), true, "p", "p", "p", "", "p"},
+		{"unlinked-session-same-bot", actorAt(5), false, "", "", "", "", ""},
+		{"unrelated-bot-linked-session-id", tasksvc.SessionBot("other", 4), false, "", "", "", "", ""},
+		{"external-run", tasksvc.ExternalAgent("external-run"), true, "p", "p", "p", "", "p"},
+		{"session-run-as-external-run", tasksvc.ExternalAgent("session-run"), false, "", "", "", "", ""},
+		{"unbound-external-run", tasksvc.ExternalAgent("unknown-run"), false, "", "", "", "", ""},
+		{"source", tasksvc.Source, false, "", "", "", "", ""},
+		{"system", tasksvc.System, false, "", "", "", "", ""},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			if read, err := tasksvc.CanRead(ctx, q, row.actor, task); err != nil || read != row.read {
 				t.Errorf("CanRead = %v, %v; want %v, nil", read, err, row.read)
 			}
-			permissions := []string{row.user, row.wake, row.result, "", row.other}
+			permissions := []string{row.user, row.wake, row.result, "", row.other, row.native}
 			for i, origin := range origins {
 				for _, action := range actions {
 					target := task
