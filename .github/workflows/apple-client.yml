@@ -3,6 +3,7 @@ name: Apple client
 on:
   pull_request:
     paths:
+      - shared/assets/**
       - native/**
       - .mise/tasks/apple/**
       - .github/workflows/apple-client.yml
@@ -11,6 +12,7 @@ on:
   push:
     branches: [main]
     paths:
+      - shared/assets/**
       - native/**
       - .mise/tasks/apple/**
       - .github/workflows/apple-client.yml

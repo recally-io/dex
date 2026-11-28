@@ -1,7 +1,7 @@
 # Web UI
 
 The Go binary embeds the files in `dist/`. Build tasks generate these files;
-Git does not track them.
+Git does not track them. Vite serves `shared/` at the public root. Keep only public files there. The browser and native clients use the same icon in `shared/assets/dex.png`.
 The browser uses the API contract in [api/openapi.yaml](../api/openapi.yaml).
 Do not edit the generated client in `src/api/generated/`.
 

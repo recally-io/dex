@@ -96,7 +96,7 @@ xcrun stapler validate "${MAC_DMG:?Set the notarized DMG path}"
 
 ## iOS TestFlight (reference only)
 
-Register the bundle ID and create the matching App Store Connect app record. Use an App Store distribution provisioning profile and its Apple Distribution identity. A development or Ad Hoc IPA cannot be used. The build uses the same 1024 × 1024 [app icon](assets/Icon.png) as the Mac app. Confirm privacy and export compliance. Use a new build number for the app version. Set `IOS_STORE_PROFILE` to the absolute profile path, `IOS_DISTRIBUTION_ID` to the signing identity, and `IOS_BUILD_NUMBER` to the next build number.
+Register the bundle ID and create the matching App Store Connect app record. Use an App Store distribution provisioning profile and its Apple Distribution identity. A development or Ad Hoc IPA cannot be used. The build uses the same 1024 × 1024 [app icon](../shared/assets/dex.png) as macOS and the web UI. Confirm privacy and export compliance. Use a new build number for the app version. Set `IOS_STORE_PROFILE` to the absolute profile path, `IOS_DISTRIBUTION_ID` to the signing identity, and `IOS_BUILD_NUMBER` to the next build number.
 
 ```sh
 mise exec go@1.27.3 -- go tool nsgo build -target ios -channel store \

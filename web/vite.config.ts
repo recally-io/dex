@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
+  publicDir: "../shared",
   // SAFETY: react and tailwindcss each return a plugin array, which the config flattens.
   // vite-plus 1.3.0 types the nested array too deeply for TypeScript 6 to compare.
   plugins: [react(), tailwindcss()] as PluginOption[],
