@@ -118,7 +118,7 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	if _, err := q.ConsumeTelegramCallback(ctx, sqlc.ConsumeTelegramCallbackParams{ID: "queued-revoked-stop", Now: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := session.RequirePairedChannel(ctx, q, "bot", "telegram:42", identity); err != nil {
+	if err := managers[0].RequirePairedChannel(ctx, q, "telegram:42", identity); err != nil {
 		t.Fatal(err)
 	}
 	if err := q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{BotID: "bot", SourceKey: "telegram-callback:queued-revoked-stop", Peer: "telegram:42", ChannelKey: target.ChannelKey, Command: "/stop", ChannelContext: string(encoded)}); err != nil {

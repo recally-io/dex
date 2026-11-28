@@ -9,6 +9,7 @@ import (
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/pairing"
 	telegrampolicy "github.com/recally-io/dex/internal/channel/telegram/policy"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -25,7 +26,7 @@ type botChannels struct {
 func newBotChannels(ctx context.Context, db *sql.DB, sessions *session.Service, botID string) *botChannels {
 	policy := telegrampolicy.New(db, sessions, botID)
 	q := sqlc.New(db)
-	manager := delivery.New(ctx, db, sessions, botID, map[string]delivery.Policy{"telegram": policy}, map[string]delivery.ReactionAuthorizer{
+	manager := delivery.New(ctx, db, sessions, botID, pairing.RequirePairedChannel, map[string]delivery.Policy{"telegram": policy}, map[string]delivery.ReactionAuthorizer{
 		"telegram": policy.ReactionAllowed,
 		"feishu": func(ctx context.Context, peer string, source session.ChannelContext) bool {
 			return feishu.ReactionAllowed(ctx, q, botID, peer, source)

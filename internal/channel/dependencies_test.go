@@ -14,11 +14,12 @@ const telegramPolicyPath = channelPath + "/telegram/policy"
 func TestChannelImportBoundaries(t *testing.T) {
 	const root = channelPath
 	const delivery = root + "/delivery"
+	const pairing = root + "/pairing"
 	packages := listPackages(t, root+"/...")
 	var adapters []string
 	for _, pkg := range packages {
 		name, child := strings.CutPrefix(pkg, root+"/")
-		if child && pkg != delivery && !strings.Contains(name, "/") {
+		if child && pkg != delivery && pkg != pairing && !strings.Contains(name, "/") {
 			adapters = append(adapters, pkg)
 		}
 	}
@@ -31,10 +32,13 @@ func TestChannelImportBoundaries(t *testing.T) {
 				if pkg == dep {
 					continue
 				}
-				if pkg == root || (pkg != delivery && within(dep, delivery)) {
+				if pkg == root || (pkg != delivery && within(dep, delivery)) || (pkg != pairing && within(dep, pairing)) {
 					t.Errorf("%s must not depend on %s", pkg, dep)
 				}
 				for _, adapter := range adapters {
+					if pkg == pairing && dep == adapter {
+						continue
+					}
 					if within(dep, adapter) && (!within(pkg, adapter) ||
 						within(pkg, telegramPolicyPath) != within(dep, telegramPolicyPath)) {
 						t.Errorf("%s must not depend on adapter package %s", pkg, dep)
@@ -45,14 +49,12 @@ func TestChannelImportBoundaries(t *testing.T) {
 	}
 }
 
-func TestBotDoesNotImportChannelAdapters(t *testing.T) {
+func TestBotDoesNotDependOnChannels(t *testing.T) {
 	t.Parallel()
 	const bot = "github.com/recally-io/dex/internal/bot"
-	for _, dep := range listPackages(t, "-f", "{{range .Imports}}{{println .}}{{end}}", bot) {
-		for _, platform := range []string{"feishu", "wechat", "telegram"} {
-			if within(dep, channelPath+"/"+platform) {
-				t.Errorf("%s imports %s; the app must wire %s setup", bot, dep, platform)
-			}
+	for _, dep := range listPackages(t, "-deps", bot+"/...") {
+		if within(dep, channelPath) {
+			t.Errorf("%s depends on %s; the app must wire channel coordination", bot, dep)
 		}
 	}
 }

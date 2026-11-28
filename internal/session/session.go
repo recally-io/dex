@@ -123,6 +123,7 @@ type Service struct {
 	notify           func(origin string)
 	channelIntake    func(bot, origin, id string, source ChannelContext)
 	channelAdmission func(bot, origin, id string, sub *engine.Submission)
+	channelPairing   func(context.Context, *sqlc.Queries, string, string, string) error
 	changed          func(sessionID int64)
 	// OnBotArchived runs after a transaction that archived a bot has committed. Optional.
 	OnBotArchived func(botID string)
@@ -292,6 +293,12 @@ func (s *Service) Send(ctx context.Context, botID, channelKey string, m Message)
 	return s.enqueue(ctx, botID, channelKey, "", inputOrigin(channelKey), m, false)
 }
 
+// ConfigureChannelPairing binds the shared account and peer check before the service starts.
+// The check must use the input transaction's queries.
+func (s *Service) ConfigureChannelPairing(check func(ctx context.Context, q *sqlc.Queries, botID, peer, accountID string) error) {
+	s.channelPairing = check
+}
+
 // ConfigureChannelReceipts connects best-effort observations before the service starts.
 // Neither callback may wait on transport or execution.
 func (s *Service) ConfigureChannelReceipts(intake func(string, string, string, ChannelContext), admission func(string, string, string, *engine.Submission)) {
@@ -381,7 +388,8 @@ func (s *Service) enqueue(ctx context.Context, botID, channelKey, sourceKey, ori
 		if err := checkTelegramControl(ctx, q, sourceKey, botID, conv.ID); err != nil {
 			return 0, err
 		}
-		if privateTelegramSource(origin, m.ChannelContext) {
+		telegramSource := privateTelegramSource(origin, m.ChannelContext)
+		if telegramSource {
 			if err := authorizeTelegramActor(ctx, q, botID, m.ChannelContext.AccountID, m.ChannelContext.SenderID); err != nil {
 				return 0, err
 			}
@@ -431,8 +439,11 @@ func (s *Service) enqueue(ctx context.Context, botID, channelKey, sourceKey, ori
 				return 0, err
 			}
 		}
-		if peerFromOrigin(origin) != "" && m.ChannelContext.AccountID != "" {
-			if err := RequirePairedChannel(ctx, q, botID, origin, m.ChannelContext); err != nil {
+		if peerFromOrigin(origin) != "" && m.ChannelContext.AccountID != "" && !telegramSource {
+			if s.channelPairing == nil {
+				return 0, errors.New("channel pairing check is unavailable")
+			}
+			if err := s.channelPairing(ctx, q, botID, origin, m.ChannelContext.AccountID); err != nil {
 				return 0, err
 			}
 		}

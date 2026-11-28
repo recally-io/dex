@@ -1,51 +1,34 @@
 package app_test
 
 import (
-	"path/filepath"
-	"sync"
+	"net/http"
 	"testing"
 
-	"github.com/recally-io/dex/internal/bot"
-	"github.com/recally-io/dex/internal/channel/feishu"
-	"github.com/recally-io/dex/internal/db"
-	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/channel/pairing"
 )
 
 func TestUserCanSelectOnlyTheirAuthorizedChannelTarget(t *testing.T) {
 	t.Parallel()
 	// Given two bots, only one with a paired Feishu owner.
-	conn, err := db.Open(t.Context(), filepath.Join(t.TempDir(), "control.sqlite"))
-	if err != nil {
+	d := startDex(t, t.TempDir(), "")
+	bot := d.createCoder(t)
+	if _, err := sessionDB(t, d).ExecContext(t.Context(), `INSERT INTO feishu_settings (bot_id, app_id, app_secret, brand, owner_id) VALUES (?,'app','test-secret','feishu','owner')`, bot.ID); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = conn.Close() })
-	q := sqlc.New(conn)
-	for _, id := range []string{"a", "b"} {
-		if err = q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: id, Name: id}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err = conn.ExecContext(t.Context(), `INSERT INTO feishu_settings (bot_id, app_id, app_secret, brand, owner_id) VALUES ('a','app','test-secret','feishu','owner')`); err != nil {
-		t.Fatal(err)
-	}
-	mu := new(sync.Mutex)
-	s := bot.New(q, conn, mu, nil)
-	s.BindFeishu(feishu.NewSetup(q, conn, mu, "", "", nil, nil))
+	path := "/api/bots/" + bot.ID + "/notification-targets"
 	// When the user lists eligible targets and selects one as primary.
-	list, err := s.NotificationTargets(t.Context(), "a")
-	if err != nil || len(list.Targets) != 1 {
-		t.Fatalf("targets=%+v err=%v", list, err)
+	var list pairing.NotificationTargets
+	d.must(t, http.MethodGet, path, nil, &list)
+	if len(list.Targets) != 1 || list.Targets[0].Peer != "feishu:owner" {
+		t.Fatalf("targets=%+v", list)
 	}
 	id := list.Targets[0].ID
-	if err = s.SetPrimaryNotificationTarget(t.Context(), "a", id); err != nil {
-		t.Fatal(err)
-	}
+	body := map[string]string{"targetId": id}
+	d.must(t, http.MethodPut, path, body, nil)
 	// Then another bot cannot use that target and the owner sees it as primary.
-	if err = s.SetPrimaryNotificationTarget(t.Context(), "b", id); err == nil {
-		t.Fatal("accepted another bot's target")
-	}
-	list, err = s.NotificationTargets(t.Context(), "a")
-	if err != nil || list.PrimaryID != id {
-		t.Fatalf("primary=%+v err=%v", list, err)
+	d.must(t, http.MethodPut, "/api/bots/default/notification-targets", body, nil, http.StatusBadRequest)
+	d.must(t, http.MethodGet, path, nil, &list)
+	if list.PrimaryID != id {
+		t.Fatalf("primary=%+v", list)
 	}
 }

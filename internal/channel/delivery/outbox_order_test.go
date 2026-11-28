@@ -38,7 +38,7 @@ func TestUserChannelRepliesKeepInputOrderThroughStopAndRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	m := New(ctx, conn, nil, "bot", nil, nil)
+	m := New(ctx, conn, nil, "bot", nil, nil, nil)
 	t.Cleanup(m.Close)
 	bot := &orderTestTelegram{}
 	exec := func(stmt string) {

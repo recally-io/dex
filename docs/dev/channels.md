@@ -290,12 +290,19 @@ and Feishu app IDs cannot be assigned to multiple bots. A duplicate returns 409 
 bot that owns the credential. QR login and registration sessions are also per bot.
 WeChat runtime state is keyed by bot ID and owner.
 
-The app shares one channel settings lock across all bots and platforms. An
-archive stops channels after the archive transaction commits. Restore cancels
-pending Telegram managed setups, Feishu registrations, and WeChat logins.
-The restore transaction cancels managed setups before the bot becomes active.
-Restore starts the saved channels under the settings lock. If an archive
-callback gets the lock after restore, it leaves the channels running.
+The app shares one channel settings lock across all bots and platforms.
+[`pairing.Service`](../../internal/channel/pairing/channels.go) combines the
+platform settings views and owns approvals, notification targets, and channel
+stop and restore. Each platform owns its credentials and setup state.
+
+Session commits the archive before the app stops the channels. The app holds
+the settings lock across the restore transaction and channel restart. Bot
+updates the archive state in that transaction, and Telegram cancels pending
+managed setups before it commits. After commit, the coordinator cancels Feishu
+registrations and WeChat logins. It loads the saved configurations before it
+starts any channel. It starts Telegram, Feishu, and WeChat in that order for
+an active bot. An archive callback that gets the lock after restore leaves the
+channels running. If the archive check fails, the callback stops the channels.
 
 [`delivery.Manager`](../../internal/channel/delivery/manager.go) owns bot lifetime,
 commands, and reply delivery. Settings changes stop the old bot
@@ -331,7 +338,10 @@ transaction. The Session service checks them again in the effect transaction.
 A native rejection settles the input receipt without setting `admitted_at`.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all channels enters Main with that peer as origin. Dex checks
-pairing at intake. The receipt saves the account and peer. Ordinary channel
+pairing at intake. The app binds the common account and peer check from
+`pairing` to Session and delivery. Session uses its input transaction for the
+check. Telegram uses its private peer and sender rules. The receipt saves the
+account and peer. Ordinary channel
 input cannot select a Session. See [reply routing](sessions.md#input-and-replies).
 
 `/clear`, `/new`, `/stop`, and `/help` use durable command
@@ -454,7 +464,8 @@ request invalid. A new Feishu registration invalidates an earlier request to
 revoke pairing or disconnect Feishu. A new WeChat login invalidates an earlier
 request to disconnect WeChat. A restart clears all pending requests.
 
-Control uses the same channel settings operations as the web UI. It holds the
+The pairing coordinator uses the same channel settings operations as the web UI.
+It holds the
 settings lock from approval consumption through the fingerprint check and the
 change. It logs the outcome of applied and denied changes with the verified bot
 and operation when available. It omits credentials, raw arguments, remote peer

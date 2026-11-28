@@ -40,7 +40,7 @@ func pendingTelegramConclusion(t *testing.T) (*Manager, *sql.DB) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	manager := New(ctx, conn, nil, "fixture-bot", nil, nil)
+	manager := New(ctx, conn, nil, "fixture-bot", nil, nil, nil)
 	t.Cleanup(manager.Close)
 	// Given a durable final conclusion authorized for the original Telegram receipt.
 	if _, err := conn.ExecContext(ctx, `
