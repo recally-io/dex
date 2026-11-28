@@ -102,6 +102,12 @@ func (s *Service) SetTelegramManager(ctx context.Context, token string) error {
 			return err
 		}
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			s.forgetTelegramCredential(ref)
+		}
+	}()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -122,6 +128,7 @@ func (s *Service) SetTelegramManager(ctx context.Context, token string) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	committed = true
 	if s.manager != nil && s.manager.stopPoll != nil {
 		s.manager.stopPoll()
 	}
