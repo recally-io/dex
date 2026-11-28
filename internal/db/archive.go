@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -64,4 +65,35 @@ func RequireActive(ctx context.Context, q *sqlc.Queries, id string) error {
 		return ErrBotArchived
 	}
 	return nil
+}
+
+// WriteActiveChannel orders a channel write with archive. Take the SQLite writer
+// before checking the bot so the check and write see the same state.
+func WriteActiveChannel(ctx context.Context, conn *sql.DB, botID string, write func(*sqlc.Queries) error) error {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := sqlc.New(tx)
+	if err := q.LockChannelWriter(ctx); err != nil {
+		return err
+	}
+	if err := RequireActive(ctx, q, botID); err != nil {
+		return err
+	}
+	if err := write(q); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// CanStartChannel also guards recovery after a failed write. A canceled request
+// must still let an active bot restart with its previous credentials.
+func CanStartChannel(ctx context.Context, q *sqlc.Queries, botID string) bool {
+	err := RequireActive(context.WithoutCancel(ctx), q, botID)
+	if err != nil && !errors.Is(err, ErrBotArchived) {
+		slog.WarnContext(ctx, "check bot before starting channel", "agent", botID, "err", err)
+	}
+	return err == nil
 }

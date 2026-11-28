@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/channel/telegram"
+	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
@@ -53,7 +54,7 @@ func (s *Service) pairTelegram(botID, token string) func(context.Context, string
 			return nil, nil
 		}
 		var users string
-		err := s.writeActiveChannel(ctx, botID, func(q *sqlc.Queries) error {
+		err := db.WriteActiveChannel(ctx, s.db, botID, func(q *sqlc.Queries) error {
 			var err error
 			users, err = q.PairTelegramOwner(ctx, sqlc.PairTelegramOwnerParams{BotID: botID, Token: token, Code: code, UserID: strconv.FormatInt(user, 10), Now: time.Now().Unix()})
 			return err

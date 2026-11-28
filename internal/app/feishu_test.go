@@ -350,6 +350,34 @@ func pairFeishu(t *testing.T, d *dex, f *fakeFeishu) {
 	}
 }
 
+func TestUserCannotConnectSameFeishuAppToTwoBots(t *testing.T) {
+	t.Parallel()
+	// Given two bots and a Feishu app connected to the first bot.
+	d := startDex(t, t.TempDir(), "")
+	second := d.createCoder(t)
+	const firstPath = "/api/bots/default/channels/feishu"
+	secondPath := "/api/bots/" + second.ID + "/channels/feishu"
+	credentials := map[string]any{
+		"appId": "shared-app", "appSecret": "test-secret", "brand": "feishu", "transport": "webhook",
+		"webhook": map[string]string{"verificationToken": "test-token"},
+	}
+	d.must(t, http.MethodPut, firstPath, credentials, nil)
+
+	// When the second bot tries the same app ID, then only the first bot keeps it.
+	if status, body := d.call(t, http.MethodPut, secondPath, credentials); status != http.StatusConflict || !strings.Contains(body, "default") {
+		t.Fatalf("duplicate app: %d %s", status, body)
+	}
+	var first, other struct {
+		AppID   string `json:"appId"`
+		Enabled bool   `json:"enabled"`
+	}
+	d.must(t, http.MethodGet, firstPath, nil, &first)
+	d.must(t, http.MethodGet, secondPath, nil, &other)
+	if !first.Enabled || first.AppID != "shared-app" || other.Enabled {
+		t.Fatalf("first bot: %+v; second bot: %+v", first, other)
+	}
+}
+
 func TestUserSessionsWithFeishuOwnerOnlyAndClearsMain(t *testing.T) {
 	t.Parallel()
 	// Given a manually configured bot, paired by the owner in a private chat.

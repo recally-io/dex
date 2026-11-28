@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/recally-io/dex/internal/app"
 	botpkg "github.com/recally-io/dex/internal/bot"
+	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/sysops"
 )
@@ -246,18 +248,77 @@ func TestUserRevokesFeishuPairingWithoutReplacingCredentials(t *testing.T) {
 	path := channelApprovalPath(t, answer)
 	reviewChannelChange(t, d, d.srv.Client(), http.MethodPost, path, "", http.StatusOK)
 	// Then the app stays connected to settings, and the secure form can issue a new code without a new secret.
-	var config botpkg.Feishu
+	var config feishu.Feishu
 	base := "/api/bots/default/channels/feishu"
 	d.must(t, http.MethodGet, base, nil, &config)
 	if !config.Enabled || config.Paired {
 		t.Fatalf("Feishu settings after revocation: %+v", config)
 	}
-	var setup botpkg.FeishuSetup
+	var setup feishu.Setup
 	d.must(t, http.MethodPut, base, map[string]string{"appId": "app", "brand": "feishu"}, &setup)
 	got := taskTool(t, d, session, "channel_pairing", map[string]string{})
 	if setup.PairingCode == "" || !strings.Contains(got, `"feishu":false`) || strings.Contains(got, setup.PairingCode) || strings.Contains(got, "app-secret") {
 		t.Fatal("the pairing secret must only appear on the secure setup surface")
 	}
+}
+
+func TestUserCannotApproveFeishuChangeAfterReplacement(t *testing.T) {
+	t.Parallel()
+	// Given a paired Feishu app and an owner who opens its channel review page.
+	f := newFakeFeishu(t)
+	accounts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.FormValue("action") == "begin" {
+			_, _ = io.WriteString(w, `{"device_code":"device","verification_uri_complete":"https://accounts.feishu.cn/verify","interval":1,"expires_in":300}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"client_id":"replacement-app","client_secret":"replacement-secret","user_info":{"open_id":"new-owner","tenant_brand":"feishu"}}`)
+	}))
+	t.Cleanup(accounts.Close)
+	d := startDexWith(t, app.Config{DataDir: t.TempDir(), FeishuAPIURL: f.server.URL, FeishuAccountsURL: accounts.URL})
+	d.setModel(t, "echo")
+	pairFeishu(t, d, f)
+	session := d.newSession(t).ID
+	const base = "/api/bots/default/channels/feishu"
+	request := func(operation string) string {
+		return channelApprovalPath(t, taskTool(t, d, session, "channel_request_change", map[string]string{"operation": operation, "target": "feishu"}))
+	}
+	begin := func() string {
+		var setup feishu.Setup
+		d.must(t, http.MethodPost, base+"/registration", map[string]string{"brand": "feishu"}, &setup)
+		return setup.Session
+	}
+	complete := func(id string) {
+		eventually(t, "the new Feishu registration completes", func() (bool, any) {
+			var setup feishu.Setup
+			d.must(t, http.MethodPost, base+"/registration/poll", map[string]string{"session": id}, &setup)
+			return setup.Status == "created", setup.Status
+		})
+	}
+	assertReplacement := func() {
+		var view feishu.Feishu
+		d.must(t, http.MethodGet, base, nil, &view)
+		if view.AppID != "replacement-app" || !view.Paired {
+			t.Fatalf("replacement binding was changed: %+v", view)
+		}
+	}
+
+	// When the owner replaces the credentials, then an older approval cannot revoke the new pairing.
+	revoke := request("revoke_pairing")
+	complete(begin())
+	reviewChannelChange(t, d, d.srv.Client(), http.MethodPost, revoke, "", http.StatusConflict)
+	assertReplacement()
+
+	// When the owner reopens setup with no change to saved credentials, then an older approval
+	// cannot disconnect the current pairing or cancel the new registration.
+	oldSetup := begin()
+	disconnect := request("disconnect")
+	newSetup := begin()
+	if newSetup == "" || newSetup == oldSetup {
+		t.Fatal("reopening registration did not return a new session")
+	}
+	reviewChannelChange(t, d, d.srv.Client(), http.MethodPost, disconnect, "", http.StatusConflict)
+	assertReplacement()
+	complete(newSetup)
 }
 
 func TestUserCanRequestChannelChangesFromPrivateSessionButNotFromAChild(t *testing.T) {

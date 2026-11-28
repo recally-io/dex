@@ -4627,9 +4627,6 @@ components:
           items: { type: string }
 
     Channels:
-      x-go-type: bot.Channels
-      x-go-type-import:
-        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [telegram, wechat, feishu]
       properties:
@@ -5148,6 +5145,9 @@ components:
         username: { type: string }
 
     Telegram:
+      x-go-type: bot.Telegram
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [enabled, allowedUsers, status]
       properties:
@@ -5253,9 +5253,9 @@ components:
         }
 
     Feishu:
-      x-go-type: bot.Feishu
+      x-go-type: feishu.Feishu
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/bot
+        path: github.com/recally-io/dex/internal/channel/feishu
       type: object
       required: [enabled, appId, brand, paired, status, error]
       properties:
@@ -5271,9 +5271,9 @@ components:
         error: { type: string }
 
     FeishuSetup:
-      x-go-type: bot.FeishuSetup
+      x-go-type: feishu.Setup
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/bot
+        path: github.com/recally-io/dex/internal/channel/feishu
       type: object
       required: [session, qrUrl, interval, expiresIn, status, pairingCode]
       properties:

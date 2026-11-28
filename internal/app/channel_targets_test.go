@@ -1,15 +1,18 @@
-package bot_test
+package app_test
 
 import (
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/recally-io/dex/internal/bot"
+	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 func TestUserCanSelectOnlyTheirAuthorizedChannelTarget(t *testing.T) {
+	t.Parallel()
 	// Given two bots, only one with a paired Feishu owner.
 	conn, err := db.Open(t.Context(), filepath.Join(t.TempDir(), "control.sqlite"))
 	if err != nil {
@@ -25,7 +28,9 @@ func TestUserCanSelectOnlyTheirAuthorizedChannelTarget(t *testing.T) {
 	if _, err = conn.ExecContext(t.Context(), `INSERT INTO feishu_settings (bot_id, app_id, app_secret, brand, owner_id) VALUES ('a','app','test-secret','feishu','owner')`); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, conn, nil, "", nil)
+	mu := new(sync.Mutex)
+	s := bot.New(q, conn, mu, nil, "", nil)
+	s.BindFeishu(feishu.NewSetup(q, conn, mu, "", "", nil, nil))
 	// When the user lists eligible targets and selects one as primary.
 	list, err := s.NotificationTargets(t.Context(), "a")
 	if err != nil || len(list.Targets) != 1 {

@@ -10,7 +10,6 @@ import (
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/feedback"
 	"github.com/recally-io/dex/internal/session"
 )
 
@@ -77,33 +76,6 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg session.
 		return err
 	}
 	return m.CompleteCommand(ctx, source)
-}
-
-const feedbackTooLong = "This draft is too long for one channel reply. Shorten it or use Feedback in Web."
-
-const feedbackInstructions = "Send /feedback followed by your title on the first line and your description on the lines below. " + feedback.PublicWarning
-
-// feedbackReply builds a reply from explicitly supplied text, never from a session.
-func feedbackReply(text string) string {
-	_, rest := channel.SplitCommand(text)
-	if rest == "" {
-		return feedbackInstructions
-	}
-	title, description, _ := strings.Cut(rest, "\n")
-	draft, err := feedback.Build(title, description)
-	if err != nil {
-		return "Draft not ready: " + err.Error() + ". " + feedbackInstructions
-	}
-	const fence = "```"
-	if strings.Contains(draft.Title, fence) || strings.Contains(draft.Description, fence) {
-		return "This draft contains code fences. Remove them or use Feedback in Web."
-	}
-	answer := feedback.PublicWarning + " Copy the title and description below. Submit with your own GitHub account:\n\n" + feedback.IssueURL + "\n\n" + fence + "\nTitle: " + draft.Title + "\n\nDescription:\n" + draft.Description + "\n" + fence
-	// Keep the complete draft in one message.
-	if len(answer) > 4000 {
-		return feedbackTooLong
-	}
-	return answer
 }
 
 // CompleteCommand processes a stored command. The caller must first commit its receipt.

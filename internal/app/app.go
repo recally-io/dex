@@ -359,7 +359,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err != nil {
 		return nil, err
 	}
-	botsService = bot.New(q, conn, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
+	channelMu := new(sync.Mutex)
+	botsService = bot.New(q, conn, channelMu, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
 	if err := botsService.ConfigureTelegramVault(ctx, vault.New(cfg.DataDir)); err != nil {
 		slog.Warn("telegram: could not open the manager credential")
 	}
@@ -387,6 +388,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 	}
 	sessions.ConfigureSessions(prefs.CheckSession)
+	var feishuSetup *feishu.SetupService
 	setFeishu := func(botID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
 		manager := bots.Bot(botID).Manager
 		uploads := upload.New(bot.Home(cfg.DataDir, botID))
@@ -395,10 +397,13 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return
 		}
 		manager.Set("feishu", feishu.New(*config, manager, uploads, func(ctx context.Context, owner, code string) (bool, error) {
-			return botsService.PairFeishu(ctx, botID, owner, code)
+			return feishuSetup.Pair(ctx, botID, owner, code)
 		}))
 	}
-	botsService.ConfigureFeishu(cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu)
+	feishuSetup = feishu.NewSetup(q, conn, channelMu, cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu, func(id string) channel.Status {
+		return bots.Status(id, "feishu")
+	})
+	botsService.BindFeishu(feishuSetup)
 	botsService.ChannelStatus = bots.Status
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
 	setWechat := func(botID string, config *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
@@ -466,6 +471,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	a.handler = server.New(server.Config{
 		WebHandler:      cfg.WebHandler,
 		ChannelWebhooks: http.HandlerFunc(bots.webhook),
+		Feishu:          feishuSetup,
 		SkillCatalogURL: cfg.SkillCatalogURL,
 		McpRegistryURL:  cfg.McpRegistryURL,
 		Tasks:           tasks,
@@ -536,7 +542,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		if err != nil {
 			return nil, err
 		}
-		fs, err := botsService.FeishuConfig(ctx, bot.ID)
+		fs, err := feishuSetup.Config(ctx, bot.ID)
 		if err != nil {
 			return nil, err
 		}

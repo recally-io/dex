@@ -8,69 +8,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/recally-io/dex/internal/bot"
-	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
-
-func TestUserCannotFinishFeishuRegistrationAfterArchiveCommit(t *testing.T) {
-	t.Parallel()
-	// Given a pending registration and a local accounts endpoint that approves it.
-	q, writer, id := archiveRaceDB(t)
-	accounts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
-			t.Error(err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if r.Form.Get("action") == "begin" {
-			_, _ = io.WriteString(w, `{"device_code":"device","verification_uri_complete":"https://accounts.feishu.cn/verify","interval":1,"expires_in":300}`)
-			return
-		}
-		_, _ = io.WriteString(w, `{"client_id":"qr-app","client_secret":"test-secret","user_info":{"open_id":"creator","tenant_brand":"feishu"}}`)
-	}))
-	t.Cleanup(accounts.Close)
-	s := bot.New(q, writer, nil, "", nil)
-	var started bool
-	s.ConfigureFeishu("", accounts.URL, func(_ string, cfg *feishu.Config) { started = started || cfg != nil })
-	setup, err := s.BeginFeishu(t.Context(), id, "feishu")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// When the archive commits while the approved registration waits for its writer.
-	var status string
-	saveErr := archiveBeforeChannelWrite(t, writer, id, func(ctx context.Context) error {
-		tick := time.Tick(20 * time.Millisecond)
-		for {
-			res, err := s.PollFeishu(ctx, id, setup.Session)
-			status = res.Status
-			if err != nil || status != "pending" {
-				return err
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-tick:
-			}
-		}
-	})
-
-	// Then the request fails without storing credentials or asking the runtime to start.
-	cfg, err := s.FeishuConfig(t.Context(), id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !errors.Is(saveErr, db.ErrBotArchived) || status == "created" || cfg != nil || started {
-		t.Fatalf("after archive: status=%q err=%v credentials saved=%t start requested=%t", status, saveErr, cfg != nil, started)
-	}
-}
 
 func TestUserCannotReplaceWechatAccountAfterArchiveCommit(t *testing.T) {
 	t.Parallel()
@@ -91,7 +38,7 @@ func TestUserCannotReplaceWechatAccountAfterArchiveCommit(t *testing.T) {
 	if err := q.SetWechatSettings(t.Context(), sqlc.SetWechatSettingsParams{BotID: id, Token: "old-token", BaseUrl: server.URL, WechatBotID: "old-bot", Owner: "old-owner"}); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, writer, nil, "", nil)
+	s := bot.New(q, writer, new(sync.Mutex), nil, "", nil)
 	var started bool
 	s.ConfigureWechat(wechat.Options{APIURL: server.URL}, func(_ string, cfg *wechat.Config) { started = started || cfg != nil })
 	login, err := s.BeginWechatLogin(t.Context(), id)
@@ -131,7 +78,7 @@ func TestUserCannotSaveTelegramSettingsAfterArchiveCommit(t *testing.T) {
 	}
 	var started bool
 	var archiveErr error
-	s := bot.New(sqlc.New(writer), writer, nil, "", func(_ string, cfg *telegram.Config) {
+	s := bot.New(sqlc.New(writer), writer, new(sync.Mutex), nil, "", func(_ string, cfg *telegram.Config) {
 		if cfg != nil {
 			started = true
 			return
@@ -157,21 +104,18 @@ func TestUserCannotSaveTelegramSettingsAfterArchiveCommit(t *testing.T) {
 	}
 }
 
-func TestUserCannotPairChannelAfterArchiveCommit(t *testing.T) {
+func TestUserCannotPairTelegramAfterArchiveCommit(t *testing.T) {
 	t.Parallel()
-	// Given an archived bot with still-valid pairing codes and a runtime that has not stopped yet.
+	// Given an archived bot with still-valid a pairing code and a runtime that has not stopped yet.
 	q, writer, id := archiveRaceDB(t)
 	ctx := t.Context()
-	if err := q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{BotID: id, AppID: "app", AppSecret: "secret", Brand: "feishu", PairingCode: "code", PairingExpiresAt: time.Now().Add(time.Minute).UnixMilli()}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: id, Token: "123:secret", Options: "{}"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := q.SetTelegramPairing(ctx, sqlc.SetTelegramPairingParams{BotID: id, PairingCode: "code", PairingExpires: time.Now().Add(time.Minute).Unix()}); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, writer, nil, "", nil)
+	s := bot.New(q, writer, new(sync.Mutex), nil, "", nil)
 	tg, err := s.TelegramConfig(ctx, id)
 	if err != nil || tg == nil {
 		t.Fatalf("read initial Telegram settings: configured=%t err=%v", tg != nil, err)
@@ -180,19 +124,14 @@ func TestUserCannotPairChannelAfterArchiveCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// When the runtime delivers pairing requests, the archived bot must not gain an owner.
-	paired, feishuErr := s.PairFeishu(ctx, id, "owner", "code")
+	// When the runtime delivers a pairing request, the archived bot must not gain an owner.
 	users, telegramErr := tg.Pair(ctx, "code", 42)
-	feishuRow, err := q.GetFeishuSettings(ctx, id)
-	if err != nil {
-		t.Fatal(err)
-	}
 	telegramRow, err := q.GetTelegramSettings(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if paired || !errors.Is(feishuErr, db.ErrBotArchived) || feishuRow.OwnerID != "" || len(users) != 0 || !errors.Is(telegramErr, db.ErrBotArchived) || telegramRow.AllowedUsers != "" {
-		t.Fatalf("after archive: Feishu paired=%t owner=%q err=%v; Telegram users=%v saved=%q err=%v", paired, feishuRow.OwnerID, feishuErr, users, telegramRow.AllowedUsers, telegramErr)
+	if len(users) != 0 || !errors.Is(telegramErr, db.ErrBotArchived) || telegramRow.AllowedUsers != "" {
+		t.Fatalf("after archive: Telegram users=%v saved=%q err=%v", users, telegramRow.AllowedUsers, telegramErr)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/wechat"
+	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
@@ -109,8 +110,12 @@ func (s *Service) PollWechatLogin(ctx context.Context, botID string, id, code st
 }
 
 func (s *Service) activateWechat(ctx context.Context, botID string, cfg *wechat.Config) error {
-	if err := s.checkCredential(ctx, botID, "wechat", cfg.BotID); err != nil {
+	owner, err := s.q.WechatCredentialOwner(ctx, cfg.BotID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
+	}
+	if err == nil && owner.ID != botID {
+		return fmt.Errorf("%w: wechat is used by bot %q (%s)", ErrCredentialInUse, owner.Name, owner.ID)
 	}
 	previous, err := s.WechatConfig(ctx, botID)
 	if err != nil {
@@ -118,7 +123,7 @@ func (s *Service) activateWechat(ctx context.Context, botID string, cfg *wechat.
 	}
 	// Join all old requests before resetting runtime state shared with the replacement.
 	s.onWechat(botID, nil)
-	if err := s.writeActiveChannel(ctx, botID, func(q *sqlc.Queries) error {
+	if err := db.WriteActiveChannel(ctx, s.db, botID, func(q *sqlc.Queries) error {
 		if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{BotID: botID, Token: cfg.Token, BaseUrl: cfg.BaseURL, WechatBotID: cfg.BotID, Owner: cfg.Owner}); err != nil {
 			return err
 		}
@@ -127,12 +132,12 @@ func (s *Service) activateWechat(ctx context.Context, botID string, cfg *wechat.
 		}
 		return q.SetWechatPause(ctx, sqlc.SetWechatPauseParams{BotID: cfg.BotID, Owner: cfg.Owner, PauseUntil: 0})
 	}); err != nil {
-		if previous != nil && s.canStartChannel(ctx, botID) {
+		if previous != nil && db.CanStartChannel(ctx, s.q, botID) {
 			s.onWechat(botID, previous)
 		}
 		return err
 	}
-	if s.canStartChannel(ctx, botID) {
+	if db.CanStartChannel(ctx, s.q, botID) {
 		s.onWechat(botID, cfg)
 	}
 	return nil
@@ -154,7 +159,7 @@ func (s *Service) deleteWechat(ctx context.Context, botID string) error {
 	}
 	s.onWechat(botID, nil)
 	if err := s.q.DeleteWechatSettings(ctx, botID); err != nil {
-		if previous != nil && s.canStartChannel(ctx, botID) {
+		if previous != nil && db.CanStartChannel(ctx, s.q, botID) {
 			s.onWechat(botID, previous)
 		}
 		return err
