@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,7 +50,19 @@ func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
 			t.Fatalf("non-private peer %q reached Main", peer)
 		}
 	}
-	// Then no command receipt or private conversation can be created by that request.
+	// An input with a private peer but a revoked actor must also leave Main absent.
+	if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:synthetic", AllowedUsers: "43"}); err != nil {
+		t.Fatal(err)
+	}
+	const source = "telegram:123:revoked"
+	err = manager.Receive(ctx, "telegram:42", source, session.Message{Content: "revoked input", ChannelContext: session.ChannelContext{AccountID: "123", SenderID: "42"}})
+	if !errors.Is(err, session.ErrTelegramUnauthorized) {
+		t.Fatalf("revoked input did not get the authorization error: %v", err)
+	}
+	if received, err := service.ReceivedSource(ctx, source); err != nil || received {
+		t.Fatalf("revoked input has a receipt: received=%t err=%v", received, err)
+	}
+	// Then no rejected input can create a command receipt or Main.
 	var commands, sessions int
 	if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM channel_commands").Scan(&commands); err != nil {
 		t.Fatal(err)
