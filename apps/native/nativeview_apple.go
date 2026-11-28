@@ -16,7 +16,7 @@ import (
 	"github.com/ebitengine/purego/objc"
 	"github.com/nsgo-dev/nsgo"
 	"github.com/nsgo-dev/nsgo/core"
-	"github.com/recally-io/dex/native/locales"
+	"github.com/recally-io/dex/apps/native/locales"
 )
 
 const dexWebComponent = "DexWorkspaceWebView"

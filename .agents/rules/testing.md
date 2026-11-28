@@ -50,7 +50,7 @@ Read this before you write or change a test.
     `-race`).
   - Use generous positive wait deadlines (at least 10 s for real engine or MCP
     turns) so parallel `-race` tests stay deterministic under CI load.
-  - Do not import `web` or `internal/server` from engine or session packages;
+  - Do not import `apps/web` or `internal/server` from engine or session packages;
     their CI race shards skip the frontend install and build.
   - When a CI job approaches 4–5 minutes, inspect the `.local/ci/*.jsonl`
     timing artifacts and remove the bottleneck before adding shards or raising

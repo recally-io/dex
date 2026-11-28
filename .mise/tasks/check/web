@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Check web types, lint, format, and reducer tests"
-#MISE dir="web"
+#MISE dir="apps/web"
 set -euo pipefail
 if git grep -nE '(^|/)atoms/|(^|/)primitives/|@central-icons-react|@base-ui/react' -- 'src/*.ts' 'src/*.tsx' 'src/*.css' ':!src/components/ui/'; then
   echo 'retired web UI import found' >&2

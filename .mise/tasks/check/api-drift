@@ -15,5 +15,5 @@ check api/oapi-codegen.yaml internal/api/server.gen.go
 for config in plugins/*/api/oapi-codegen.yaml; do
   check "$config" "$(dirname "$config")/server.gen.go"
 done
-(cd web && bunx --no-install openapi-ts --output "$tmp/web")
-diff -r web/src/api/generated "$tmp/web"
+(cd apps/web && bunx --no-install openapi-ts --output "$tmp/web")
+diff -r apps/web/src/api/generated "$tmp/web"

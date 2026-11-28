@@ -529,7 +529,7 @@ func (p projection) assistantItems(m ai.AssistantMessage, key string, results ma
 // The transcript shows these bodies only in an opened step, and they are most of a long chat.
 const detailLimit = 2048
 
-// sessionCalls are the tools whose result the web thread card reads (web/src/lib/threads.ts).
+// sessionCalls are the tools whose result the web thread card reads (apps/web/src/lib/threads.ts).
 var sessionCalls = []string{"session_new", "session_fork", "session_send"}
 
 // brief leaves out long bodies that the transcript shows only in an opened step. A thought keeps

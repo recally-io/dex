@@ -6,4 +6,4 @@ go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
 for config in plugins/*/api/oapi-codegen.yaml; do
   go tool oapi-codegen -config "$config" api/openapi.yaml
 done
-(cd web && bunx --no-install openapi-ts)
+(cd apps/web && bunx --no-install openapi-ts)

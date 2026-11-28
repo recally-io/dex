@@ -17,7 +17,7 @@ out="$PWD/.local/release/$tag"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-cd native
+cd apps/native
 unset NSGO_NOTARY_KEY
 mise exec go@1.27.3 -- go tool nsgo build -target macos_arm64 \
   -version "$version" -build-number "${GITHUB_RUN_NUMBER:-1}" \

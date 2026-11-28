@@ -25,7 +25,7 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
   - package-ecosystem: bun
-    directory: /web
+    directory: /apps/web
     schedule:
       interval: weekly
     commit-message:

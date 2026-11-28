@@ -1,8 +1,8 @@
 # Web UI
 
 The Go binary embeds the files in `dist/`. Build tasks generate these files;
-Git does not track them. Vite serves `shared/` at the public root. Keep only public files there. The browser and native clients use the same icon in `shared/assets/dex.png`.
-The browser uses the API contract in [api/openapi.yaml](../api/openapi.yaml).
+Git does not track them. Vite serves `apps/assets/` at `/assets/` through `public/assets`. Keep only public files there. The browser and native clients use the same icon in `apps/assets/dex.png`.
+The browser uses the API contract in [api/openapi.yaml](../../api/openapi.yaml).
 Do not edit the generated client in `src/api/generated/`.
 
 ## Development
@@ -42,7 +42,7 @@ the registered Runners (`GET /api/bots/{botId}/runners`). Offline Runners are vi
 but disabled. The project picker lists folders on the chosen Runner. After
 the first message, the header shows its name. With other available Runners,
 Fork from here offers a fork on the current Runner or another one.
-See the [API contract](../api/openapi.yaml) for request and response schemas.
+See the [API contract](../../api/openapi.yaml) for request and response schemas.
 `src/lib/attachments.ts` uploads each file of the composer when the user adds
 it; a message sends only upload IDs.
 
@@ -54,7 +54,7 @@ General settings open at `/b/$botId/bot`.
 Bot Settings also includes Integrations, Channels, and Secrets. A page outside
 a Bot has no Bot actions in its header.
 The right Sessions sidebar starts closed. The global sidebar
-scrolls the Bots list above a fixed footer with [Board](../docs/dev/tasks.md#board),
+scrolls the Bots list above a fixed footer with [Board](../../docs/dev/tasks.md#board),
 Integrations, and Settings. The mobile drawer uses the same sidebar. Board (`/board`)
 shows the Owner attention count and groups Tasks with other work:
 
@@ -159,7 +159,7 @@ set or clear an optional plain-text description.
 Global Secrets (`/settings/secrets`) edits shared Vault entries and 1Password.
 A bot's Secrets page edits its own Vault entries. The vault API returns metadata
 only. The editor clears the value after submit and does not store it in the browser.
-[Bot Integrations](../docs/dev/skills-and-integrations.md) reads
+[Bot Integrations](../../docs/dev/skills-and-integrations.md) reads
 `/api/bots/{botId}/integrations` and offers Reload. It shows effective skills
 and MCP servers with connection and OAuth states. Shared rows link to global
 Integrations, and Add links preselect this Bot. `/b/$botId/skills` redirects
@@ -200,7 +200,7 @@ The install task puts a Go module boundary in `node_modules/`. Some npm tools co
 
 `src/components/ui/` is the owned output of the stock shadcn/ui preset `b4XK48HRFw` (`base-lyra`). Keep these files generic and compose them in domain components. Do not add route behavior to this directory. The `components.json` file records the preset, aliases, Base UI style, and Lucide icon library.
 
-To update the foundation, review the preset first, then run the official CLI from `web/`:
+To update the foundation, review the preset first, then run the official CLI from `apps/web/`:
 
 ```sh
 bunx --bun shadcn@latest apply b4XK48HRFw -y

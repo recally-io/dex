@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-repo=$(cd "$(dirname "$0")/../.." && pwd)
+repo=$(cd "$(dirname "$0")/../../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/dex-apple-qa.XXXXXXXX")
 cd "$repo"
 children=()
