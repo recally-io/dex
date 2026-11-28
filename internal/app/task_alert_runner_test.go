@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -55,6 +56,14 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	if got := pendingTaskAlerts(t, dir); len(got) != 1 {
 		t.Fatalf("Main must keep one pending Task alert: %q", got)
 	}
+	// A pending alert can start a cold open. Wait so shutdown cannot interrupt Git init.
+	conn := taskResultDB(t, dir)
+	eventually(t, "Main execution to initialize before restart", func() (bool, any) {
+		var ready bool
+		err := conn.QueryRowContext(t.Context(), `SELECT EXISTS (SELECT 1 FROM sessions
+			WHERE bot_id = 'default' AND channel_key = 'main' AND execution_id IS NOT NULL)`).Scan(&ready)
+		return err == nil && ready, fmt.Sprintf("ready=%t err=%v", ready, err)
+	})
 	d.stop()
 	d = startDex(t, dir, "")
 	if got := pendingTaskAlerts(t, dir); len(got) != 1 {
@@ -87,7 +96,6 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	// this test does not depend on live events during the cold start.
 	var main sessionListItem
 	d.must(t, http.MethodGet, "/api/bots/default/sessions/main", nil, &main)
-	conn := sessionDB(t, d)
 	var alertID string
 	if err := conn.QueryRowContext(t.Context(), `SELECT s.id FROM submissions s JOIN task_inputs i ON i.submission_id = s.id WHERE s.kind = 'task_wake'`).Scan(&alertID); err != nil {
 		t.Fatal(err)
