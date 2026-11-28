@@ -357,6 +357,14 @@ func TestUserAnswersTelegramQuestionWithFullQuotedContext(t *testing.T) {
 	f.message(1, 42, 42, `ask_user {"question":"Which color?","options":["Blue","Green"]}`)
 	question := f.next(t)
 	d.setModel(t, "echo")
+	// The fake reports the send before Dex commits the message mapping.
+	conn := taskResultDB(t, d.dataDir(t))
+	eventually(t, "the question message mapping", func() (bool, any) {
+		var id string
+		err := conn.QueryRowContext(t.Context(), `SELECT question_id FROM question_messages
+			WHERE bot_id = 'default' AND peer = 'telegram:42' AND remote_id = ?`, fmt.Sprint(question.ID)).Scan(&id)
+		return err == nil, err
+	})
 	f.mu.Lock()
 	f.updates = append(f.updates, map[string]any{"update_id": int64(2), "message": map[string]any{
 		"message_id": 2, "from": map[string]any{"id": 42}, "chat": map[string]any{"id": 42, "type": "private"}, "text": "Blue",
@@ -367,7 +375,6 @@ func TestUserAnswersTelegramQuestionWithFullQuotedContext(t *testing.T) {
 	if got := f.next(t).Text; got != "echo: Answer to: Which color?\nBlue" {
 		t.Fatalf("question answer changed: %q", got)
 	}
-	conn := controlWriteDB(t, d.dataDir(t))
 	if n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:2' AND content=?", "Answer to: Which color?\nBlue"); n != 1 {
 		t.Fatalf("question answer count=%d", n)
 	}
