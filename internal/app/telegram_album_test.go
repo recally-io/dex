@@ -10,12 +10,15 @@ func (f *fakeTelegram) albumFiles(group string, firstID int64, names ...string) 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for i, name := range names {
-		id := firstID + int64(i)
-		f.updates = append(f.updates, map[string]any{"update_id": id, "message": map[string]any{
-			"message_id": id, "from": map[string]any{"id": 42}, "chat": map[string]any{"id": 42, "type": "private"}, "media_group_id": group, "caption": "caption " + name,
-			"document": map[string]any{"file_id": name, "file_name": name},
-		}})
+		f.updates = append(f.updates, telegramAlbumUpdate(group, firstID+int64(i), name))
 	}
+}
+
+func telegramAlbumUpdate(group string, id int64, name string) map[string]any {
+	return map[string]any{"update_id": id, "message": map[string]any{
+		"message_id": id, "from": map[string]any{"id": 42}, "chat": map[string]any{"id": 42, "type": "private"}, "media_group_id": group, "caption": "caption " + name,
+		"document": map[string]any{"file_id": name, "file_name": name},
+	}}
 }
 
 func TestUserTelegramAlbumBecomesOneNativeInput(t *testing.T) {

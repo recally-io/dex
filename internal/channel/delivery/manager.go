@@ -42,12 +42,19 @@ type Manager struct {
 	mu       sync.Mutex
 	commands map[string]chan struct{} // source key to active command owner
 	bots     map[string]*runtime
-	policies map[string]Policy // fixed for the manager's lifetime
+	// These bindings do not change after New.
+	policies        map[string]Policy
+	reactionAllowed map[string]ReactionAuthorizer
 }
 
-// New creates a manager with optional policies keyed by platform. Close it before closing the database.
-func New(ctx context.Context, db *sql.DB, sessions *session.Service, botID string, policies map[string]Policy) *Manager {
-	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), sessions: sessions, botID: botID, commands: make(map[string]chan struct{}), bots: make(map[string]*runtime), policies: maps.Clone(policies)}
+// New creates a manager with optional policies and reaction authorizers keyed by platform.
+// Close it before closing the database.
+func New(ctx context.Context, db *sql.DB, sessions *session.Service, botID string, policies map[string]Policy, reactionAllowed map[string]ReactionAuthorizer) *Manager {
+	return &Manager{
+		ctx: ctx, db: db, q: sqlc.New(db), sessions: sessions, botID: botID,
+		commands: make(map[string]chan struct{}), bots: make(map[string]*runtime),
+		policies: maps.Clone(policies), reactionAllowed: maps.Clone(reactionAllowed),
+	}
 }
 
 // Set stops the old bot and waits for it before starting its replacement.
@@ -70,7 +77,7 @@ func (m *Manager) Set(name string, bot channel.Bot) {
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
 	r := &runtime{ctx: ctx, bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), inboundWake: make(chan struct{}, 1), reactions: make(map[string]*reactionWatch), status: channel.Status{State: "running"}}
-	if receiver, ok := bot.(interface{ InboundWebhook() *channel.Webhook }); ok {
+	if receiver, ok := bot.(channel.WebhookReceiver); ok {
 		r.webhook = receiver.InboundWebhook()
 	}
 	m.mu.Lock()
@@ -134,7 +141,7 @@ func (m *Manager) Notify(key string) {
 		if key != session.MainKey && platform != name {
 			continue
 		}
-		if inbound, ok := r.bot.(interface{ WakeInbound() }); ok {
+		if inbound, ok := r.bot.(channel.InboundWaker); ok {
 			inbound.WakeInbound()
 		}
 		select {

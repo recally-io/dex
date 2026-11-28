@@ -2,6 +2,21 @@
 
 This document describes the channel adapters and how they share delivery.
 
+## Capabilities
+
+The [root `channel` package](../../internal/channel/contract.go) defines the transport
+contract and frozen delivery values. It depends only on the Go standard library.
+Each adapter implements `Bot` and defines its own inbound interface. The manager
+uses these optional capabilities:
+
+- `Reactor`: Telegram and Feishu can show status on incoming messages. The app
+  binds their reaction authorizers. Without an authorizer, the manager sends no
+  reactions for that platform.
+- `WebhookReceiver`: Telegram and Feishu can receive HTTP callbacks. A nil
+  `InboundWebhook` result means webhooks are off for the current configuration.
+- `InboundWaker`: Telegram can wake its album collector. The manager calls
+  `WakeInbound` under a lock, so it must not block.
+
 ## Telegram
 
 [`telegram.Bot`](../../internal/channel/telegram/telegram.go) is on when the settings
@@ -277,10 +292,8 @@ commands, and reply delivery. Settings changes stop the old bot
 before they start its replacement. Settings expose runtime status: `off`,
 `running`, `error` with a reason, or `needs_login`.
 
-The root `channel` package defines the transport contract and frozen delivery
-values without storage or runtime dependencies. Each adapter defines its own
-inbound interface. The app passes the manager to Feishu and WeChat. For
-Telegram, the app combines the manager with the [Telegram policy](../../internal/channel/telegram/policy/)
+The app passes the manager to Feishu and WeChat. For Telegram, the app
+combines the manager with the [Telegram policy](../../internal/channel/telegram/policy/)
 and registers that policy with the manager. Feishu and WeChat do not register
 a policy. The delivery package and the Telegram policy do not import each other.
 The policy owns Telegram command rules, buttons, callback claims, speech, album

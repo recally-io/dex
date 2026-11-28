@@ -41,6 +41,18 @@ type Bot interface {
 	Send(ctx context.Context, peer, deliveryID string, content Part) (Receipt, error)
 }
 
+// WebhookReceiver is an optional bot capability for HTTP callbacks.
+// A nil InboundWebhook result disables webhooks for the current configuration.
+type WebhookReceiver interface {
+	InboundWebhook() *Webhook
+}
+
+// InboundWaker is an optional bot capability for waking inbound work.
+// WakeInbound must not block because the manager calls it under a lock.
+type InboundWaker interface {
+	WakeInbound()
+}
+
 // Reply is the settled answer or the reason no answer is available.
 type Reply struct {
 	Status string // "done" or "unanswered"

@@ -17,6 +17,8 @@ type WebhookConfig struct {
 	EncryptKey        string `json:"encryptKey,omitempty"`
 }
 
+var _ channel.WebhookReceiver = (*Bot)(nil)
+
 // InboundWebhook returns nil when this app uses a WebSocket.
 func (b *Bot) InboundWebhook() *channel.Webhook {
 	config, appID := b.cfg.Webhook, b.cfg.AppID
