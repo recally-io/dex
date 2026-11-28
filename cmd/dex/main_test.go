@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/service"
+	"github.com/recally-io/dex/internal/host/service"
 )
 
 func TestUserRequestsUsage(t *testing.T) {
@@ -118,7 +118,7 @@ func TestUserReinstallKeepsStoredOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile("../../internal/service/testdata/" + runtime.GOOS + "-false.golden")
+	data, err := os.ReadFile("../../internal/host/service/testdata/" + runtime.GOOS + "-false.golden")
 	if err != nil {
 		t.Fatal(err)
 	}

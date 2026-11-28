@@ -13,7 +13,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/recally-io/dex/internal/update"
+	"github.com/recally-io/dex/internal/host/update"
 	"golang.org/x/mod/module"
 	"golang.org/x/mod/semver"
 )

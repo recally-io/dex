@@ -13,8 +13,8 @@ import (
 	"github.com/recally-io/dex/internal/app"
 	botpkg "github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel/feishu"
-	"github.com/recally-io/dex/internal/settings"
-	"github.com/recally-io/dex/internal/sysops"
+	"github.com/recally-io/dex/internal/host/service"
+	"github.com/recally-io/dex/internal/host/sysops"
 )
 
 func channelApprovalPath(t *testing.T, answer string) string {
@@ -63,7 +63,7 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
 	d := startDexWith(t, app.Config{DataDir: dir, TelegramAPIURL: f.srv.URL, RequireToken: true})
-	token, err := settings.StoredToken(t.Context(), dir)
+	token, err := service.StoredToken(t.Context(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}

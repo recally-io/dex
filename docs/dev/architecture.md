@@ -21,8 +21,10 @@ mounts the supplied Web handler at `/`. See the
 
 The root `go.mod` serves both hosts. Core packages under `internal/` do not
 import `apps/`. `cmd/dex` does not import `apps/native/`, NSGo, the PiG TUI,
-or the PiG extension host. `cmd/dex-agent` does not import `apps/` or
-`internal/app`. The `check:native` task checks these boundaries.
+or the PiG extension host. `cmd/dex-agent` does not depend on `apps/`,
+`internal/app`, `internal/settings`, `internal/session`, or `internal/engine`.
+Production entry points do not link test helpers. The `check:native` task
+checks these boundaries.
 
 The native app starts and stops the local runtime when the Owner opens or
 leaves a local workspace. iOS and macOS load `dex-local://workspace`.
@@ -35,7 +37,7 @@ no local bridge. See [native storage and setup](../../apps/native/README.md).
 
 `cmd/dex` manages per-user services and CLI updates. See
 [service commands and recovery](../../README.md#run-and-manage-dex).
-`internal/server` serves `/api/system/*` through `internal/sysops` for release
+`internal/server` serves `/api/system/*` through `internal/host/sysops` for release
 settings, upgrade progress, restart, hot backups of `control.sqlite` in
 `<data dir>/backups/`, and recent logs from an in-memory buffer. Upgrade verifies the replacement binary before
 an in-place restart via `syscall.Exec`.

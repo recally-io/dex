@@ -16,9 +16,9 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/host/update"
 	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/runner/outbound"
-	"github.com/recally-io/dex/internal/update"
 	"golang.org/x/mod/semver"
 )
 

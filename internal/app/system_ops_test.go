@@ -23,8 +23,8 @@ import (
 
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/service"
-	"github.com/recally-io/dex/internal/sysops"
+	"github.com/recally-io/dex/internal/host/service"
+	"github.com/recally-io/dex/internal/host/sysops"
 )
 
 func buildDexArchive(t *testing.T, tag string) []byte {

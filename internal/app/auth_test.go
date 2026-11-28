@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/service"
+	"github.com/recally-io/dex/internal/host/service"
 	"github.com/recally-io/dex/internal/settings"
 )
 
@@ -67,7 +67,7 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 	}
 
 	// When the CLI reads the token while dex runs, then the token opens the API.
-	token, err := settings.StoredToken(t.Context(), dataDir)
+	token, err := service.StoredToken(t.Context(), dataDir)
 	if err != nil || settings.CheckToken(token) != nil {
 		t.Fatalf("stored token %q: %v", token, err)
 	}
@@ -121,7 +121,7 @@ func TestUserTokenFromTheEnvironmentReplacesTheStoredToken(t *testing.T) {
 	dataDir := t.TempDir()
 	own := "user-token-0123456789abcdefghijklmnopqrstuvwxyz"
 	d := startDexWith(t, app.Config{DataDir: dataDir, Token: own, RequireToken: true})
-	stored, err := settings.StoredToken(t.Context(), dataDir)
+	stored, err := service.StoredToken(t.Context(), dataDir)
 	if err != nil || stored == "" {
 		t.Fatalf("stored token %q: %v", stored, err)
 	}
@@ -138,7 +138,7 @@ func TestUserTokenFromTheEnvironmentReplacesTheStoredToken(t *testing.T) {
 func TestStoredTokenOfAnOlderDatabaseIsEmpty(t *testing.T) {
 	t.Parallel()
 	// Given a data directory with no database, and one with a schema from before tokens.
-	if token, err := settings.StoredToken(t.Context(), t.TempDir()); err != nil || token != "" {
+	if token, err := service.StoredToken(t.Context(), t.TempDir()); err != nil || token != "" {
 		t.Fatalf("no database: %q %v", token, err)
 	}
 	dir := t.TempDir()
@@ -154,7 +154,7 @@ func TestStoredTokenOfAnOlderDatabaseIsEmpty(t *testing.T) {
 	}
 
 	// Then the CLI reads no token and does not change the database.
-	if token, err := settings.StoredToken(t.Context(), dir); err != nil || token != "" {
+	if token, err := service.StoredToken(t.Context(), dir); err != nil || token != "" {
 		t.Fatalf("older schema: %q %v", token, err)
 	}
 }

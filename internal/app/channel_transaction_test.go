@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/recally-io/dex/internal/sysops"
+	"github.com/recally-io/dex/internal/host/sysops"
 )
 
 func TestUserTelegramAlbumMemberRetriesBeforeAcknowledgement(t *testing.T) {

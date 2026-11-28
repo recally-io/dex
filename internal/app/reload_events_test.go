@@ -12,8 +12,8 @@ import (
 
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
+	"github.com/recally-io/dex/internal/host/sysops"
 	"github.com/recally-io/dex/internal/runner"
-	"github.com/recally-io/dex/internal/sysops"
 )
 
 type observedStamps struct {
