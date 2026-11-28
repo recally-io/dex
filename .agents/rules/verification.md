@@ -16,8 +16,9 @@ Read this before you report work as complete.
 and runs Go tests with the race detector, except `internal/app`. There is no
 backend worker build.
 Run `mise run check:native` for runtime or dependency changes. It checks that
-removed backend paths stay absent, rejects PiG TUI and extension-host imports,
-and builds darwin/linux on amd64/arm64 with `CGO_ENABLED=0`.
+removed backend paths stay absent and rejects PiG TUI, extension-host, and NSGo
+imports in the server. It builds the server for darwin and linux on amd64 and
+arm64, and builds the native app for Linux amd64, with `CGO_ENABLED=0`.
 
 For web UI interaction, navigation, or browser flow changes, also run
 `mise run check:e2e` (runs the `e2e` browser suite in `apps/web/tests/`). `check:web`

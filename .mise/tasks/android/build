@@ -27,7 +27,7 @@ else
   args+=(-keystore "$DEX_ANDROID_KEYSTORE" -version "${tag#v}" -build-number "$GITHUB_RUN_NUMBER")
   out="$MISE_PROJECT_ROOT/.local/release/$tag/Dex-$tag-Android-arm64.apk"
 fi
-mise exec go@1.27.3 -- go tool nsgo build "${args[@]}"
+go tool nsgo build "${args[@]}"
 shopt -s nullglob
 apks=("$work/build"/*-"$target"/*.apk)
 [[ ${#apks[@]} == 1 ]]

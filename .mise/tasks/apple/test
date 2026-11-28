@@ -3,6 +3,6 @@
 #MISE depends=["build:web"]
 set -euo pipefail
 cd "${MISE_PROJECT_ROOT:?}/apps/native"
-# Only the headless host can select an iPhone environment on a Mac.
-mise exec go@1.27.3 -- go tool nsgo test -run '^TestUser(OnPhoneCannotSaveAnHTTPAddress|ChoosesAndForgetsLocalWorkspace)$' .
-exec mise exec go@1.27.3 -- go tool nsgo test -target macos .
+# Run the full client suite headless, then run the WebKit tests in a macOS host.
+go tool nsgo test .
+exec go tool nsgo test -target macos ./internal/webview

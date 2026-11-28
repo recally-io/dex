@@ -1,4 +1,5 @@
-package main
+// Package bridge dispatches local WebView requests to the in-process Dex handler.
+package bridge
 
 import (
 	"bytes"
@@ -18,10 +19,10 @@ import (
 )
 
 const (
-	localWorkspaceTarget = "local"
-	localAppleOrigin     = "dex-local://workspace"
-	localHost            = "local.dex.internal"
-	localAndroidOrigin   = "https://" + localHost
+	// AppleOrigin is the local workspace origin in WebKit.
+	AppleOrigin        = "dex-local://workspace"
+	localHost          = "local.dex.internal"
+	localAndroidOrigin = "https://" + localHost
 )
 
 //go:embed localbridge.js
@@ -32,11 +33,18 @@ var localScriptHash = sync.OnceValue(func() string {
 	return "'sha256-" + base64.StdEncoding.EncodeToString(hash[:]) + "'"
 })
 
-type localBridge struct {
+// Bridge serves requests from one local WebView.
+type Bridge struct {
 	handler http.Handler
 	mu      sync.Mutex
 	streams map[string]*localStream
 }
+
+// New makes a bridge for the local workspace handler.
+func New(handler http.Handler) *Bridge { return &Bridge{handler: handler} }
+
+// Script returns the local workspace shim for WebKit to inject at document start.
+func Script() string { return localBridgeJS }
 
 type localStream struct{ cancel context.CancelFunc }
 
@@ -47,20 +55,21 @@ type localRequest struct {
 	Body   []byte      `json:"body"`
 }
 
-type localResponse struct {
+// Response contains the status, headers, and body of a local request.
+type Response struct {
 	Status  int         `json:"status,omitzero"`
 	Headers http.Header `json:"headers,omitempty"`
 	Body    []byte      `json:"body,omitempty"`
 	Error   string      `json:"error,omitempty"`
 }
 
-func (b *localBridge) ServeStatic(ctx context.Context, method, rawURL string, headers http.Header) (localResponse, error) {
+func (b *Bridge) serveStatic(ctx context.Context, method, rawURL string, headers http.Header) (Response, error) {
 	if method != http.MethodGet && method != http.MethodHead {
-		return localResponse{Status: http.StatusMethodNotAllowed}, nil
+		return Response{Status: http.StatusMethodNotAllowed}, nil
 	}
 	req, err := localHTTP(ctx, localRequest{Method: method, URL: rawURL, Header: headers}, false)
 	if err != nil {
-		return localResponse{}, err
+		return Response{}, err
 	}
 	response := b.serve(req)
 	if strings.HasPrefix(response.Headers.Get("Content-Type"), "text/html") {
@@ -79,24 +88,27 @@ func (b *localBridge) ServeStatic(ctx context.Context, method, rawURL string, he
 	return response, nil
 }
 
-func (b *localBridge) Fetch(ctx context.Context, input localRequest) (localResponse, error) {
+func (b *Bridge) fetch(ctx context.Context, input localRequest) (Response, error) {
 	switch input.Method {
 	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 	default:
-		return localResponse{Status: http.StatusMethodNotAllowed}, nil
+		return Response{Status: http.StatusMethodNotAllowed}, nil
 	}
 	req, err := localHTTP(ctx, input, true)
 	if err != nil {
-		return localResponse{}, err
+		return Response{}, err
 	}
 	return b.serve(req), nil
 }
 
 func localHTTP(ctx context.Context, input localRequest, apiOnly bool) (*http.Request, error) {
 	u, err := url.Parse(input.URL)
-	if err != nil || u.User != nil || u.Opaque != "" || u.Fragment != "" ||
-		!(u.Scheme == "" && u.Host == "" || u.Scheme+"://"+u.Host == localAppleOrigin || u.Scheme+"://"+u.Host == localAndroidOrigin) ||
-		strings.HasPrefix(input.URL, "//") {
+	if err != nil || u.User != nil || u.Opaque != "" || u.Fragment != "" || strings.HasPrefix(input.URL, "//") {
+		return nil, errors.New("invalid local workspace URL")
+	}
+	relative := u.Scheme == "" && u.Host == ""
+	origin := u.Scheme + "://" + u.Host
+	if !relative && origin != AppleOrigin && origin != localAndroidOrigin {
 		return nil, errors.New("invalid local workspace URL")
 	}
 	if u.Path == "" && u.Host != "" {
@@ -131,7 +143,7 @@ func localHTTP(ctx context.Context, input localRequest, apiOnly bool) (*http.Req
 	return req, nil
 }
 
-func (b *localBridge) serve(req *http.Request) localResponse {
+func (b *Bridge) serve(req *http.Request) Response {
 	w := localWriter{header: make(http.Header)}
 	b.handler.ServeHTTP(&w, req)
 	w.WriteHeader(http.StatusOK)
@@ -139,12 +151,12 @@ func (b *localBridge) serve(req *http.Request) localResponse {
 	if req.Method != http.MethodHead {
 		body = w.body.Bytes()
 	}
-	return localResponse{Status: w.status, Headers: w.sent, Body: body}
+	return Response{Status: w.status, Headers: w.sent, Body: body}
 }
 
-// OpenSSE starts a stream. It delivers each flush before the handler returns.
-// onEnd runs when the handler has returned, including after CloseSSE.
-func (b *localBridge) OpenSSE(ctx context.Context, id, rawURL, lastEventID string, onChunk func([]byte), onEnd func(error)) error {
+// openSSE delivers each flush before the handler returns.
+// onEnd runs when the handler has returned, including after closeSSE.
+func (b *Bridge) openSSE(ctx context.Context, id, rawURL, lastEventID string, onChunk func([]byte), onEnd func(error)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	req, err := localHTTP(ctx, localRequest{Method: http.MethodGet, URL: rawURL, Header: http.Header{
 		"Accept": {"text/event-stream"}, "Last-Event-ID": {lastEventID},
@@ -167,7 +179,7 @@ func (b *localBridge) OpenSSE(ctx context.Context, id, rawURL, lastEventID strin
 	b.mu.Unlock()
 	go func() {
 		defer cancel()
-		w := &localStreamWriter{localWriter: localWriter{header: make(http.Header)}, ctx: ctx, send: onChunk}
+		w := &localStreamWriter{header: make(http.Header), ctx: ctx, send: onChunk}
 		b.handler.ServeHTTP(w, req)
 		if ctx.Err() == nil {
 			w.Flush()
@@ -180,7 +192,7 @@ func (b *localBridge) OpenSSE(ctx context.Context, id, rawURL, lastEventID strin
 	return nil
 }
 
-func (b *localBridge) CloseSSE(id string) {
+func (b *Bridge) closeSSE(id string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if stream := b.streams[id]; stream != nil {
@@ -257,7 +269,14 @@ type localMessage struct {
 	localRequest
 }
 
-func (b *localBridge) handleMessage(ctx context.Context, raw string, static bool, send func(string, any)) {
+// EncodeStaticRequest encodes a WebKit scheme request as a bridge message.
+func EncodeStaticRequest(id, method, rawURL string, headers http.Header) ([]byte, error) {
+	return json.Marshal(localMessage{Op: "static", ID: id, Method: method, URL: rawURL, Header: headers})
+}
+
+// HandleMessage dispatches a request. It can call send from another goroutine.
+// Set static only for requests from the native scheme handler.
+func (b *Bridge) HandleMessage(ctx context.Context, raw string, static bool, send func(string, any)) {
 	var msg localMessage
 	if err := json.Unmarshal([]byte(raw), &msg); err != nil || msg.ID == "" || static != (msg.Op == "static") {
 		return
@@ -265,7 +284,7 @@ func (b *localBridge) handleMessage(ctx context.Context, raw string, static bool
 	switch msg.Op {
 	case "fetch":
 		go func() {
-			response, err := b.Fetch(ctx, msg.localRequest)
+			response, err := b.fetch(ctx, msg.localRequest)
 			if err != nil {
 				response.Error = err.Error()
 			}
@@ -275,11 +294,11 @@ func (b *localBridge) handleMessage(ctx context.Context, raw string, static bool
 		go func() {
 			ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()
-			response, err := b.ServeStatic(ctx, msg.Method, msg.URL, msg.Header)
+			response, err := b.serveStatic(ctx, msg.Method, msg.URL, msg.Header)
 			if err != nil {
 				response.Status = http.StatusBadRequest
 			}
-			result, err := json.Marshal(localStaticResult{ID: msg.ID, Response: response})
+			result, err := json.Marshal(StaticResult{ID: msg.ID, Response: response})
 			if err == nil {
 				send("staticResult", string(result))
 			}
@@ -288,19 +307,20 @@ func (b *localBridge) handleMessage(ctx context.Context, raw string, static bool
 		end := func(err error) {
 			send("eval", localJSEvent("end", msg.ID, err != nil))
 		}
-		if err := b.OpenSSE(ctx, msg.ID, msg.URL, msg.LastEventID, func(chunk []byte) {
+		if err := b.openSSE(ctx, msg.ID, msg.URL, msg.LastEventID, func(chunk []byte) {
 			send("eval", localJSEvent("chunk", msg.ID, chunk))
 		}, end); err != nil {
 			end(err)
 		}
 	case "sseClose":
-		b.CloseSSE(msg.ID)
+		b.closeSSE(msg.ID)
 	}
 }
 
-type localStaticResult struct {
-	ID       string        `json:"id"`
-	Response localResponse `json:"response"`
+// StaticResult is the reply to a native scheme request.
+type StaticResult struct {
+	ID       string   `json:"id"`
+	Response Response `json:"response"`
 }
 
 func localJSEvent(kind, id string, data any) string {

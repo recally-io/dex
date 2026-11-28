@@ -20,7 +20,7 @@ trap 'rm -rf "$work"' EXIT
 
 cd apps/native
 unset NSGO_NOTARY_KEY
-mise exec go@1.27.3 -- go tool nsgo build -target macos_arm64 \
+go tool nsgo build -target macos_arm64 \
   -version "$version" -build-number "${GITHUB_RUN_NUMBER:-1}" \
   -channel none -installers=false -open=false -sign=- -notarize= -output "$work/build"
 app="$work/build/Dex-${version}-macos_arm64/Dex.app"

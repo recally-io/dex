@@ -1,4 +1,4 @@
-package main
+package webview
 
 import (
 	"errors"
@@ -7,7 +7,8 @@ import (
 	"github.com/nsgo-dev/nsgo/core"
 )
 
-func dexWebViewOptions() []nsgo.Option {
+// Options returns the NSGo registration for the workspace view.
+func Options() []nsgo.Option {
 	return []nsgo.Option{nsgo.Component(dexWebComponent, func(cx *core.NativeContext) core.NativeComponent {
 		return androidWorkspace{emit: cx.Emit}
 	})}
@@ -31,7 +32,8 @@ func (w androidWorkspace) ViewEvent(name string, args []any) {
 	}
 }
 
-func clearDexWebView(cx *core.Scope, oldOrigin string, done func(error)) {
+// ClearSiteData removes the previous workspace's sign-in data.
+func ClearSiteData(cx *core.Scope, oldOrigin string, done func(error)) {
 	// Android shares cookies across ports. Wait for the delete and flush before
 	// the next view loads, even if the two servers have the same hostname.
 	cx.ClearWebsiteData(func(err error) {

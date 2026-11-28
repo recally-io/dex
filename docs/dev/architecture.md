@@ -17,14 +17,16 @@ and MCP. The browser receives typed transcript events through SSE.
 
 ## Runtime modules
 
-`apps/web/` owns the React UI. Both the server and the native app embed its build output. Node and Bun are development tools; the installed app and service need neither runtime. `apps/native/` owns one NSGo app for macOS, iOS, and Android. Both clients use the icon in `apps/assets/`.
+`apps/web/` owns the React UI. Both the server and the native app embed its build output. Node and Bun are development tools; the installed app and service need neither runtime. `apps/native/` owns one NSGo app for macOS, iOS, and Android. Both clients use the icon in `apps/assets/`. The server and native app share the root Go 1.27.3 module. Only the native app imports NSGo.
 
 The [native client](../../apps/native/README.md) opens a local workspace or a selected Dex server. Remote workspaces use the server's origin, sign-in, and HTTPS connection without a native script bridge. When the server is offline, the connection screen stays available.
 
-For a local workspace, `localdex` starts `internal/app` inside the native app. It exposes an `http.Handler` to the app without an HTTP server, TCP listener, or loopback connection. WebKit loads `dex-local://workspace`; Android WebView intercepts `https://local.dex.internal` without making a network request. The local bridge serves assets and files, dispatches same-origin API calls to the handler, and forwards SSE frames as the handler flushes them. Only the local view has this bridge. The local handler does not require sign-in. Normal server authentication and cross-origin checks stay in place. The app starts the runtime when the local workspace opens and stops it when the user switches away or the app closes.
+For a local workspace, `internal/localdex` starts `internal/app` inside the native app. It exposes an `http.Handler` to the app without an HTTP server, TCP listener, or loopback connection. WebKit loads `dex-local://workspace`; Android WebView intercepts `https://local.dex.internal` without making a network request. `apps/native/internal/webview` hosts the platform views and handles navigation. `apps/native/internal/bridge` serves assets and files, dispatches same-origin API calls to the handler, and forwards SSE frames as the handler flushes them. Only the local view has this bridge. The local handler does not require sign-in. Normal server authentication and cross-origin checks stay in place. The app starts the runtime when the local workspace opens and stops it when the user switches away or the app closes.
 
 The [module index](../../.agents/rules/implementation.md#modules) defines
-package ownership. `internal/app` connects the services. Business services call
+package ownership. `internal/app` connects the services. `cmd/dex` and
+`internal/localdex` pass the factories from `plugins/builtin` to `internal/app`.
+`internal/app` does not import plugin implementations. Business services call
 `internal/engine`. Platform adapters implement the `internal/channel` contract.
 `internal/channel/delivery` owns commands, the durable Webhook Queue, and
 reply delivery. Telegram accepts only private chats. The engine uses one

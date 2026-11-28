@@ -35,14 +35,22 @@ To switch between local and remote workspaces, select **Switch workspace** at th
 
 Enter the access token on the Dex login page when it asks for one. The web view keeps its own login data across retries and restarts. Switching away from a remote workspace or selecting **Forget server** clears its sign-in data. **Forget local selection** leaves local workspace files in place. The web view blocks navigation outside the configured scheme, host, and port. If this blocks an OAuth flow, open the Dex origin in your browser and start the flow again there.
 
+## Source layout
+
+The server and the native app share the root Go 1.27.3 module. The root `go.mod` pins the NSGo tool and library. Run `go tool nsgo` from `apps/native/` to use its `nsgo.yaml`.
+
+- `apps/native/` owns app startup, workspace selection, theme, and platform build inputs.
+- `internal/webview/` hosts the platform views and handles navigation. The stub on other platforms exists for Go builds and headless tests.
+- `internal/bridge/` sends local workspace requests directly to the Dex handler. The repository's `internal/localdex/` starts and stops that runtime.
+
 ## Build for local development
 
-Use an Apple silicon Mac and full Xcode. The app needs macOS 14.0 or later, or iOS 17.0 or later on a device or simulator. These versions support the named WebKit data store. Install a compatible iOS Simulator runtime and select the full Xcode toolchain before you build. The client module pins NSGo to `v0.3.4` and uses Go `1.27.3`. The Apple task selects this Go version without changing the server toolchain.
+Use an Apple silicon Mac and full Xcode. The app needs macOS 14.0 or later, or iOS 17.0 or later on a device or simulator. These versions support the named WebKit data store. Install a compatible iOS Simulator runtime and select the full Xcode toolchain before you build.
 
 From the repository root:
 
 ```sh
-mise install go@1.27.3
+mise install go
 mise run install:web
 xcodebuild -version
 xcrun simctl list runtimes
@@ -75,7 +83,7 @@ Run `mise run build:web` before you call the NSGo tool directly. Run the remaini
 Use a valid Apple Development signing identity with its private key in an unlocked keychain. Obtain an iOS development provisioning profile from the same team. The profile must authorize the bundle ID from `nsgo.yaml`, the signing certificate, and each test iPhone's UDID. For an Ad Hoc distribution IPA, use the matching Ad Hoc profile and Apple Distribution identity instead. Set `IOS_PROFILE` to the absolute path of the applicable `.mobileprovision` file. Set `IOS_SIGN_ID` to the exact identity name or SHA-1 fingerprint.
 
 ```sh
-mise exec go@1.27.3 -- go tool nsgo build -target ios -channel none \
+go tool nsgo build -target ios -channel none \
   -sign "${IOS_SIGN_ID:?Set the iOS signing identity}" \
   -profile "${IOS_PROFILE:?Set the iOS development or Ad Hoc profile path}" \
   -output ../../.local/apple-v1/build/device
@@ -103,7 +111,7 @@ xcrun notarytool store-credentials "${MAC_NOTARY_PROFILE:?Set the notary profile
   --apple-id "${APPLE_ID:?Set the Apple account}" --team-id "${APPLE_TEAM_ID:?Set the team ID}"
 
 unset NSGO_NOTARY_KEY
-mise exec go@1.27.3 -- go tool nsgo build -target macos_arm64 -channel direct \
+go tool nsgo build -target macos_arm64 -channel direct \
   -installers=true -skip-installers= \
   -sign "${MAC_SIGN_ID:?Set the Developer ID Application identity}" \
   -notarize "${MAC_NOTARY_PROFILE:?Set the notary profile name}" \
@@ -123,7 +131,7 @@ xcrun stapler validate "${MAC_DMG:?Set the notarized DMG path}"
 Register the bundle ID and create the matching App Store Connect app record. Use an App Store distribution provisioning profile and its Apple Distribution identity. A development or Ad Hoc IPA cannot be used. The build uses the same 1024 × 1024 [app icon](../assets/dex.png) as macOS and the web UI. Confirm privacy and export compliance. Use a new build number for the app version. Set `IOS_STORE_PROFILE` to the absolute profile path, `IOS_DISTRIBUTION_ID` to the signing identity, and `IOS_BUILD_NUMBER` to the next build number.
 
 ```sh
-mise exec go@1.27.3 -- go tool nsgo build -target ios -channel store \
+go tool nsgo build -target ios -channel store \
   -sign "${IOS_DISTRIBUTION_ID:?Set the Apple Distribution identity}" \
   -profile "${IOS_STORE_PROFILE:?Set the App Store profile path}" \
   -build-number "${IOS_BUILD_NUMBER:?Set the next build number}" \
@@ -133,7 +141,7 @@ mise exec go@1.27.3 -- go tool nsgo build -target ios -channel store \
 For upload, provide an authorized App Store Connect team API key through `NSGO_APP_STORE_KEY` (the `.p8` path), `NSGO_APP_STORE_KEY_ID`, and `NSGO_APP_STORE_ISSUER`. Set `IOS_STORE_IPA` to the signed IPA from the `testflight` output. Run the next command only when you intend to upload the build:
 
 ```sh
-mise exec go@1.27.3 -- go tool nsgo publish ios "${IOS_STORE_IPA:?Set the App Store IPA path}"
+go tool nsgo publish ios "${IOS_STORE_IPA:?Set the App Store IPA path}"
 ```
 
 Wait for processing in App Store Connect. Complete any required compliance or beta review steps there. Then assign the build to the intended TestFlight testers. A successful upload does not release the app on the App Store.

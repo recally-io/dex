@@ -20,7 +20,7 @@ concurrency:
 
 # The jobs run every step of `mise run check`. App tests run without the race detector,
 # engine and session race tests use separate jobs, and the Go job runs lint, builds, internal/db,
-# and all other packages. Keep coverage equal to mise.toml.
+# and all other packages, including the headless client tests. Keep coverage equal to mise.toml.
 jobs:
   lint:
     name: Lint and drift
@@ -198,7 +198,7 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-  # Keep all four native targets beside the tests.
+  # Build all four server targets and check that the client also compiles on Linux.
   native:
     name: Native builds
     runs-on: ubuntu-24.04
