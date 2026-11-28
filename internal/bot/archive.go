@@ -7,6 +7,7 @@ import (
 	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
+	"github.com/recally-io/dex/internal/db"
 )
 
 // ListArchivedBots returns the archived bots, newest archive first.
@@ -28,7 +29,11 @@ func (s *Service) ListArchivedBots(ctx context.Context) ([]Bot, error) {
 func (s *Service) StopChannels(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	*s.channelSession(id) = channelSession{}
+	err := db.RequireActive(ctx, s.q, id)
+	if !errors.Is(err, db.ErrBotArchived) {
+		return err // Restore can finish before the archive callback reaches this lock.
+	}
+	delete(s.sessions, id)
 	return s.syncChannelsLocked(ctx, id, false)
 }
 
@@ -43,6 +48,8 @@ func (s *Service) RestoreBot(ctx context.Context, id string) error {
 	if rows == 0 {
 		return ErrNotFound
 	}
+	// Do not let a pre-archive setup become valid again if stop has not run yet.
+	delete(s.sessions, id)
 	return s.syncChannelsLocked(ctx, id, true)
 }
 

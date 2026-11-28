@@ -1,9 +1,11 @@
 package app_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -76,6 +78,81 @@ func TestArchiveInvalidatesInflightWechatLogin(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUserKeepsRestoredFeishuChannelWhenArchiveCleanupFinishesLate(t *testing.T) {
+	t.Parallel()
+	// Given a Feishu webhook and an open registration on a bot with Runner cleanup pending.
+	cleanupStarted, releaseCleanup := make(chan struct{}), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(releaseCleanup) })
+	cloud := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/sandboxes/old-sandbox" {
+			http.NotFound(w, r)
+			return
+		}
+		close(cleanupStarted)
+		select {
+		case <-releaseCleanup:
+			w.WriteHeader(http.StatusNoContent)
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(cloud.Close)
+	defer unblock()
+	accounts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.FormValue("action") == "begin" {
+			_, _ = w.Write([]byte(`{"device_code":"device","verification_uri_complete":"https://accounts.feishu.cn/verify","interval":1,"expires_in":300}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"client_id":"qr-app","client_secret":"test-secret","user_info":{"open_id":"creator","tenant_brand":"feishu"}}`))
+	}))
+	t.Cleanup(accounts.Close)
+	d := startDexWith(t, app.Config{DataDir: t.TempDir(), FeishuAccountsURL: accounts.URL, E2BAPIURL: cloud.URL})
+	var runner apiRunner
+	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
+		"name": "Cloud Sandbox", "kind": "e2b", "config": map[string]any{"template": "base"}, "secret": "test-key",
+	}, &runner, http.StatusCreated)
+	bot := d.createCoder(t)
+	bot.RunnerID = runner.ID
+	base := "/api/bots/" + bot.ID
+	d.must(t, http.MethodPut, base, bot, nil)
+	if _, err := sessionDB(t, d).ExecContext(t.Context(), `UPDATE bots SET runner_sandbox_id = 'old-sandbox' WHERE id = ?`, bot.ID); err != nil {
+		t.Fatal(err)
+	}
+	feishu := base + "/channels/feishu"
+	d.must(t, http.MethodPut, feishu, map[string]any{
+		"appId": "saved-app", "appSecret": "test-secret", "brand": "feishu", "transport": "webhook",
+		"webhook": map[string]string{"verificationToken": "test-token"},
+	}, nil)
+	var setup struct {
+		Session string `json:"session"`
+	}
+	d.must(t, http.MethodPost, feishu+"/registration", map[string]string{"brand": "feishu"}, &setup)
+	if setup.Session == "" {
+		t.Fatal("registration did not return a session")
+	}
+	questionSession, question := askArchive(t, d, "Coder")
+	d.setModel(t, "echo")
+
+	// When restore runs after the archive commit and before the channel stop callback.
+	approved := make(chan struct{})
+	go func() {
+		defer close(approved)
+		d.answer(t, questionSession, question.ID, "Archive Coder", http.StatusAccepted)
+	}()
+	waitSignal(t, cleanupStarted, "the archive callback reaches Runner cleanup")
+	d.must(t, http.MethodDelete, base+"/archive", nil, nil)
+	staleStatus, staleBody := d.call(t, http.MethodPost, feishu+"/registration/poll", map[string]string{"session": setup.Session})
+	unblock()
+	waitSignal(t, approved, "the archive callback finishes")
+	d.watch(t, questionSession).until(t, "the approved archive answer arrives", answeredWith(`Approved. Bot "Coder" is archived.`))
+
+	// Then the old registration is invalid before cleanup ends, and the restored webhook still answers.
+	if staleStatus != http.StatusBadRequest {
+		t.Errorf("pre-archive registration survived restore: %d %s", staleStatus, staleBody)
+	}
+	hook := fmt.Sprintf("/hooks/channels/feishu/%s", bot.ID)
+	postChannelHook(t, d, hook, []byte(`{"type":"url_verification","token":"test-token","challenge":"restored"}`), nil, http.StatusOK)
 }
 
 func TestArchiveInvalidatesInflightFeishuRegistration(t *testing.T) {

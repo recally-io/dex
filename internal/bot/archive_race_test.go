@@ -72,6 +72,33 @@ func TestUserCannotFinishFeishuRegistrationAfterArchiveCommit(t *testing.T) {
 	}
 }
 
+func TestUserCannotDisconnectFeishuAfterArchiveCommit(t *testing.T) {
+	t.Parallel()
+	// Given saved credentials, archive the bot as the old runtime stops.
+	q, writer, id := archiveRaceDB(t)
+	ctx := t.Context()
+	if err := q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{BotID: id, AppID: "saved-app", AppSecret: "test-secret", Brand: "feishu"}); err != nil {
+		t.Fatal(err)
+	}
+	s := bot.New(q, writer, nil, "", nil)
+	var archiveErr error
+	s.ConfigureFeishu("", "", func(_ string, cfg *feishu.Config) {
+		if cfg == nil {
+			archiveErr = db.ArchiveBot(ctx, q, id, time.Now())
+		}
+	})
+
+	// When disconnect continues after the archive commits, then the archived bot keeps its credentials.
+	disconnectErr := s.DeleteFeishu(ctx, id)
+	if archiveErr != nil {
+		t.Fatal(archiveErr)
+	}
+	cfg, err := s.FeishuConfig(ctx, id)
+	if !errors.Is(disconnectErr, db.ErrBotArchived) || err != nil || cfg == nil || cfg.AppID != "saved-app" {
+		t.Fatalf("after archive: disconnect err=%v saved credentials=%t read err=%v", disconnectErr, cfg != nil, err)
+	}
+}
+
 func TestUserCannotReplaceWechatAccountAfterArchiveCommit(t *testing.T) {
 	t.Parallel()
 	// Given a connected account and a QR login that would replace it.

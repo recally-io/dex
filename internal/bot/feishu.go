@@ -229,7 +229,9 @@ func (s *Service) deleteFeishu(ctx context.Context, botID string) error {
 		return err
 	}
 	s.onFeishu(botID, nil)
-	if err := s.q.DeleteFeishuSettings(ctx, botID); err != nil {
+	if err := s.writeActiveChannel(ctx, botID, func(q *sqlc.Queries) error {
+		return q.DeleteFeishuSettings(ctx, botID)
+	}); err != nil {
 		if saved != nil && s.canStartChannel(ctx, botID) {
 			s.onFeishu(botID, saved)
 		}
