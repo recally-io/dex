@@ -48,6 +48,8 @@ archives:
 
 checksum:
   name_template: checksums.txt
+  extra_files: &mac_app
+    - glob: ".local/release/{{ .Tag }}/*.zip"
 
 changelog:
   use: github-native
@@ -56,3 +58,7 @@ changelog:
 release:
   draft: true
   prerelease: auto
+  extra_files: *mac_app
+  footer: |
+    **Mac app:** Download `Dex-{{ .Tag }}-macOS-arm64.zip` for Apple silicon (macOS 14 or later).
+    The app connects to an existing Dex server. It has an ad hoc signature, no Developer ID signature, and no Apple notarization.

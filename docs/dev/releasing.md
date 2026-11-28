@@ -52,8 +52,9 @@ or tag a release on `main`.
 4. Push the updated release branch. Start
    [Release](../../.github/workflows/release.yml) with
    `gh workflow run release.yml --ref <release-branch>`. The workflow reads the
-   branch's `VERSION`, runs Check, creates the `v<VERSION>` tag on the tested
-   commit, and runs [GoReleaser](../../.goreleaser.yaml) on Ubuntu.
+   branch's `VERSION`, runs Check, and packages the Apple silicon app on macOS.
+   Once both jobs pass, it creates the `v<VERSION>` tag on the tested commit
+   and runs [GoReleaser](../../.goreleaser.yaml) on Ubuntu.
 5. For fixes that are not yet on `main`, start a separate branch from `main`,
    cherry-pick the fix commits with `git cherry-pick -x`, and open a pull request
    to `main`. Do not cherry-pick the release version bump. If a fix needs a
@@ -71,7 +72,11 @@ smoke tests pass, the workflow publishes the draft. dex reads its version from
 the tag. The workflow also accepts a `v*` tag push. Use the release-branch
 procedure above for planned releases and patches.
 
-To try the build on your machine, run
+Every release includes `Dex-<tag>-macOS-arm64.zip`, including stable releases. GoReleaser adds the Mac ZIP to the draft and includes its SHA-256 in `checksums.txt`. The Mac smoke job downloads that ZIP, verifies its checksum, extracts `Dex.app`, and checks the code signature, architecture and version before publication. The app uses an ad hoc signature; the release does not need Apple credentials. This workflow does not publish iPhone or simulator builds.
+
+On an Apple silicon Mac, run `mise run release:mac-app` to build the same ZIP without creating a tag or publishing a release. The task reads `VERSION` by default, or accepts a tag such as `v1.2.3`. Find the ZIP in `.local/release/<tag>/`. The filename keeps the full tag. The app uses the numeric part for `CFBundleShortVersionString` and the workflow run number (locally, `1`) for `CFBundleVersion`.
+
+To try the server build on your machine, run
 `goreleaser release --snapshot --clean --parallelism 1`. The output goes to
 `dist/`.
 

@@ -31,16 +31,22 @@ jobs:
         with:
           fetch-depth: 0
       - id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
-            tag="${{ inputs.tag }}"
-          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
-            tag="${{ github.ref_name }}"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && -n "$INPUT_TAG" ]]; then
+            tag="$INPUT_TAG"
+          elif [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            tag="$GITHUB_REF_NAME"
           else
             ver="$(tr -d '[:space:]' < VERSION)"
             tag="v${ver#v}"
           fi
 
+          if [[ ! $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo 'Expected a release tag such as v1.2.3 or v1.2.3-rc.1.' >&2
+            exit 1
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
           if [[ "${{ github.ref_type }}" != "tag" ]] && git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
@@ -55,13 +61,37 @@ jobs:
     if: needs.prepare.outputs.should_release == 'true'
     uses: ./.github/workflows/check.yml
 
+  mac-app:
+    name: Package Mac app
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.3.0
+        with:
+          install: false
+      - run: mise run apple:test
+      - run: mise run release:mac-app "$RELEASE_TAG"
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: mac-app
+          path: .local/release/${{ needs.prepare.outputs.tag }}/Dex-${{ needs.prepare.outputs.tag }}-macOS-arm64.zip
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+
   goreleaser:
     name: GoReleaser
-    needs: [prepare, check]
+    needs: [prepare, check, mac-app]
     if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
+      actions: read
       contents: write
     env:
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
@@ -83,6 +113,10 @@ jobs:
           install: true
           cache: true
       - run: mise run install
+      - name: Get the Mac app from this workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name mac-app --dir ".local/release/$RELEASE_TAG"
       - name: Extract release notes from CHANGELOG.md
         id: notes
         run: |
@@ -140,6 +174,17 @@ jobs:
           grep " dex-agent_${RELEASE_TAG}_${{ matrix.target }}.tar.gz$" checksums.txt | shasum -a 256 -c
           tar -xzf dex_*.tar.gz dex
           tar -xzf dex-agent_*.tar.gz dex-agent
+      - name: Verify the Mac app from the draft release
+        if: matrix.target == 'darwin_arm64'
+        run: |
+          archive="Dex-${RELEASE_TAG}-macOS-arm64.zip"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$archive"
+          awk -v name="$archive" '$2 == name' checksums.txt | shasum -a 256 -c
+          ditto -x -k "$archive" .
+          codesign --verify --deep --strict Dex.app
+          lipo -verify_arch arm64 Dex.app/Contents/MacOS/Dex
+          version=${RELEASE_TAG#v}
+          test "$(plutil -extract CFBundleShortVersionString raw Dex.app/Contents/Info.plist)" = "${version%%-*}"
       - name: Smoke test
         run: |
           test "$(./dex-agent version)" = "dex-agent $RELEASE_TAG"

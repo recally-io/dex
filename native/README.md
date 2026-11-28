@@ -2,6 +2,12 @@
 
 The app opens the workspace from an existing Dex server. It does not start Dex, bundle the web UI, or store the Dex access token in the app shell.
 
+## Download the Mac app
+
+Find `Dex-<tag>-macOS-arm64.zip` and `checksums.txt` on the same [GitHub Release](https://github.com/vaayne/dex/releases). The archive contains `Dex.app` for Apple silicon and macOS 14 or later. It does not include the Dex server. Unzip the archive and move `Dex.app` to Applications.
+
+The app has an ad hoc signature. Apple has not notarized it. macOS can block it on first launch because it cannot verify the developer. See [Apple's guide to opening downloaded apps](https://support.apple.com/en-us/102445). The release does not include an installable iPhone app.
+
 ## Connect to Dex
 
 - **Mac:** The initial address is `http://127.0.0.1:8787`. Use the port of your existing server if it differs. Plain HTTP is limited to `127.0.0.1` on macOS.

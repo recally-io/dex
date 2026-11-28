@@ -6,12 +6,16 @@ on:
       - native/**
       - .mise/tasks/apple/**
       - .github/workflows/apple-client.yml
+      - .github/workflows/release.yml
+      - .mise/tasks/release/mac-app
   push:
     branches: [main]
     paths:
       - native/**
       - .mise/tasks/apple/**
       - .github/workflows/apple-client.yml
+      - .github/workflows/release.yml
+      - .mise/tasks/release/mac-app
   workflow_dispatch:
 
 permissions:
@@ -32,3 +36,4 @@ jobs:
           install: false
       - run: mise run apple:test
       - run: mise run apple:build
+      - run: mise run release:mac-app
