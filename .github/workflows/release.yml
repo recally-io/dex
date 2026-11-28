@@ -47,6 +47,7 @@ jobs:
             echo 'Expected a release tag such as v1.2.3 or v1.2.3-rc.1.' >&2
             exit 1
           fi
+          bash .mise/tasks/release/notes "$tag" > /dev/null
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
           if [[ "${{ github.ref_type }}" != "tag" ]] && git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
@@ -118,28 +119,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name mac-app --dir ".local/release/$RELEASE_TAG"
       - name: Extract release notes from CHANGELOG.md
-        id: notes
-        run: |
-          if [[ -f CHANGELOG.md ]]; then
-            awk -v tag="$RELEASE_TAG" '
-              $0 ~ "^## \\[" tag "\\]" { found=1; next }
-              found && /^## \[/ { exit }
-              found { print }
-            ' CHANGELOG.md > /tmp/release-notes.md
-          fi
-          if [[ -s /tmp/release-notes.md ]]; then
-            echo "has_notes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_notes=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: bash .mise/tasks/release/notes "$RELEASE_TAG" > /tmp/release-notes.md
       # The release is a draft until the smoke tests pass.
       - name: Run GoReleaser
-        run: |
-          if [[ "${{ steps.notes.outputs.has_notes }}" == "true" ]]; then
-            goreleaser release --clean --release-notes=/tmp/release-notes.md
-          else
-            goreleaser release --clean
-          fi
+        run: goreleaser release --clean --release-notes=/tmp/release-notes.md
         env:
           GITHUB_TOKEN: ${{ github.token }}
 

@@ -68,5 +68,5 @@ echo
 echo "Next steps:"
 echo "  1. Review CHANGELOG.md and VERSION (git diff)"
 echo "  2. Run dprint fmt && mise run check:quick"
-echo "  3. Commit and push the release branch, then run gh workflow run release.yml --ref <release-branch>"
-echo "  4. Cherry-pick fixes to main through a PR. Do not cherry-pick the version bump."
+echo "  3. Commit and push the release branch. For a stable release, sync the notes and stable VERSION to main through a PR."
+echo "  4. Run gh workflow run release.yml --ref <release-branch>. See docs/dev/releasing.md for maintenance releases."
