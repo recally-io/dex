@@ -25,7 +25,7 @@ The server and native app share the root `go.mod`. The root
 | `internal/runner/outbound`   | Outbound Machine protocol and sessions                                              |
 | `internal/background`        | Session Processes, output, wake-ups, and process supervision                        |
 | `internal/channel`           | Channel transport contract, optional capabilities, and frozen delivery values       |
-| `internal/channel/delivery`  | Bot lifecycle, channel commands, and durable reply outbox                           |
+| `internal/channel/delivery`  | Bot lifecycle, channel commands, feedback previews, and durable reply outbox        |
 | `internal/channel/telegram`  | Telegram polling, pairing, protocol, and media adaptation                           |
 | `internal/channel/feishu`    | Feishu/Lark settings, registration, pairing, events, cards, and media adaptation    |
 | `internal/channel/wechat`    | WeChat login, polling, protocol, and media adaptation                               |

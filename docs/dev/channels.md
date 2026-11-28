@@ -350,12 +350,13 @@ below. The reply shows only those fields and gives a clean link to the public
 GitHub. Drafts with Markdown code fences
 or drafts too large for one reply can use the Web form instead.
 
-Feedback uses the existing command receipt to deduplicate incoming updates
-and retry delivery. Until delivery ends, the pending receipt holds the private
-reply in `control.sqlite`. Dex clears the reply from the receipt when it is
-sent or permanently skipped; the source key and routing facts remain. There is
-no feedback store, model input, or GitHub write. The reply remains on the
-messaging platform like any other message.
+The delivery package builds the preview. It uses the existing command receipt
+to deduplicate incoming updates and retry delivery. Until delivery ends, the
+pending receipt holds the private reply in `control.sqlite`. Dex clears the
+reply from the receipt when delivery succeeds or is skipped permanently. The
+source key and routing facts remain. There is no feedback store, model input,
+or GitHub write. The reply remains on the messaging platform like any other
+message.
 
 Each platform has one durable sender. All platform message bodies, including command acknowledgements and Automation alerts, go through the Outbox. Direct channel inputs can queue final replies or a short error. Ordinary Web and background output stay in the transcript. Background runs can call `notify_user` to queue a message before the run ends. The tool uses the configured default or an explicit paired channel. If a platform has multiple targets, specify `channel:target`.
 
