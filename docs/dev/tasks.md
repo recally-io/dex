@@ -36,8 +36,8 @@ Timeline. The composer sends to the Assignee's Main by default. Select
 
 ## Storage and HTTP API
 
-Task state lives in `control.sqlite`. Native execution state stays in
-`<data dir>/agents/<id>/state.sqlite`. The Bot table is `bots` in `control.sqlite`.
+Task state lives in `control.sqlite`. See [data ownership](architecture.md#data-ownership)
+for the native execution store.
 
 | Table                   | Purpose                                                                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -270,8 +270,10 @@ through the same Process path as `process_start`. It does not add a Runner
 protocol operation. Supply a Task key, harness, absolute workspace path,
 server URL the Runner can reach, and command. Dex passes `DEX_TASK_TOKEN`,
 `DEX_TASK_SERVER`, and `DEX_TASK_EXTERNAL_SESSION_ID` to that Process only.
-It discards command output. The command must send heartbeats and report its
-outcome through the scoped API. Otherwise the lease can expire.
+It discards output and sends no exit wake. Use the Timeline for progress and
+the Process exit status for launch diagnostics. The command must send
+heartbeats and report its outcome through the scoped API. Process exit does
+not settle the Task or its run. Without heartbeats the lease can expire.
 
 To resume, supply the execution ID and exact external session ID. Dex checks
 the Task, Runner enrollment, harness, workspace, and stored external session

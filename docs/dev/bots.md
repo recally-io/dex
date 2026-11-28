@@ -14,8 +14,9 @@ list every three seconds and shares its cache across bot pages. The same
 response includes per-bot `automationFailed`.
 These fields come from the activity SQL query. `POST /api/bots` accepts a name
 and optional primary model, thinking level, fallback model, instructions, and
-Runner (`runnerId`). Omitted fields copy the built-in `default` bot; a model
-that is no longer available is not copied. Empty strings choose no model or the
+Runner (`runnerId`). If omitted, the model choices, thinking level, and
+Runner use the built-in `default` Bot's settings. Dex skips unavailable models.
+Instructions do not inherit. Empty strings choose no model or the
 Local Runner. `POST /api/bots` returns the created bot with a UUID v7
 ID (`201`). The ID is read-only. `GET` and `PUT` on `/api/bots/{botId}` read
 and save one bot. Names and models use the same validation for creation and
@@ -24,13 +25,10 @@ bot's primary model is missing or returns an error before any response block
 streams (excluding aborts and context-overflow errors), `botModels` switches to
 the bot's fallback model.
 
-Bot resources are under `/api/bots/{botId}`: main, sessions and their
-settings, messages, clear, history, abort and events; turn lookup; uploads;
-integrations and reload; automations and their run and runs endpoints. An unknown
-bot or a resource owned by another bot returns `404`. Upload storage uses
-`<data dir>/agents/<botId>/`. Control builds the path store for each request.
-Each live stream uses `engine.Ref{BotID, ID}` for watches and history.
-Execution IDs can be equal in different bots.
+Bot resources require an explicit Bot ID, including `default`. An unknown
+Bot or a resource owned by another Bot returns `404`. See the
+[HTTP contract](../../api/openapi.yaml) for routes. Execution IDs can match
+across Bots, so live streams use `engine.Ref{BotID, ID}`.
 
 A bot can be archived. `bots.archived_at` holds the time. The
 filter is in SQL, not in the `enabled` flags: `ListBots`, startup channel
@@ -65,12 +63,9 @@ not configure providers.
 One scheduler job checks automations across all bots and posts each prompt
 with the saved bot ID. See [Skills and Integrations](skills-and-integrations.md) for the reload lifecycle.
 
-The web UI uses the nested bot routes, including live events and upload
-links. Bot resources require an explicit ID, including the default bot.
-`GET /api/settings` returns global providers, built-ins, and APIs. `/settings/general` edits the `default` bot
-through `PUT /api/bots/default`; there is no separate defaults table. Channel
-setup and status use `/api/bots/{botId}/channels`, with `/telegram`,
-`/wechat`, and `/feishu` for changes.
+`GET /api/settings` returns global providers, built-ins, and APIs.
+**Settings → General** edits the `default` Bot with `PUT /api/bots/default`.
+See [Channels](channels.md) for pairing and runtime status.
 
 ## Settings
 
@@ -141,11 +136,13 @@ share it.
   `agents/<botId>/MEMORY.md`. Other bots do not load this last section.
   They render before each model
   request, so a change applies from the next request, also inside a run.
-  PiG sends a section again only when its text changed. The bot
-  finds the other files with grep and the `[[path]]` links.
-- **Write.** The bot changes the files with its edit and write tools,
-  without approval. It does not run git. When a submission settles, the
-  engine commits all changes as `Update memory from <source>`. The source is
+  PiG sends a section again only when its text changed. The Bot uses
+  `memory_search` and follows `[[path]]` links with `memory_read`.
+- **Write.** The Bot uses `memory_write` and `memory_edit` on the control host.
+  When input settles, the engine commits edits as `Update memory from <source>`.
+  Concurrent edits can share the first settling Session's commit. On open,
+  the engine commits edits left by a crash. Dex does not synchronize the repo.
+  The source is
   `dex:<agentId>/chat/<sessionId>`, or `dex:<agentId>/dream/<dreamId>`.
   Owner facts go in shared `MEMORY.md` and its topic files. Role experience
   and ways of working go in `agents/<botId>/`, with its own `MEMORY.md`
@@ -167,7 +164,9 @@ share it.
   bots' sources, including mixed sources, can only gain `uncertain: yes`.
   Shared entries with no session source stay unchanged. The
   `dreams` table records the last message that each dream read; the next dream
-  starts after that bot's newest done dream.
+  starts after that Bot's newest done dream. A failed or interrupted Dream
+  leaves that cursor unchanged for the next eligible check. `memory_source_read`
+  can read the original text of a cut record selected for the current Dream.
 
 ## Bot tools
 
@@ -178,8 +177,8 @@ guard, so a count above zero means `bot_delete` refuses the bot. The sidebar's
 
 Main and top-level Web sessions have `bot_list` and `bot_get`, and the three change
 tools `bot_create`, `bot_update` and `bot_delete`. An Automation conversation
-has only the read tools. The app selects the `bots` and `bot-manage` extensions
-at admission. A child Session or Dream does not get the change tools. Tool
+has only the read tools. The app selects the `bots` and `bot-manage` extensions at admission.
+A child Session or Dream does not get the change tools. Tool
 visibility does not grant authorization. `internal/bot.Tools` maps each call to the same service methods as the
 web (`CreateBot`, `PatchBot`). `session.Service.ToolBotCaller` checks the caller
 again in control: the conversation is Main or a Session, and the source input is a

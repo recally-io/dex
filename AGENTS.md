@@ -14,27 +14,20 @@ areas, read each matching rule. Do not load all rule files by default.
 
 ## Reference docs
 
-Keep user-facing docs in [README.md](README.md) and bot or engineering
-references here.
+Start with [README.md](README.md) for install and operation. Use the links
+below for product scope and engineering references.
 
 - [Product](docs/product.md): users, scope, and non-goals.
 - [Glossary](docs/dev/glossary.md): canonical domain terms and cross-layer
   mapping.
 - [Architecture](docs/dev/architecture.md): the overview, with links to one
   document per subsystem in `docs/dev/`, such as [Plugins](docs/dev/plugins.md).
-- [Bots](docs/dev/bots.md): Bot settings, archive, memory, and tools.
-- [Tasks](docs/dev/tasks.md): Board, Task access, and external runs.
 - [Development](docs/dev/development.md): local setup, tasks, tests, and debug.
 - [Releasing](docs/dev/releasing.md): CI shards and release workflow.
 - [Web UI](apps/web/AGENTS.md): frontend routes, state, and shadcn conventions.
 
-The architecture docs are the single source of truth for the current design:
-`docs/dev/architecture.md`, the subsystem documents that it links,
-`apps/web/AGENTS.md`, and the figures in `docs/assets/`.
-When a change makes any of them wrong, update it in the same commit. Do not
-add architecture decision records (ADRs) or other decision logs, and do not
-commit them. Put the reason for a decision in the commit message or the PR
-body.
+Follow the [documentation rule](.agents/rules/documentation.md#architecture-docs)
+for design ownership and updates.
 
 ## Skills
 

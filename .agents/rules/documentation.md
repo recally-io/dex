@@ -9,6 +9,8 @@ Read this before you write or change a document or a diagram.
 - `docs/dev/<subsystem>.md`: the details of one subsystem, such as
   `plugins.md` or `tasks.md`. Add a row to the index for a new one.
 - `apps/web/AGENTS.md`: frontend routes, state, and conventions.
+- `docs/remote-machines.md`: Outbound Machine setup and recovery.
+- `apps/native/README.md`: native setup, build, and signing.
 - `docs/assets/src/<name>.<ext>`: architecture and flow figures.
 - `.local/`: plans and reports; ignored by Git.
 
@@ -23,7 +25,7 @@ they are the single source of truth for the current design. They describe how th
   documented behavior.
 - When a figure shows the changed part, update its source and render the PNG
   again.
-- Do not add ADRs or other decision logs, and do not commit them. Put the
+- Do not add ADRs or other decision logs. Put the
   reason for a decision in the commit message or the PR body.
 
 ## Style

@@ -2,19 +2,18 @@
 
 Read this before you report work as complete.
 
-| Changed area                     | Smallest check                                                            |
-| -------------------------------- | ------------------------------------------------------------------------- |
-| Go code or the PiG dependency    | `mise run check:go`                                                       |
-| Migrations or queries            | `mise run check:db-drift` and `mise run check:go`                         |
-| HTTP contract                    | `mise run check:api-drift`, `mise run check:go`, and `mise run check:web` |
-| Web UI                           | `mise run check:web`                                                      |
-| Documents and configuration only | `dprint check`                                                            |
-| Diagram sources                  | `mise run generate:diagrams`, inspect PNGs, then `dprint check`           |
-| Before a commit or PR            | `mise run check`                                                          |
+| Changed area                     | Smallest check                                                               |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| Go code or the PiG dependency    | `mise run check:go`                                                          |
+| Migrations or queries            | `mise run check:db-drift` and `mise run check:go`                            |
+| HTTP contract                    | `mise run check:api-drift`, `mise run check:go`, and `mise run check:web`    |
+| Web UI                           | `mise run check:web`                                                         |
+| Documents and configuration only | `mise exec -- dprint check`                                                  |
+| Diagram sources                  | `mise run generate:diagrams`, inspect PNGs, then `mise exec -- dprint check` |
+| Before a commit or PR            | `mise run check`                                                             |
 
 `check:go` builds the embedded web assets, runs lint, builds Go packages,
-and runs Go tests with the race detector, except `internal/app`. There is no
-backend worker build.
+and runs Go tests with the race detector, except `internal/db` and `internal/app`.
 Run `mise run check:native` for runtime or dependency changes. It checks that
 removed backend paths stay absent. It also checks the [Go dependency boundaries](../../docs/dev/architecture.md#runtime-modules)
 and rejects PiG TUI, extension-host, and NSGo imports in the server. With

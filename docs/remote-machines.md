@@ -3,9 +3,10 @@
 An Outbound Machine runs tools on a host that Dex cannot reach over SSH. The machine opens an
 outbound HTTPS connection to Dex, so it needs no `sshd` and no inbound port.
 
-Dex does not terminate TLS itself. Put it behind the same HTTPS front that serves the web UI:
-nginx, Caddy, Tailscale Serve, or a cloud load balancer. The machine then trusts that front
-with the system CA bundle, and the proxy configuration is the ordinary one.
+Follow [Deploy an HTTPS entry point](../README.md#deploy-an-https-entry-point)
+first. Keep Dex authentication enabled on the loopback upstream. The machine
+must trust the proxy certificate through its system CA bundle. The proxy must
+forward WebSocket upgrades on `/machine/`.
 
 A machine runs work as an account of a person by default, so a bot on that machine can read the
 files and the credentials of that person. Use a Machine Runner only with Bots you trust.
@@ -16,19 +17,11 @@ The machine reads the installer and its token from the address of the web UI, so
 must be an HTTPS origin without a path. Open the UI at that address and get the install command
 from there.
 
-Tailscale already has a certificate for every device, so one command is enough:
-
-```sh
-tailscale serve --bg https / http://127.0.0.1:8787
-```
-
-Dex opens the UI on `http://127.0.0.1:8787`, and Tailscale serves it at
-`https://<machine>.<tailnet>.ts.net`.
-
-nginx needs the WebSocket upgrade that every streaming service needs:
+The Caddy setup in the HTTPS guide forwards WebSocket upgrades. For nginx,
+configure the upgrade headers on the machine routes separately from the Web UI:
 
 ```nginx
-location / {
+location /machine/ {
   proxy_pass http://127.0.0.1:8787;
   proxy_http_version 1.1;
   proxy_set_header Upgrade $http_upgrade;
@@ -46,13 +39,14 @@ can read the traffic can read that token.
 2. Select **Get install command**. Dex issues a one-time code and shows the command that uses
    the address of the page. The code expires after ten minutes and works once.
 3. Copy the command and run it in a terminal on the target machine, as the account that will
-   use the machine. It needs no `sudo`.
+   use the machine. The default installation needs no `sudo`.
 
 The command does four things:
 
 - It downloads `install-machine.sh` from Dex.
-- It downloads the archive for the machine's platform and the running Dex version. It checks
-  the SHA-256 checksum. Development builds serve their own archives.
+- It downloads the matching archive and SHA-256 checksum from GitHub Releases.
+  Development builds serve their own archives. Both support Linux and macOS
+  on x64 and arm64.
 - It installs the binary and the service of the account, then trades the one-time code for the
   machine token. Dex stores only the SHA-256 digest of that token, and the token goes to
   `device.json` in the state directory with mode `0600`.
@@ -85,9 +79,9 @@ Use a separate account for shared or less trusted work.
 
 ## A dedicated account on Linux
 
-A host that serves several people installs a dedicated account instead. Add `--dedicated` to the
-command and run it as root, with `sudo`. The installer then keeps the machine in a system
-account without a login of a person, and any bot may use the machine.
+To run tools outside your own account, append `--dedicated` to the install
+command. Run as root or from an account with `sudo`. The installer uses the
+`dex-agent` system account and the system service manager.
 
 The two modes differ as follows:
 
@@ -100,17 +94,17 @@ The two modes differ as follows:
 | Needs root      | no                                | yes                                |
 
 The paths above are defaults. A Linux user install honors `XDG_STATE_HOME` for
-state and `XDG_CONFIG_HOME` for the service file. Use those same paths when
-removing the install.
+state, `XDG_BIN_HOME` for the binary, and `XDG_CONFIG_HOME` for the unit.
+Use those same paths when you remove the install.
 
-Linux needs systemd with a user manager, plus curl, tar, and sha256sum or shasum. Debian 12 or
-later, Ubuntu 22.04 or later, and equivalent distributions work. The account keeps the service
-after it logs out, so the installer enables lingering; when it cannot, it says so and asks for
-`sudo loginctl enable-linger <account>`.
+Linux needs systemd. The user install requires a running user manager, `curl`,
+`tar`, `install`, `sed`, and either `sha256sum` or `shasum`. It tries to enable
+lingering. If that fails, run `sudo loginctl enable-linger <account>` to keep
+the service running after logout. Dedicated mode requires `sha256sum`,
+`getent`, `runuser`, and `useradd`.
 
-The installer refuses to install as root without `--dedicated`, because root holds the tools of
-no person, and a service of root can change the whole host. The user service also keeps
-`NoNewPrivileges`, and the state directory stays at mode `0700`.
+The installer refuses to install as root without `--dedicated`. The user
+service sets `NoNewPrivileges`. The state directory uses mode `0700`.
 
 ## macOS
 
@@ -147,9 +141,7 @@ launchctl bootout gui/$(id -u)/com.recally.dex-agent
 
 ## Move a machine between the two modes
 
-The installer does not replace an installed machine without saying so. On a host that already
-runs the dedicated account, the command without `--dedicated` stops, reports the existing
-machine, and prints the move.
+A Linux user install refuses to run when the dedicated service exists.
 
 To move a dedicated install to your own account, revoke it in Dex first, then remove the system
 service and its state, and run the new command as your own account. Workspaces do not move
@@ -205,8 +197,7 @@ server (`/machine/{id}/release/*`) and verifies the SHA-256 checksum and `versio
 It retains `dex-agent.previous` before it replaces itself and re-execs in place. If re-exec
 fails, it restores the previous binary.
 
-A machine state file must contain `runnerId`. If the file does not have it,
-revoke the machine in Dex and enroll it again with the current install command.
+If `device.json` lacks `runnerId`, revoke the machine and enroll it again.
 
 Pass `-no-auto-update` to `dex-agent run` to opt out of automatic version alignment.
 

@@ -4,12 +4,13 @@ Read this before you change code, dependencies, native execution, or stored data
 
 ## Modules
 
-The server and native app share the root Go 1.27.3 module. The root
+The server and native app share the root `go.mod`. The root
 `internal/` tree is the shared core. It does not depend on `apps/`.
 
 | Path                         | Owns                                                                                |
 | ---------------------------- | ----------------------------------------------------------------------------------- |
-| `cmd/dex`                    | Process entry: data directory, address, HTTP server                                 |
+| `cmd/dex`                    | Server host, service commands, and CLI                                              |
+| `cmd/dex-agent`              | Outbound Machine host, enrollment, and version alignment                            |
 | `internal/app`               | Wiring: business storage, engine, session service, HTTP, channels                   |
 | `internal/session`           | Input intents, business receipts, child session turns and results, source state     |
 | `internal/engine`            | PiG Harnesses, execution storage, model access, tool runtime, transcript projection |
@@ -29,6 +30,7 @@ The server and native app share the root Go 1.27.3 module. The root
 | `internal/channel/feishu`    | Feishu/Lark setup, events, cards, and media adaptation                              |
 | `internal/channel/wechat`    | WeChat login, polling, protocol, and media adaptation                               |
 | `internal/upload`            | Upload validation, file storage, and bot-scoped paths                               |
+| `internal/artifact`          | Bot artifact store and the `deliver_file` tool                                      |
 | `internal/service`           | Per-user launchd/systemd definitions, commands, and readiness checks                |
 | `internal/sysops`            | In-process server operations: update coordination, restart, SQLite backups, logs    |
 | `internal/update`            | Release verification, maintenance coordination, and executable replacement          |
@@ -81,7 +83,7 @@ In `apps/native`, `internal/webview` owns platform WebViews and navigation.
   frontend types whose JSON fields match the OpenAPI contract.
 - A new dependency needs the user's approval. Prefer the standard library,
   then a dependency the repository already has.
-- Settings live only in `control.sqlite`. `internal/settings` owns global
+- Application settings live in `control.sqlite`. `internal/settings` owns global
   settings. `internal/bot` owns bot and channel settings. `internal/session`
   owns session overrides. Do not add an environment variable or a file for a
   setting. Skills and the encrypted secret vault use files. MCP declarations
@@ -98,12 +100,11 @@ In `apps/native`, `internal/webview` owns platform WebViews and navigation.
   (`mise run generate:db`), `internal/api/server.gen.go`,
   `plugins/*/api/server.gen.go`, and `apps/web/src/api/generated/`
   (`mise run generate:api`).
-- `api/openapi.yaml` is the only source of the HTTP API. Change it first, then
-  generate. Tag each plugin operation with the plugin name.
+- `api/openapi.yaml` owns the generated HTTP contract. Change it first, then
+  generate. Tag each plugin operation with the plugin name. When a schema uses
+  `x-go-type`, keep its fields and the Go type's JSON tags in sync.
 - A fix covers every entry point with the same failure mechanism. Search for
   the pattern, and re-check the callers, the stored data, and the tests that
   depend on the old meaning.
 
-## Web foundation
-
-The web UI owns one stock shadcn foundation in `apps/web/src/components/ui/` and one semantic token source in `apps/web/src/styles.css`. Domain components compose the foundation. Do not add atoms, primitives, direct icon packages, or legacy token aliases. Review the preset `b4XK48HRFw` before updates, then run the official shadcn CLI from `apps/web/` and review every generated diff. Run `mise run check:web` after the update; its guard rejects retired imports and token names.
+For Web components, follow the [Web UI rules](../../apps/web/AGENTS.md#components-and-theme).

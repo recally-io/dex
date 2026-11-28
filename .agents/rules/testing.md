@@ -18,20 +18,12 @@ Read this before you write or change a test.
   a real HTTP server. `mise run check:testpolicy` rejects mock libraries.
 - **MCP servers are real.** The `internal/app` tests run
   `internal/mcptest` as a stdio server (their own test binary) or over HTTP.
-- **Fakes only at system boundaries.** Model providers and the Telegram Bot API
-  are the boundaries; `internal/app/telegram_test.go` has a fake Bot API. Tests
-  use PiG's faux provider (`DEX_FAKE_MODEL=1`; models `faux/echo` and
-  `faux/shout` answer `echo: <message>` and `shout: <message>`, and
-  `faux/bash` runs the message with the bash tool and answers
-  `bash: <output>`; in a dream, `faux/bash` appends the dream's JSON
-  records to `dreams.md` in the memory repo; `faux/memory` answers
-  `memory: <MEMORY.md section of the system prompt>`; `faux/section` answers
-  `section: <the system prompt section that the message names>`; `faux/tool`
-  takes `<tool name> <JSON arguments>`, loads the tool with `tool_search`,
-  calls it, and answers `tool: <output>`; `faux/files` takes a JSON array of workspace paths and calls `deliver_file` for those paths in one tool batch; `faux/mixed` takes `ask_user <JSON arguments>`
-  and calls `ask_user` and `bash` in one message, to test a mixed tool batch; `faux/think` is a
-  reasoning model and answers `think <thinking level>: <message>`). A test with the faux provider does not prove that a real
-  provider works; say so when you report.
+- **Fakes only at system boundaries.** Use them for model providers and
+  external services, such as the Telegram Bot API in `internal/app/telegram_test.go`.
+  Use `DEX_FAKE_MODEL=1` for the [faux provider](../../internal/engine/fake.go).
+  Use `faux/echo` for a text reply and `faux/tool` with `<tool name> <JSON arguments>`
+  for a tool call. See the source for other scripts and their exact results.
+  A faux-provider test does not verify a real provider.
 - **Controlled time.** Do not use fixed sleeps. Poll the observable condition
   with a deadline, and fail with the last observed state.
 - **Isolation.** Each test uses its own `t.TempDir()` for the data directory
@@ -67,10 +59,7 @@ Read this before you write or change a test.
 Transcript regressions cover stream deltas, block replacement, tool end before
 result, reset and history boundaries, task markers, queued input, and durable
 withdrawal. Test direct subscriptions, reconnect, cancellation, and independent
-readers through real execution storage. Do not restore tests of a removed
-internal transport.
-
-Coverage: no gate exists yet. Review untested branches in the diff.
+readers through real execution storage. Review untested branches in the diff.
 
 When you finish, list each test task you ran and its result. Name each check
 you did not run and why.

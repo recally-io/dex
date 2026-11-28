@@ -42,20 +42,14 @@ A child row names the bot of its parent in `parentBotId` and `parentBotName`
 when the parent belongs to another bot than the one in the path. Detail has the
 parent fields.
 
-A result mark includes `childSessionId` when the saved result names its child.
-The Sessions list supplies the owning Bot. The web opens the session at
-`/b/{botId}/s/{sessionId}` under that Bot. A result without a saved Session ID remains readable
-in the transcript. Open its child from Sessions.
+Channel input enters Main. Separate Web Sessions and dedicated Automation
+transcripts have their own contexts. The composer is available in Main and
+writable Sessions, including children. Archiving a Session keeps its history
+and files and excludes it from empty-session reuse. Main cannot be archived.
+See [Web routes and state](../../apps/web/AGENTS.md#routes-and-state) and
+[Channel setup](channels.md).
 
-Channel input enters the bot's Main session. Separate Web sessions and
-Automation runs keep their own contexts. See [Product](../product.md#scope) for session behavior,
-page navigation, and channel setup.
-
-The web keeps visited main timelines mounted and `inert` when hidden. Their
-streams, composer drafts, and uploads survive navigation. Browser checks must
-skip `[inert]` subtrees. Instructions drafts live above the routes in a map by
-bot ID. Saving one bot cannot change another bot's draft or query data.
-A browser reload discards these drafts.
+## Input and replies
 
 Every enqueue writes `submissions.origin` together with Input Queue metadata:
 `submissions.producer` (`user`, `sub_session`, `scheduler`, or `plugin`) and
@@ -73,17 +67,14 @@ The engine stores origin with native input metadata. One projection exposes it
 in queued input, snapshots, live events, and history pages. The web shows the
 channel name beside each channel input.
 
-For a completed run, Dispatcher inspects the inputs actually answered by that
-native answer in PiG placement order and selects the last `producer = user`
-input: if that input came from a channel (`reply_channel`/`reply_peer`), that
-input writes the single final Outbox reply; if it came from Web, the answer
-stays in Web with no channel Outbox row. Pure background runs (no `user` input)
-never auto-send to channels—Main must explicitly call `notify_user` to emit a
-channel notification. A [Task wake](tasks.md#coalesced-main-wakes) is
-a background input. It stays in control storage while Main is busy and gives
-other pending inputs priority. If run membership or order cannot be verified, no
-automatic channel Outbox row is written. Web input and a parent's
-`session_send` can steer; channel, automation, and dream inputs use `followUp`.
+For a completed run, the last user message in native placement order selects
+one final reply route. If it is a channel input, Dex queues the reply in the
+Outbox. The first input owns that row when it is a user message to the same
+peer, so its Question and file effects stay attached. If the last user message
+is from Web, the answer stays in Web. A run with no user input, or an answer
+whose input order Dex cannot verify, produces no automatic channel reply.
+Use `notify_user` for explicit delivery. Web input and `session_send` can steer.
+Channel, Automation, and Dream inputs use `followUp`.
 
 ## Web notifications
 
@@ -101,13 +92,13 @@ notices. Channel revocation does not hide a Web-origin notice. Neither the
 engine transcript nor the platform delivery receipt changes when the Web client
 reads an entry.
 
-## Internal delegation
+## Questions
 
-`ask_user` is installed only on Main and top-level Web sessions. Extension edits
-persist per conversation, so tasks, automations and dreams never get it. A
-`questions` row holds the text, the options and one of `open`, `answered`,
-`consumed` and `dismissed`. A partial unique index allows one open question per
-session. The tool key is the bot ID plus PiG's tool task ID, so a replay
+`ask_user` requires an active source input in Main or a top-level Web Session.
+It asks one question of at most 1000 characters with 2 to 4 options of at most
+200 characters each. A `questions` row stores the text, options, and state:
+`open`, `answered`, `consumed`, or `dismissed`. A partial unique index allows
+one active question per Session. The tool key is the bot ID plus PiG's tool task ID, so a replay
 returns the saved question. The tool reads `harness.LiveState` and returns
 `ToolControl{Terminate: true}` only when it is the only call in the round.
 PiG ends the turn only when every call terminates, so a mixed round gets a tool
@@ -116,9 +107,10 @@ The receipt, the new `answered` status and the content wrapper `Answer to:
 <question>` commit in one transaction. A message without that field never closes
 a question. Withdrawing the answer reopens the question. The answered input's
 settlement consumes it. Session cancellation, Clear and archive dismiss open and answered
-questions in their own writer transaction. A direct channel input receives its
-final question through the Outbox. Questions from Web or background inputs stay
-in Web. After the platform confirms the question message, the sender stores the
+questions in their writer transaction. A direct channel input can receive its
+question through the Outbox. Other questions stay in Web except when the
+[Task question route](tasks.md#sessions-and-questions) applies. When the
+platform confirms the question message, the sender stores the
 remote ID in `question_messages`. Its key contains the
 bot ID, peer, and remote message ID, because different bots can return equal
 message IDs for the same peer. Telegram reads
@@ -130,6 +122,8 @@ quote without a match.
 The settle worker takes the Session delivery gate before it settles an aborted
 input. A withdraw holds the same lock, so a withdrawn channel message never gets
 a "no answer" reply.
+
+## Internal delegation
 
 Main is a front desk. A person waits for each main reply. A channel receives
 the reply only when the turn ends, and later input waits for that turn. So main
@@ -155,8 +149,8 @@ writing child separate files or directories. The tools are:
 - `session_stop` withdraws queued input and stops the run. It is the same as
   user Stop and has no result.
 - `session_fork` branches a child up to a finished answer, with the same parent.
-- `session_list` lists the children of the caller, whatever their bot, and with
-  scope `all` also the sessions of one bot, except dreams. `bot` selects those
+- `session_list` returns up to 20 Sessions. It lists the caller's children
+  across Bots. Scope `all` also lists other Sessions, except Dreams. `bot` selects those
   other sessions: empty (the bot of the caller), `all`, or a bot ID or name. It
   never hides a child of the caller. Each row names its bot.
 - `session_read` returns turns newest first: the input and the final answer of
@@ -412,11 +406,10 @@ Harness resumes. Recovery isolates those sessions. A second restart adds
 nothing. The parent reports the interruption and warns that side effects may
 exist.
 
-The SDK owns cancellation of run invocations and tools. Control does not track
-process trees or confirm exit. A normal local or MCP tool return can settle
-execution. An aborted MCP call ends the local wait and requests remote
-cancellation. It does not prove that the remote job stopped. Before another
-turn, the parent must check artifacts and prior actions.
+The SDK cancels runs and tools. Cancellation does not prove that a remote
+job stopped. Before another turn, check artifacts and prior actions.
+
+### Runner connections
 
 Tools run through [`internal/runner`](../../internal/runner) using the
 built-in `local` provider, a remote `ssh` connection, an `e2b`
@@ -501,8 +494,7 @@ process must not outlive its turn. A turn can start and supervise a process,
 such as a worker in a Rex tab, but must stop it before the final answer. Bash has a default
 timeout of 600 seconds. Its visible output keeps at most the last 2000 lines or 50 KiB,
 whichever limit comes first; complete output goes to a temporary file.
-A durable checkpoint does not attach a CLI after restart or guarantee that
-external actions occurred once.
+See [background command recovery](execution.md#session-processes) after restart.
 
 ## Session Runners
 
@@ -550,8 +542,9 @@ selected Runner and use the normal file tools. See [Skills](skills-and-integrati
 MCP servers keep their bot-level configuration and transport;
 selecting a Runner does not move them or grant access to new MCP tools.
 
-An E2B default keeps its existing persisted per-bot sandbox and auto-pause
-setting. An explicit selection of that same default uses the same lease.
+Sandbox presets are **E2B Cloud**, **Local Docker / VM**, and **Custom endpoint**.
+Local Docker / VM defaults to `autoPause: false` and `timeoutSeconds: 3600`.
+A Bot's default E2B Runner keeps its per-Bot Sandbox and auto-pause setting. An explicit selection of that same default uses the same lease.
 A non-default E2B selection uses a separate sandbox per open Bot and Runner.
 Dex deletes it on lease close. It expires rather than auto-pauses if Dex cannot
 close it. It does not survive a reload or restart; do not rely on it for
@@ -581,8 +574,8 @@ transcript projects a `boundary` item with `boundary: "runner"`. The entry
 records the Runner the history left. A fork before that entry uses the
 recorded Runner as the source of its own boundary check. Files, commands,
 and queued input stay on the source Runner. A fork with no copied history
-gets no notice. A retry with the same ID must request the same Runner. It
-returns the saved fork even if the target Runner is no longer available.
+gets no notice. A retry with the same ID must request the same Runner. It returns the saved
+fork even if that Runner is unavailable.
 
 A change of the Bot's Runner fails with 409 while sessions that follow it
 have queued input or running background commands. After the change, those

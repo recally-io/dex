@@ -4,61 +4,33 @@ skinparam ArrowColor #5b6b8c
 skinparam ArrowFontColor #1f2937
 skinparam ParticipantBackgroundColor #eef2fb
 skinparam ParticipantBorderColor #5b6b8c
-skinparam ActorBackgroundColor #eef2fb
-skinparam ActorBorderColor #5b6b8c
-skinparam DatabaseBackgroundColor #eef2fb
-skinparam DatabaseBorderColor #5b6b8c
 skinparam NoteBackgroundColor #dfe5fb
 skinparam NoteBorderColor #5b6b8c
 skinparam SequenceLifeLineBorderColor #5b6b8c
-skinparam SequenceGroupBorderColor #5b6b8c
-skinparam SequenceGroupBackgroundColor #dfe5fb
-autonumber
-title dex: native admission and business receipt projection
+title Dex: admission and settlement
 
-actor "Browser" as user
-participant "Business services
-HTTP + session + live" as session
-database "control.sqlite" as cdb
-participant "Native engine
-PiG Harness + projection" as engine
-database "bot state.sqlite" as adb
-participant "Model provider" as model
+participant Browser as web
+participant "Session service" as session
+participant "control.sqlite" as cdb
+participant "PiG engine" as engine
+participant "Bot state.sqlite" as adb
 
-user -> session : POST message (client UUID)
-session -> cdb : Store input intent + origin
-opt first input of the session
-  session -> engine : Create(bot, options)
-  engine -> adb : Commit execution conversation
-  engine --> session : Ref{BotID, ID}
-  session -> cdb : Store execution_id
-end
-session -> engine : Submit(ref, request ID, metadata)
-engine -> adb : Commit admission + input or native Inbox
-engine --> session : Native Submission handle
-session -> cdb : Mark receipt admitted
-session --> user : 202 Accepted
-user -> session : Open SSE
-session -> engine : Watch(ctx, ref)
-engine --> session : Typed snapshot + independent Events channel
-session --> user : snapshot (includes native queued input)
-engine -> model : Generate (tools use the Session Runner)
-model --> engine : Text and tool changes
-engine --> session : Typed item / append / run events
-session --> user : Encode events as SSE
-engine -> adb : Commit answer + outcome
-session -> engine : Submission.Wait(ctx)
-engine --> session : Outcome
-session -> cdb : Settle receipt + wake channel outbox
-
-group admission or receipt write interrupted
-  session -> engine : Submit same stable request ID
-  engine -> adb : Reacquire admitted input or admit missing input
-  engine --> session : Same native submission
-  session -> cdb : Reconcile admission and outcome receipt
-end
-note over session,engine
-  One Go process. Separate store commits.
-  A business receipt alone does not prove native admission.
+web -> session : POST message with request ID
+session -> cdb : Commit input intent
+note over web,session
+  HTTP 202 confirms acceptance.
+  Native admission can still be pending.
 end note
+session -> engine : Submit with stable request ID
+engine -> adb : Commit or reacquire admission
+engine --> session : Submission handle
+session -> cdb : Mark receipt admitted
+note over session,adb
+  On first use, the service creates and links a conversation before Submit.
+  Reconciliation uses the same request ID after a failed write.
+end note
+engine --> web : Typed transcript events through live SSE
+engine -> adb : Save answer and outcome
+engine --> session : Submission.Wait returns outcome
+session -> cdb : Settle receipt and queue eligible channel reply
 @enduml

@@ -31,13 +31,14 @@ The app saves your workspace choice and reopens it on launch. Local mode can mak
 - **iPhone and Android:** Enter a reachable HTTPS origin, such as `https://dex.example.com`. The app has no default address. An origin contains a scheme, host, and optional port. Do not include a path, query, fragment, or credentials.
 - **Remote access:** Follow [Deploy an HTTPS entry point](../../README.md#deploy-an-https-entry-point). The server must require a Dex token even when the reverse proxy uses a loopback upstream. Use a certificate the client trusts. Do not disable certificate checks or expose a plain HTTP listener to the network.
 
-To switch between local and remote workspaces, select **Switch workspace** at the bottom left of the sidebar. On iPhone or Android, open the navigation drawer first. The sign-in page also has a **Switch workspace** link if you do not have the token for the selected server. If an older server does not show the link, open `dex-workspace://settings` on the device to open the app's connection screen. Opening the screen keeps the current login. If the server is offline, the app opens this screen directly.
+To switch between local and remote workspaces, select **Switch workspace** at the bottom left of the sidebar. On iPhone or Android, open the navigation drawer first. The sign-in page also has a **Switch workspace** link if you do not have the token for the selected server. The switch link opens the connection screen without clearing the login. If the server is offline, the app opens this screen directly.
 
 Enter the access token on the Dex login page when it asks for one. The web view keeps its own login data across retries and restarts. Switching away from a remote workspace or selecting **Forget server** clears its sign-in data. **Forget local selection** leaves local workspace files in place. The web view blocks navigation outside the configured scheme, host, and port. If this blocks an OAuth flow, open the Dex origin in your browser and start the flow again there.
 
 ## Source layout
 
-The server and the native app share the root Go 1.27.3 module. The root `go.mod` pins the NSGo tool and library. Run `go tool nsgo` from `apps/native/` to use its `nsgo.yaml`.
+The root `go.mod` pins NSGo. Run `mise exec -- go tool nsgo` from
+`apps/native/` to use `nsgo.yaml`.
 
 - `apps/native/` owns app startup, workspace selection, theme, and platform build inputs.
 - `internal/webview/` hosts the platform views and handles navigation. The stub on other platforms exists for Go builds and headless tests.
@@ -84,7 +85,7 @@ Run `mise run build:web` before you call the NSGo tool directly. Run the remaini
 Use a valid Apple Development signing identity with its private key in an unlocked keychain. Obtain an iOS development provisioning profile from the same team. The profile must authorize the bundle ID from `nsgo.yaml`, the signing certificate, and each test iPhone's UDID. For an Ad Hoc distribution IPA, use the matching Ad Hoc profile and Apple Distribution identity instead. Set `IOS_PROFILE` to the absolute path of the applicable `.mobileprovision` file. Set `IOS_SIGN_ID` to the exact identity name or SHA-1 fingerprint.
 
 ```sh
-go tool nsgo build -target ios -channel none \
+mise exec -- go tool nsgo build -target ios -channel none \
   -sign "${IOS_SIGN_ID:?Set the iOS signing identity}" \
   -profile "${IOS_PROFILE:?Set the iOS development or Ad Hoc profile path}" \
   -output ../../.local/apple-v1/build/device
@@ -99,7 +100,7 @@ plutil -extract CFBundleSupportedPlatforms xml1 -o - "$DEVICE_APP/Info.plist"
 test -f "$DEVICE_APP/embedded.mobileprovision"
 ```
 
-Check for `iPhoneOS`, the expected signing authority, and the embedded profile. Keep the IPA and checksum as the distribution archive. Without `-profile` NSGo can produce an unsigned IPA. That IPA cannot be installed or uploaded. NSGo 0.3.4 does not produce a literal Xcode `.xcarchive`. An Organizer archive requires a separate Xcode host project and archive flow, which this client does not ship.
+Check for `iPhoneOS`, the expected signing authority, and the embedded profile. Keep the IPA and checksum as the distribution archive. Without `-profile` NSGo can produce an unsigned IPA. That IPA cannot be installed or uploaded. The NSGo output contains no Xcode `.xcarchive`.
 
 The command does not need a connected phone. It does not use `-run`. A future device test needs a provisioned iPhone. For a development-signed app, also enable Developer Mode. A build and signature check do not prove device install or launch.
 
@@ -112,7 +113,7 @@ xcrun notarytool store-credentials "${MAC_NOTARY_PROFILE:?Set the notary profile
   --apple-id "${APPLE_ID:?Set the Apple account}" --team-id "${APPLE_TEAM_ID:?Set the team ID}"
 
 unset NSGO_NOTARY_KEY
-go tool nsgo build -target macos_arm64 -channel direct \
+mise exec -- go tool nsgo build -target macos_arm64 -channel direct \
   -installers=true -skip-installers= \
   -sign "${MAC_SIGN_ID:?Set the Developer ID Application identity}" \
   -notarize "${MAC_NOTARY_PROFILE:?Set the notary profile name}" \
@@ -132,7 +133,7 @@ xcrun stapler validate "${MAC_DMG:?Set the notarized DMG path}"
 Register the bundle ID and create the matching App Store Connect app record. Use an App Store distribution provisioning profile and its Apple Distribution identity. A development or Ad Hoc IPA cannot be used. The build uses the same 1024 × 1024 [app icon](../assets/dex.png) as macOS and the web UI. Confirm privacy and export compliance. Use a new build number for the app version. Set `IOS_STORE_PROFILE` to the absolute profile path, `IOS_DISTRIBUTION_ID` to the signing identity, and `IOS_BUILD_NUMBER` to the next build number.
 
 ```sh
-go tool nsgo build -target ios -channel store \
+mise exec -- go tool nsgo build -target ios -channel store \
   -sign "${IOS_DISTRIBUTION_ID:?Set the Apple Distribution identity}" \
   -profile "${IOS_STORE_PROFILE:?Set the App Store profile path}" \
   -build-number "${IOS_BUILD_NUMBER:?Set the next build number}" \
@@ -142,7 +143,7 @@ go tool nsgo build -target ios -channel store \
 For upload, provide an authorized App Store Connect team API key through `NSGO_APP_STORE_KEY` (the `.p8` path), `NSGO_APP_STORE_KEY_ID`, and `NSGO_APP_STORE_ISSUER`. Set `IOS_STORE_IPA` to the signed IPA from the `testflight` output. Run the next command only when you intend to upload the build:
 
 ```sh
-go tool nsgo publish ios "${IOS_STORE_IPA:?Set the App Store IPA path}"
+mise exec -- go tool nsgo publish ios "${IOS_STORE_IPA:?Set the App Store IPA path}"
 ```
 
 Wait for processing in App Store Connect. Complete any required compliance or beta review steps there. Then assign the build to the intended TestFlight testers. A successful upload does not release the app on the App Store.

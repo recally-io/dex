@@ -52,7 +52,7 @@ owns the PiG lookups. Business storage and authorization stay in each handler.
 A session uses `process_start` for long work. The call does not wait for
 completion. Use foreground `bash` for work that must finish in the current
 turn. Do not detach work with `&` or `nohup`. The `monitors` extension also
-provides [schedule Monitors](architecture.md#session-monitors).
+provides [Monitors](#session-monitors).
 [`internal/background`](../../internal/background/background.go) owns the
 processes. [`internal/session/background.go`](../../internal/session/background.go)
 binds each command to its session. The Local executor owns a POSIX process
@@ -151,23 +151,43 @@ Stop, restart and limits:
   limit as omitted. dex cuts a line longer than 64 KiB and continues with the
   next line.
 
-### External Task runs
+Managed [external Task runs](tasks.md#managed-push) use the same Process and
+Runner limits. They discard output and send no exit wake.
 
-`task_dispatch_external` uses the Session Process path on the Assignee's
-Outbound Runner. It ties the launch to a Runner enrollment and an external
-Task lease. The Process receives a scoped Task token in `DEX_TASK_TOKEN`.
-Use `dex task` to read the Task or update the run.
-The tool arguments, Process record, and result contain no token. The Process
-discards harness output. Use the Board Timeline for progress and the Process
-exit status for launch diagnostics. The Process sends no wake on exit. The
-command must report its outcome.
-Dex does not infer Task status from the exit status.
+## Session Monitors
 
-A current Outbound Runner can run another Bot's tool while a Process uses
-the same socket. Both use the normal Runner operation limit. There are no
-harness-specific Runner methods. See
-[external agents and Runners](tasks.md#external-agents-and-runners)
-for lease and resume rules.
+Main and writable Sessions, including children, can use `monitor_set`,
+`monitor_list`, and `monitor_cancel`. A Session has a combined cap of 32
+active Monitors and Processes and a wake depth limit of six. `monitor_list`
+excludes Processes. `monitor_cancel` accepts the `schedule-` ID or raw ID.
+
+Set a prompt and exactly one of `at` or `delaySeconds`. Repeated checks use
+`maxRuns` (1–100), `intervalSeconds` (60–604800 for multiple runs), and
+optional `expiresAt`. Repeated and script Monitors can live for at most seven
+days. A `checkCommand` can use at most 8192 bytes. Only a script check can
+set `env`; use vault references for secrets.
+
+The scheduler checks due rows in `control.sqlite` (`monitors`) in one serial
+batch. A script uses the Session's Bash environment, Runner, and project.
+It has 20 seconds and 16 KiB of combined output. Exit `0` records a baseline
+on first success and queues a prompt only when the output hash changes. Exit
+`10` queues a terminal prompt even if the hash did not change. Any other
+exit, timeout, or excess output stops the Monitor with a failure. Dex keeps
+the hash, not the raw output. Each attempt counts. Checks do not overlap,
+and Dex does not replay missed intervals.
+
+A script claim survives restart. An unfinished claim records interruption
+instead of running again. Dex saves a result, next due time, and any `wake`
+intent in one transaction. The normal Session dispatcher admits wakes as
+follow-ups. Dex checks current Session authority before admission.
+
+Session cancellation, Clear, archive, and Monitor cancellation prevent stale
+results from queueing. Cancel an active Monitor in the Session activity panel
+or with `monitor_cancel`. The activity panel lists Monitors and the 30 most
+recent Outbox entries. It does not list Processes. Cancellation withdraws the
+Monitor's queued inputs. A running check can finish within its deadline.
+Cancellation does not stop a prompt already running. Main foreground Stop leaves Monitors active. Dex does not move a
+check to another Session, Runner, or project.
 
 ## Transcript subscriptions and history
 
@@ -222,14 +242,23 @@ engine also checks its active run and native Inbox. A refused request stores no 
 `head: self`. A retry adds no second reset. A handoff is stored in the receipt
 content and becomes the reset entry's user message. It does not start a run;
 the next run reads it. Reset entries keep their time in
-data. Memory files remain available. Follow-ups keep one input per answer;
-they do not merge all queued input or steer the current turn.
+data. Memory files remain available. A follow-up waits for a later run.
+PiG uses `QueueAll`: one answer can cover multiple queued inputs. See
+[reply routing](sessions.md#input-and-replies).
 
 The composer runs `/clear [handoff]` (alias `/new`) and `/compact [what to keep]`.
 A draft that starts with `/` is never sent as a message. The server alone
 decides whether work is active. A refused `/clear` shows a warning and keeps the
 same request ID for a retry with the same handoff. The menu greys out `/clear`
 and `/compact` when the last non-compaction item is a plain reset or is absent.
+
+Manual and automatic compaction keep recent context and use a local summary.
+The summary contains selected older user and assistant text and native entry
+IDs. Its limit is 4 KiB, including up to 1 KiB of manual instructions. It omits
+thinking, tool output, and attachments. History entries remain readable.
+A manual request ID binds the Session and instructions. Control records that
+binding before the call; native commits its own receipt with the compaction
+job. A retry rechecks native admission instead of trusting the control marker.
 
 `Bots.Compact` starts a native manual compaction. It also runs during a run;
 the summary then waits in the native Inbox for the run's next boundary. A conversation
@@ -251,9 +280,11 @@ native conversation yet. The control row stores `forked_from` and copies the
 model, thinking level and project, so `EnsureEmptySession` never reuses a fork and
 `ListSessions` lists it before its first message. A fork copies committed entries
 only, so a running source gives no live run, queue or failure. The native fork
-keeps the source configuration until the next admission configures it. Each
-request creates another fork; the web disables the action while one is pending.
-A failure after the native fork leaves an unused native conversation.
+keeps the source configuration until the next admission. A client UUID reuses
+the committed fork when source, boundary, and Runner match. A mismatch returns
+`409`. A concurrent retry or failed control write can leave an unreferenced
+native conversation. A fork copies history, not files. The Web edit action
+copies text into the new composer without attachments.
 
 A snapshot contains only the active native context. Reset and summary entries
 show dividers. A reset divider shows its handoff; a summary divider can expand

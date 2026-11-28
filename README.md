@@ -6,7 +6,8 @@ Bot state stays in local directories. The installed host needs no Node or Bun.
 
 ## Quick start
 
-Install the latest release on macOS or Linux, x64 or arm64:
+Install the latest stable release on macOS or Linux, x64 or arm64. The
+installer needs `curl`, `tar`, and `sha256sum` or `shasum`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/recally-io/dex/main/install.sh | sh
@@ -17,11 +18,9 @@ The script checks the archive against `checksums.txt` and installs `dex` to
 `~/.local/bin`. Set `DEX_INSTALL_DIR` for another directory, or `DEX_VERSION`
 for a tag such as `v0.1.0`. Use a permanent directory: the service runs dex from it.
 
-The command starts dex now and at login. Open <http://127.0.0.1:8787>.
-On the Providers page, add a provider. On the Bot page, choose a model.
-
-To build from source, run `mise install`, `mise run install`, and
-`mise run build`. The binary is `bin/dex`. See [Development](docs/dev/development.md).
+The service starts now and at login. Open <http://127.0.0.1:8787>.
+In **Settings → Providers**, add a provider. In **Settings → General**, choose
+a model for the default Bot. To build from source, see [Development](docs/dev/development.md).
 
 ## Run and manage dex
 
@@ -44,15 +43,8 @@ through a reverse proxy without [turning on authentication](#deploy-an-https-ent
 
 ### Access from other devices
 
-For Apple silicon Macs, download `Dex-<tag>-macOS-arm64.zip` from [GitHub Releases](https://github.com/vaayne/dex/releases). The app needs macOS 14 or later. It has an ad hoc signature and is not notarized. Unzip `Dex.app` and open a local workspace or connect to an existing Dex server. On iPhone, use Safari or build the native client.
-
-For Android 9 or later on 64-bit ARM phones, download `Dex-<tag>-Android-arm64.apk` from the same release. Install the APK and open a local workspace or enter the HTTPS address of an existing Dex server. Keep Android System WebView up to date. See [Dex native apps](apps/native/README.md).
-
-The standalone server uses `~/.dex` by default. A native local workspace runs
-inside the app and uses a `dex` subdirectory in the platform's app data
-directory. Only the macOS app accepts `DEX_DATA_DIR` as an override. To use a
-server's data, connect to that server over HTTP or HTTPS. See [local workspace
-storage](apps/native/README.md#open-a-local-workspace).
+Use a browser or the [native app](apps/native/README.md). A native local
+workspace has its own data. Connect to the server to use the server's workspace.
 
 The API can run shell commands, so a host that is not loopback requires an
 access token:
@@ -80,9 +72,7 @@ package-manager directories. It does not copy PATH from the install shell.
 Bot tools get their environment from the interactive login shell instead.
 The definition saves no credentials or other shell variables. Change the service
 with the CLI.
-The configuration record is the source of boot options. Reads accept definitions
-from earlier releases. After an update,
-run `dex service install` to apply new template defaults.
+After an update, run `dex service install` to apply new service defaults.
 
 Stop any foreground dex process on the same address before you install.
 Install and start wait up to 30 seconds for the expected version, data
@@ -155,8 +145,8 @@ through a port forward or any other listener.
 Keep `--require-token` enabled for as long as the proxy points to Dex. Disable
 the proxy route before you remove the flag or downgrade to a version that lacks
 it. Check for `401` again before you restore the route after a service or
-upstream change. For a webhook-only public endpoint, use the path-limited proxy
-below instead.
+upstream change. For a webhook-only endpoint, use the
+[path-limited proxy](docs/dev/channels.md#https-and-reverse-proxy).
 
 ### Channel webhooks
 
@@ -168,63 +158,17 @@ default. Neither needs a public endpoint. To opt in to webhooks, see the
 
 Open **Board** to see Tasks across Bots. **Needs you** shows questions,
 reviews, setup issues, and held events. **Updates** groups Automation results.
-Open a Task to send a message to its Assignee's Main or add a note.
-See [Tasks](docs/dev/tasks.md).
+See [Tasks](docs/dev/tasks.md#board) for review, messages, and notes.
 
-## Skills and MCP servers
+## Skills, MCP servers, and secrets
 
-dex reads skills from these directories:
+Open **Integrations** to find skills and add shared MCP servers. Open a Bot's
+**Integrations** to see the resources that Bot uses. For file locations, reload,
+and OAuth, see [Skills and Integrations](docs/dev/skills-and-integrations.md).
 
-| Scope   | Skills                                              |
-| ------- | --------------------------------------------------- |
-| Dex     | `~/.dex/.agents/skills/<name>/SKILL.md`             |
-| Bot     | `~/.dex/agents/<id>/.agents/skills/<name>/SKILL.md` |
-| Project | `<cwd>/.agents/skills/<name>/SKILL.md`              |
-
-dex does not read `~/.agents`. A narrower entry replaces the wider entry with the same name; Project is the
-narrowest. Main and Sessions, including child Sessions, can select a project
-directory. The picker browses folders on the Session's Runner and lists recent projects for the
-current bot. Use Up or Home to navigate, or enter a path and press Enter.
-Select **Use this folder** to save the current folder. The `set_project` tool
-can also set the directory. The project cwd defaults to the bot workspace,
-`~/.dex/agents/<id>/workspace`. Clear the project to restore that default.
-A child Session can inherit its parent's project when it uses the same Runner.
-See [Sessions](docs/dev/sessions.md#session-runners).
-Dex paths follow `DEX_DATA_DIR` when you change the data directory.
-
-A skill is a directory with a `SKILL.md` that starts with YAML front matter
-with a `description` and an optional `name`. Without a `name`, the directory
-name is the skill name. A skill can be in a nested directory, such as
-`skills/team/review/SKILL.md`. dex does not look inside a skill, hidden
-directories, or `node_modules`. When two skills in one level have the same
-name, the first in path order wins, and the bot's Skills page shows a warning.
-The prompt lists each skill. The bot reads the file when a task needs it.
-An edit to a skill applies to the next message.
-
-Ask the bot in an owner session to manage MCP declarations with the
-`mcp_server_*` tools. Use vault references for secrets. dex stores declarations
-in `control.sqlite` and shows their status in the bot's Integrations page.
-Changes apply after the bot finishes its current work. dex ignores old
-`mcp.json` files. See [MCP declarations](docs/dev/skills-and-integrations.md#mcp-declarations).
-
-For an OAuth-enabled remote MCP server, ask the bot to add an HTTP declaration
-with `oauth: {}` and no static headers. If the provider requires a registered
-client, use its client ID and a vault reference for its secret. In the bot's
-Integrations page, select **Authorize** and sign in with the provider. See
-[MCP browser authorization](docs/dev/skills-and-integrations.md#mcp-browser-authorization)
-for the callback URL and client settings.
-
-## Secrets
-
-Add shared secrets in **Settings → Secrets**. Add secrets for one bot on
-its **Secrets** page. dex encrypts the values with age and never shows them in
-Settings. Tell the bot to use a reference such as `vault:GITHUB_TOKEN` in the
-`env` argument of `bash`, a Monitor, or an MCP declaration. You do not need the
-1Password CLI.
-
-dex ignores old `.env` files. It does not import them. Move secrets to the
-[vault](docs/dev/skills-and-integrations.md#secret-vault) and put other environment values
-in shell rc files or in the `env` of a call or MCP server.
+Add shared secrets in **Settings → Secrets**. Add Bot secrets on its **Secrets**
+page. Pass [vault references](docs/dev/skills-and-integrations.md#secret-vault)
+such as `vault:GITHUB_TOKEN` instead of raw values in tool arguments.
 
 ## Updates
 
@@ -255,16 +199,10 @@ reports that no stable release is available. Same-version and older releases
 leave the binary in place and report `up to date`. Dev builds and obvious
 package-managed paths cannot use self-update; use the build or package manager.
 
-Archives and extracted files have a 256 MiB size limit.
-An update verifies the archive checksum and executable version before it stops
-anything. A running service enters a two-minute maintenance lease only when
-no work is active. During the lease, web input returns `409` before dex stores
-a receipt. Retry the same request ID after release or expiry. A web request
-whose receipt committed before lease confirmation can return `202` and remain
-pending. Channel input can also keep a pending receipt. Pending input resumes
-admission after maintenance. Manual
-updates fail when busy; daily updates log a skip. A stopped service stays
-stopped. Foreground processes need a manual restart.
+Archives and extracted files have a 256 MiB limit. Dex verifies the checksum
+and executable version before stopping the service. Manual updates fail when
+busy; daily updates log a skip. A stopped service stays stopped. Restart a
+foreground process manually. See the [maintenance lease](docs/dev/architecture.md#service-and-updates).
 
 The updater keeps the old executable as `<resolved executable>.previous`.
 It does not roll back automatically, because the new version can migrate the
@@ -273,10 +211,9 @@ recovery. Restore a compatible data backup and copy the previous executable
 back to its original path, then start the service. Keep the backup until you
 have checked the recovered version.
 
-PiG v0.7.0 upgrades the native execution format in each bot's `state.sqlite`.
-Before the first start with this version, stop dex and back up the complete
-data directory. A build that uses PiG v0.5.3 cannot read the upgraded format.
-To return to that build, restore the backup as well as the executable.
+Before an upgrade, back up the complete data directory. To downgrade across a
+storage migration, restore the compatible backup as well as the executable.
+In particular, PiG v0.5.3 cannot read stores upgraded by PiG v0.7.0.
 
 ## Backup and uninstall
 

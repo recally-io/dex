@@ -3,20 +3,15 @@
 This document describes how dex loads skills, MCP servers, vault secrets, and
 `AGENTS.md` for a bot, and how it reloads them.
 
-Skills come from two file levels: dex (`<data dir>/.agents/`) and bot
-(`<data dir>/agents/<id>/.agents/`). dex does not read the user home for skills.
-Narrower levels win. Equal real paths are read once as the narrower level.
-The engine reads `AGENTS.md` only from the session's cwd on its
-Runner and adds it after the bot's saved instructions at each admission.
+Dex finds skills in `<data dir>/.agents/skills/`, then the Bot's
+`<data dir>/agents/<id>/.agents/skills/`, then `<cwd>/.agents/skills/` on the
+Session's Runner. The narrowest level wins. Dex reads equal real paths once
+at the narrower level. It does not search the user's home for skills.
 
-Skills have a third, narrowest level: `.agents/skills` under the
-session's cwd. The skills prompt section reads that cwd from the request's
-Runner. Sessions store
-their `cwd` in `control.sqlite`. Empty uses the workspace of the Session's
-Runner. Every submit sets or clears the native cwd from that row.
-Child sessions copy the parent's cwd when they are created, but only when the
-child runs on the same Runner as its parent. The `project` prompt section
-states the current execution directory.
+Dex saves each Session's `cwd` in `control.sqlite`. If empty, the Session
+uses the Runner's workspace. A child can inherit its parent's directory only
+on the same Runner. At admission, Dex adds the directory's `AGENTS.md` after
+the Bot's instructions. The `project` section names the execution directory.
 
 `GET /api/directories` lists visible host directories with the same path validation
 as project changes. It follows directory symlinks, marks Git repositories, sorts
@@ -41,9 +36,9 @@ upload paths. The transcript keeps workspace-relative upload paths.
 ## Skills
 
 A directory with `SKILL.md` is one skill. Discovery stops there and skips
-hidden directories and `node_modules`. The front matter `name` wins over the
-directory name. A second skill with the same name in one level is a warning
-and does not block MCP Reload.
+hidden directories and `node_modules`. The YAML front matter needs a
+`description` of 1 to 1024 characters. An optional `name` overrides the
+directory name. At one level, the first path wins and Dex reports duplicates.
 
 `GET /api/integrations` reads only `<data dir>/.agents/skills` on the control host.
 It reports duplicate names and import warnings in `errors`. It does not open a
@@ -110,7 +105,10 @@ Each bot has its own environment snapshot. Local tools and stdio MCP
 start from the control host's login shell environment and configured
 1Password credentials. Tools on a remote Runner inherit its process
 environment and receive the configured 1Password credentials. A command or MCP declaration can
-add explicit environment variables. dex does not modify its process environment.
+add explicit variables. Dex does not modify its own environment. The local
+login shell starts with `PATH`, `HOME`, `TMPDIR`, `LANG`, `USER`, and `SHELL`.
+Dex settings such as `DEX_TOKEN` enter tools only if you export them in a
+shell startup file or pass them explicitly.
 Skill and MCP tool writes, vault writes, and 1Password settings changes
 request a reload. Runner settings changes request a reload for bots
 that use the Runner. A machine reconnect requests a reload if the default
@@ -118,17 +116,17 @@ machine was offline at cold open or the last reload could not open it. Each open
 when it is idle. If validation fails, dex keeps the current resources and
 does not try the same configuration again automatically.
 
-Manual skill file and shell rc edits do not request a reload. They apply at
-the next reload from another change, after an explicit reload, or when dex
-restarts. dex does not poll for changes or watch these files.
+Manual edits do not request a reload. Managed skills refresh when Dex detects
+changed files on prompt render. Shell rc edits apply when Dex rebuilds the
+login shell environment on reload or restart.
 
 The [engine extension loader](../../internal/engine/extensions.go) connects
 servers before it resumes the bot Harness. This is a shared wait for all
 Sessions of a Bot, including Sessions that use another Runner. MCP servers
 use control-host configuration and do not need a lease on the default Runner.
 The loader installs prompt sections for the extension guide and current skills.
-MCP tools use the names
-`mcp__<server>__<tool>`. In owner sessions, `tool_search` searches the built-in
+MCP tools use the names `mcp__<server>__<tool>`. A call has a 600-second
+limit. Cancellation stops the local wait but does not confirm remote exit. In owner sessions, `tool_search` searches the built-in
 and MCP tools available to the current model. It adds only matching deferred
 tools to the next model call. It does not expand the session's permissions.
 
@@ -304,8 +302,7 @@ or URL cannot use the old grant. The server reads the current pre-registered
 secret from its vault entry at exchange and refresh. To preserve grants,
 back up the private vault files with the other vault files.
 
-A stored declaration that has an OAuth identity but no OAuth settings, such
-as a row from an older writer, is incomplete. Dex does not connect it, does
+A declaration with an OAuth identity and no OAuth settings is incomplete. Dex does not connect it, does
 not treat it as plain HTTP, and does not infer settings or reuse a grant.
 `mcp_server_get` and the loaded connection state report the problem. The row
 stays unchanged until the owner replaces it with `mcp_server_set`. If the
@@ -331,6 +328,8 @@ global maintenance pause. A shutdown or a restore still waits for all bots. Afte
 bots can start work while the selected bot closes and opens its resources.
 If the selected bot has not opened, Reload opens it and reports the MCP
 connection results. A failed preflight keeps its current resources.
+Dex does not reconnect an MCP server that drops its connection. The server
+stays unavailable until the next reload of that bot.
 
 Each bot has its own resource lock. Concurrent calls for that bot wait with
 context cancellation. The global lock protects resource state; file access,
@@ -346,8 +345,4 @@ Main input replaces the `work-loop` section with the `front-desk` section.
 Web and Automation sessions keep `work-loop`.
 Child sessions and dreams have no session tools and neither section. A child gets
 the `child-rules` section.
-The engine has no built-in coding skill. The usage of the session tools is in
-the descriptions of the tools. Examples are the continue-in-context rule of
-`session_send`, the concurrency of children in `session_new`, and the no-retry
-rule. A `coding` skill that the user writes is an ordinary skill and is listed
-with the others.
+See [delegation](sessions.md#internal-delegation) for Session tools.
