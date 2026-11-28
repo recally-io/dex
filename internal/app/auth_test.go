@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -46,7 +47,13 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 	// Given dex on a host that is not loopback, which requires the stored token. The CLI reads
 	// the token through a file: URI, which must escape the space.
 	dataDir := filepath.Join(t.TempDir(), "data dir")
-	d := startDexWith(t, app.Config{DataDir: dataDir, RequireToken: true})
+	webDir := t.TempDir()
+	const index = "<!doctype html><title>Sign in to Dex</title>"
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte(index), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := app.Config{DataDir: dataDir, RequireToken: true, WebHandler: http.FileServerFS(os.DirFS(webDir))}
+	d := startDexWith(t, cfg)
 
 	// When a client has no token, then the API refuses it, health included.
 	for _, path := range []string{"/api/bots/default/sessions", "/api/health", "/api/bots/default/uploads/x", "/api/bots/default/sessions/1/events"} {
@@ -55,8 +62,8 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 		}
 	}
 	// The web UI files stay public, so the browser can show the sign-in form.
-	if resp := d.request(t, http.MethodGet, "/", "", nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET / without a token: %d", resp.StatusCode)
+	if status, body := d.call(t, http.MethodGet, "/", nil); status != http.StatusOK || body != index {
+		t.Fatalf("GET / without a token: status %d, body %q; want %d, %q", status, body, http.StatusOK, index)
 	}
 
 	// When the CLI reads the token while dex runs, then the token opens the API.
@@ -102,7 +109,7 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 
 	// When dex restarts, then the stored token stays the same.
 	d.stop()
-	d = startDexWith(t, app.Config{DataDir: dataDir, RequireToken: true})
+	d = startDexWith(t, cfg)
 	if resp := d.request(t, http.MethodGet, "/api/bots/default/sessions", "", bearer); resp.StatusCode != http.StatusOK {
 		t.Fatalf("the token after a restart: %d", resp.StatusCode)
 	}

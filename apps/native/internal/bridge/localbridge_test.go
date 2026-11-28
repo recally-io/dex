@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/localdex"
+	"github.com/recally-io/dex/apps/native/internal/inapp"
 )
 
 func TestUserLocalWorkspaceServesUIAndFiles(t *testing.T) {
@@ -121,7 +121,7 @@ func TestUserEditsLocalWorkspaceAndReceivesEvents(t *testing.T) {
 
 func startTestBridge(t *testing.T) *Bridge {
 	t.Helper()
-	instance, err := localdex.Start(t.Context(), localdex.Config{DataDir: t.TempDir(), Mobile: true})
+	instance, err := inapp.Start(t.Context(), inapp.Config{DataDir: t.TempDir(), Mobile: true})
 	if err != nil {
 		t.Fatal(err)
 	}

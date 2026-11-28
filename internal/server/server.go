@@ -1,4 +1,4 @@
-// Package server serves the HTTP API of api/openapi.yaml and the web UI.
+// Package server serves the HTTP API of api/openapi.yaml.
 package server
 
 import (
@@ -21,7 +21,6 @@ import (
 	"unicode/utf8"
 	"uuid"
 
-	"github.com/recally-io/dex/apps/web"
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
@@ -72,6 +71,9 @@ type Config struct {
 	// migration.
 	PluginErrors map[string]string
 
+	// WebHandler serves the web UI at /. If nil, no web UI is served.
+	WebHandler http.Handler
+
 	// ChannelWebhooks authenticates provider callbacks independently of the admin token.
 	ChannelWebhooks http.Handler
 
@@ -94,7 +96,7 @@ var errInvalid = errors.New("invalid request")
 // errReadOnly is a message to a session that the web UI cannot write to.
 var errReadOnly = errors.New("this session is read-only; send messages in Main, a separate Web session, or a child session")
 
-// New returns the handler for the API under /api/ and the web UI at /. The API requires
+// New returns the handler for the API under /api/ and the optional web UI at /. The API requires
 // cfg.Token when it is set. It refuses cross-site writes, so a web page in the user's browser
 // cannot send messages or change settings, and cannot sign in.
 func New(cfg Config) http.Handler {
@@ -172,7 +174,9 @@ func New(cfg Config) http.Handler {
 		mux.Handle("POST /hooks/channels/{platform}/{botId}", http.MaxBytesHandler(cfg.ChannelWebhooks, 4<<20))
 	}
 	mux.HandleFunc("/hooks/", http.NotFound)
-	mux.Handle("/", web.Handler())
+	if cfg.WebHandler != nil {
+		mux.Handle("/", cfg.WebHandler)
+	}
 	// The longest message is 32000 characters of up to 4 bytes. An upload has room for its
 	// multipart headers.
 	small, uploads := http.MaxBytesHandler(mux, 256<<10), http.MaxBytesHandler(mux, upload.MaxSize+64<<10)

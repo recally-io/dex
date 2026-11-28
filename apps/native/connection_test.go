@@ -11,8 +11,8 @@ import (
 
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/nsgotest"
+	"github.com/recally-io/dex/apps/native/internal/inapp"
 	"github.com/recally-io/dex/apps/native/internal/webview"
-	"github.com/recally-io/dex/internal/localdex"
 )
 
 func TestMain(m *testing.M) { nsgotest.Main(m) }
@@ -54,8 +54,8 @@ func TestUserChoosesAndForgetsLocalWorkspace(t *testing.T) {
 		t.Fatal("test did not provide an app data directory")
 	}
 	// A workspace already in use must not be opened by this app.
-	config := localdex.Config{DataDir: filepath.Join(dir, "dex"), Version: "test", Mobile: true}
-	inUse, err := localdex.Start(t.Context(), config)
+	config := inapp.Config{DataDir: filepath.Join(dir, "dex"), Version: "test", Mobile: true}
+	inUse, err := inapp.Start(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestUserChoosesAndForgetsLocalWorkspace(t *testing.T) {
 		_, saved := app.Storage().GetItem(savedOriginKey)
 		return !saved
 	})
-	reopened, err := localdex.Start(t.Context(), config)
+	reopened, err := inapp.Start(t.Context(), config)
 	if err != nil {
 		t.Fatalf("reopen %s after forgetting: %v", config.DataDir, err)
 	}
