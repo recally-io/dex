@@ -29,7 +29,7 @@ writes it.
 To change the web UI with hot reload, run `mise run dev:server` and
 `mise run dev:web` in two terminals, and open the address that `dev:web`
 shows. It sends `/api/` to the server on port 18787. The binary embeds
-`web/dist`. Build and Go check tasks generate it; Git does not track it.
+`apps/web/dist`. Build and Go check tasks generate it; Git does not track it.
 
 To try the UI without a provider, start the server with `DEX_FAKE_MODEL=1`
 and choose `faux/echo`, or `faux/bash` to see tool calls.
@@ -78,9 +78,9 @@ Run `mise tasks` for the full list. The main tasks:
 | `generate:diagrams` | Renders the architecture, message-flow, always-on-flow, and plugins PNGs from PlantUML                           |
 | `generate:db`       | Regenerates `internal/db/sqlc`                                                                                   |
 | `generate:api`      | Regenerates the Go server and the TS client from `api/openapi.yaml`                                              |
-| `build:web`         | Builds the web UI into `web/dist`                                                                                |
-| `check:web`         | `tsc`, `vp lint`, `vp fmt --check`, `vp test` in `web/`                                                          |
-| `check:e2e`         | Browser end-to-end tests in `web/tests/` using `e2e` and the faux provider                                       |
+| `build:web`         | Builds the web UI into `apps/web/dist`                                                                           |
+| `check:web`         | `tsc`, `vp lint`, `vp fmt --check`, `vp test` in `apps/web/`                                                     |
+| `check:e2e`         | Browser end-to-end tests in `apps/web/tests/` using `e2e` and the faux provider                                  |
 | `check:api-drift`   | Fails when the generated API code differs from the contract                                                      |
 
 ## Tests
@@ -99,9 +99,9 @@ The `internal/db` and `internal/app` tests run without it.
 with `CGO_ENABLED=0`. It checks that tracked backend-worker files and PiG TUI
 or extension-host dependencies are absent.
 
-Run `mise run check:e2e` to run the browser end-to-end tests in `web/tests/`.
-The suite builds `web/dist`, starts `dex` with `DEX_FAKE_MODEL=1` and isolated
-data in `web/.e2e/data/`, and drives the UI with `@e2e-dev/web`.
+Run `mise run check:e2e` to run the browser end-to-end tests in `apps/web/tests/`.
+The suite builds `apps/web/dist`, starts `dex` with `DEX_FAKE_MODEL=1` and isolated
+data in `apps/web/.e2e/data/`, and drives the UI with `@e2e-dev/web`.
 
 A real-provider check is separate. Use a dedicated test data directory and
 credentials for that check.

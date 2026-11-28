@@ -35,7 +35,7 @@ Read this before you change code, dependencies, native execution, or stored data
 | `internal/task`             | Tasks, the source event store, holds, waits, and the `task_*` tools                 |
 | `internal/plugin`           | The seam that optional sources use: hooks, plugin API, jobs, and Task link tools    |
 | `plugins/<name>`            | One optional source, such as `plugins/github`. The core does not import it          |
-| `web`                       | React UI, built into `web/dist` and embedded                                        |
+| `apps/web`                  | React UI, built into `apps/web/dist` and embedded                                   |
 
 ## Rules
 
@@ -85,7 +85,7 @@ Read this before you change code, dependencies, native execution, or stored data
   receive an explicit environment. Do not change the dex process environment.
 - Do not edit generated code: `internal/db/sqlc/` and `plugins/*/store/`
   (`mise run generate:db`), `internal/api/server.gen.go`,
-  `plugins/*/api/server.gen.go`, and `web/src/api/generated/`
+  `plugins/*/api/server.gen.go`, and `apps/web/src/api/generated/`
   (`mise run generate:api`).
 - `api/openapi.yaml` is the only source of the HTTP API. Change it first, then
   generate. Tag each plugin operation with the plugin name.
@@ -95,4 +95,4 @@ Read this before you change code, dependencies, native execution, or stored data
 
 ## Web foundation
 
-The web UI owns one stock shadcn foundation in `web/src/components/ui/` and one semantic token source in `web/src/styles.css`. Domain components compose the foundation. Do not add atoms, primitives, direct icon packages, or legacy token aliases. Review the preset `b4XK48HRFw` before updates, then run the official shadcn CLI from `web/` and review every generated diff. Run `mise run check:web` after the update; its guard rejects retired imports and token names.
+The web UI owns one stock shadcn foundation in `apps/web/src/components/ui/` and one semantic token source in `apps/web/src/styles.css`. Domain components compose the foundation. Do not add atoms, primitives, direct icon packages, or legacy token aliases. Review the preset `b4XK48HRFw` before updates, then run the official shadcn CLI from `apps/web/` and review every generated diff. Run `mise run check:web` after the update; its guard rejects retired imports and token names.

@@ -6,7 +6,7 @@
   "excludes": [
     "**/node_modules",
     "**/*-lock.json",
-    "web/**",
+    "apps/web/**",
     "internal/db/sqlc/**",
     ".agents/skills/**",
     "docs/assets/*.png"

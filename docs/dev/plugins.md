@@ -72,7 +72,7 @@ restart. Deliberate limit: reload the plugin routes, jobs, and tools in place
 if restarts become a problem.
 
 `GET /api/health` lists the running plugins in `plugins`. The web UI keeps the
-components of a plugin in `web/src/plugins/<name>/` and renders them only when
+components of a plugin in `apps/web/src/plugins/<name>/` and renders them only when
 the plugin runs. A plugin that is off has no hooks or API (`404`), jobs, tools,
 or rules. Its tables, stored events, links, and waits stay. Task detail shows
 each link as namespace, type, and key, so the core needs no plugin code to show

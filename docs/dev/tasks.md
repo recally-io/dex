@@ -27,7 +27,7 @@ to limit the view to one Bot. Quick add creates a Task without starting a Sessio
 `GET /api/board/attention` supplies active Sessions, questions, Automation
 setup flags, unhandled results, and Owner reviews. Held events come from
 `GET /api/sources/held-events`. The Web UI uses both responses for the Board
-badge. It uses the same attention data for Bot status. See [Web UI](../../web/AGENTS.md).
+badge. It uses the same attention data for Bot status. See [Web UI](../../apps/web/AGENTS.md).
 
 Task detail (`/board/$taskKey`) shows status, Assignee, Reviewer, blockers,
 linked Sessions and runs, related Tasks, external links and waits, and the

@@ -35,7 +35,7 @@ import (
 	"github.com/recally-io/dex/internal/sysops"
 	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/internal/upload"
-	"github.com/recally-io/dex/web"
+	"github.com/recally-io/dex/apps/web"
 )
 
 // Config holds what the handler serves.

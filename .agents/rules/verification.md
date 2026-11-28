@@ -20,7 +20,7 @@ removed backend paths stay absent, rejects PiG TUI and extension-host imports,
 and builds darwin/linux on amd64/arm64 with `CGO_ENABLED=0`.
 
 For web UI interaction, navigation, or browser flow changes, also run
-`mise run check:e2e` (runs the `e2e` browser suite in `web/tests/`). `check:web`
+`mise run check:e2e` (runs the `e2e` browser suite in `apps/web/tests/`). `check:web`
 does not run browser tests. Report a failed browser task as a verification gap
 even when the aggregate check passes.
 

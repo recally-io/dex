@@ -1,7 +1,7 @@
 # Build output.
 /bin/
 /dist/
-/web/dist/
+/apps/web/dist/
 node_modules/
 
 .env

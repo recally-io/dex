@@ -1,4 +1,4 @@
-module github.com/recally-io/dex/native
+module github.com/recally-io/dex/apps/native
 
 go 1.27.3
 

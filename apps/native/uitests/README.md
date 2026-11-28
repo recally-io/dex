@@ -7,7 +7,7 @@ Run this check on an Apple silicon Mac with the project tools, Xcode, an iOS Sim
 From the repository root, run:
 
 ```sh
-mise exec -- bash native/uitests/fixture.sh
+mise exec -- bash apps/native/uitests/fixture.sh
 ```
 
 Wait for `QA_READY`. Keep the process running. The process prints its temporary directory and five app-facing URLs. It does not print the QA token or certificate keys. Stop the process with Control-C to remove its data, keys and temporary homes.
@@ -19,7 +19,7 @@ The two Dex processes use fresh data and `faux/echo`. The token process uses `--
 Build with `mise run apple:build`. In a second terminal, pass the fixture values to the runner:
 
 ```sh
-mise exec -- bash native/uitests/run-ios.sh \
+mise exec -- bash apps/native/uitests/run-ios.sh \
   .local/apple-v1/build/dev/Dex-0.1.0-ios_simulator/Dex.app \
   "$fixture_dir" "$primary" "$alternate" "$no_token" "$navigation" \
   .local/apple-v1/qa/ios
@@ -38,7 +38,7 @@ The runner keeps test summaries and selected screenshots. It keeps the token, ra
 Keep the fixture running and leave the default port `8787` free. In a second terminal, run:
 
 ```sh
-mise exec -- bash native/uitests/run-macos.sh \
+mise exec -- bash apps/native/uitests/run-macos.sh \
   "$local_url" .local/apple-v1/qa/macos
 ```
 

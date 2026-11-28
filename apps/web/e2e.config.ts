@@ -20,9 +20,9 @@ export default {
             "--port",
             "{port}",
             "--data-dir",
-            process.env.DEX_E2E_DATA_DIR || "web/.e2e/data",
+            process.env.DEX_E2E_DATA_DIR || "apps/web/.e2e/data",
           ],
-          cwd: "..",
+          cwd: "../..",
           env: {
             DEX_FAKE_MODEL: "1",
           },

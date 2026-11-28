@@ -4,7 +4,7 @@ version: 0.1.0
 url_schemes: [dex-workspace]
 
 icon:
-  png: ../shared/assets/dex.png
+  png: ../assets/dex.png
 
 dev:
   target: native

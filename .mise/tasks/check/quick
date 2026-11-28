@@ -18,8 +18,8 @@ if grep -qE '^(mise\.toml|prek\.toml|\.mise/tasks/)' <<<"$changed"; then all=tru
 touched() { $all || grep -qE "$1" <<<"$changed"; }
 
 # go build and golangci-lint need the embedded web assets, so build them before the parallel step.
-if touched '^web/' || [[ ! -f web/dist/index.html ]]; then
-  (cd web && bunx --no-install vp build)
+if touched '^apps/(web|assets)/' || [[ ! -f apps/web/dist/index.html ]]; then
+  (cd apps/web && bunx --no-install vp build)
 fi
 
 logs="$(mktemp -d)"
@@ -38,22 +38,22 @@ job static bash -c 'prek validate-config prek.toml && dprint check && mise run c
 if touched '^(sqlc\.yaml|internal/db/|plugins/[^/]+/(migrations|queries|store)/)'; then
   job db-drift mise run check:db-drift
 fi
-if touched '^(go\.(mod|sum)|api/|internal/api/|plugins/[^/]+/api/|web/openapi-ts\.config\.ts|web/package\.json|web/bun\.lock|web/src/api/generated/)'; then
+if touched '^(go\.(mod|sum)|api/|internal/api/|plugins/[^/]+/api/|apps/web/openapi-ts\.config\.ts|apps/web/package\.json|apps/web/bun\.lock|apps/web/src/api/generated/)'; then
   job api-drift mise run check:api-drift
 fi
-if touched '^web/'; then
+if touched '^apps/web/'; then
   job web mise run check:web
 fi
 job go-lint bash -c 'golangci-lint fmt --diff && golangci-lint run && go build ./...'
 
 # The Apple client is a separate Go module. Its WebKit tests need macOS.
-if [[ $(uname -s) == Darwin ]] && grep -q '^native/' <<<"$changed"; then
+if [[ $(uname -s) == Darwin ]] && grep -qE '^apps/(native|assets)/' <<<"$changed"; then
   job apple-test mise run apple:test
 fi
 
 packages=()
 while IFS= read -r dir; do
-  [[ "$dir" == native || "$dir" == native/* ]] && continue
+  [[ "$dir" == apps/native || "$dir" == apps/native/* ]] && continue
   if [[ "$dir" != internal/app && -n "$(find "$dir" -maxdepth 1 -name '*.go' -print -quit 2>/dev/null)" ]]; then
     packages+=("./$dir")
   fi
