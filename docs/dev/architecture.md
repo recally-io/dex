@@ -17,9 +17,9 @@ and MCP. The browser receives typed transcript events through SSE.
 
 ## Runtime modules
 
-`apps/web/` owns the React UI. The Go binary embeds its build output. Node and Bun are development tools; the installed service needs neither runtime. `apps/native/` owns one NSGo app for macOS and iOS. Both clients use the icon in `apps/assets/`. The [Apple client](../../apps/native/README.md)
+`apps/web/` owns the React UI. The Go binary embeds its build output. Node and Bun are development tools; the installed service needs neither runtime. `apps/native/` owns one NSGo app for macOS, iOS, and Android. Both clients use the icon in `apps/assets/`. The [native client](../../apps/native/README.md)
 runs in a separate process. It opens the workspace from a selected Dex server in
-WebKit. It does not embed a second copy of the web UI or run an agent. The native
+WebKit on Apple devices and in the system WebView on Android. It does not embed a second copy of the web UI or run an agent. The native
 connection screen remains available when the server is offline.
 
 The [module index](../../.agents/rules/implementation.md#modules) defines

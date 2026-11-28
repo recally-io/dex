@@ -104,7 +104,8 @@ export function applySessionEvent(state: SessionState, event: SessionEvent): Ses
 
       const at = !isQueued(event.item) && queued >= 0 ? queued : state.items.length;
 
-      const items = state.items.toSpliced(at, 0, event.item);
+      const items = [...state.items];
+      items.splice(at, 0, event.item);
 
       return { ...state, items };
     }
@@ -132,7 +133,7 @@ function mergeItems(earlier: Item[], current: Item[]): Item[] {
   const missing = earlier.filter((item) => !ids.has(item.id));
   const items = [...current];
 
-  for (const item of missing.toSorted((a, b) => (a.entryId ?? 0) - (b.entryId ?? 0))) {
+  for (const item of missing.sort((a, b) => (a.entryId ?? 0) - (b.entryId ?? 0))) {
     const at = items.findIndex(
       (other) => other.entryId !== undefined && item.entryId !== undefined && other.entryId > item.entryId,
     );

@@ -10,7 +10,10 @@ dev:
   target: native
 
 build:
-  targets: [macos, ios]
+  targets: [macos, ios, android_arm64]
+
+android:
+  classes: [.nsgo/android/WorkspaceView.jar]
 
 i18n:
   source: en

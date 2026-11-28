@@ -1,4 +1,4 @@
-# Apple UI acceptance
+# Native UI acceptance
 
 Run this check on an Apple silicon Mac with the project tools, Xcode, an iOS Simulator runtime, XcodeGen, Caddy, OpenSSL and jq. Use only the QA fixture. Do not point these tests at an installed Dex instance.
 
@@ -13,6 +13,18 @@ mise exec -- bash apps/native/uitests/fixture.sh
 Wait for `QA_READY`. Keep the process running. The process prints its temporary directory and five app-facing URLs. It does not print the QA token or certificate keys. Stop the process with Control-C to remove its data, keys and temporary homes.
 
 The two Dex processes use fresh data and `faux/echo`. The token process uses `--require-token --stored-token`. Caddy adds `Secure` to `dex_session` on the HTTPS routes. The fixture checks the unauthenticated health status at the upstream and the proxies. The navigation origin serves a small QA page at `/` and uses the authenticated Dex upstream for `/api/health`.
+
+## Android emulator
+
+Use a disposable ARM64 Android emulator with a current system WebView. Install the debug APK from `mise run android:build`. Start the fixture above. The emulator must trust the fixture CA as a system CA before the app can connect. Use a writable Google APIs test image for this step; do not modify a phone or disable TLS verification in the app. An untrusted CA must show the offline screen.
+
+Run the test with the emulator serial, fixture directory, and the primary and alternate HTTPS addresses from `QA_READY`:
+
+```sh
+uv run --script apps/native/uitests/android-smoke.py "$SERIAL" "$FIXTURE" "$PRIMARY" "$ALTERNATE"
+```
+
+The test clears the app on that emulator, signs in, sends a message to `faux/echo`, and verifies the reply after a forced restart. It opens Settings, switches to another port on the same host, and checks that the user must sign in again. It then signs in on the second port, forgets the server, and checks that the next connection to that same origin requires a new login. The script clears app data and removes the two ADB port forwards on exit. Stop the fixture and delete the test emulator after the run.
 
 ## Test iOS
 
