@@ -166,13 +166,18 @@ func configureManagedTelegram(t *testing.T, d *dex) {
 
 func beginAndVerifyManagedTelegram(t *testing.T, d *dex, f *managedTelegramAPI, updateID int64) (string, string) {
 	t.Helper()
+	return verifyManagedTelegram(t, d, f, managedSetupPath, updateID)
+}
+
+func verifyManagedTelegram(t *testing.T, d *dex, f *managedTelegramAPI, base string, updateID int64) (string, string) {
+	t.Helper()
 	var setup bot.TelegramManagedSetup
-	d.must(t, http.MethodPost, managedSetupPath, nil, &setup)
+	d.must(t, http.MethodPost, base, nil, &setup)
 	link, err := url.Parse(setup.URL)
 	if err != nil || setup.State != "verify_owner" || link.Host != "t.me" || link.Path != "/DexManagerBot" || link.Query().Get("start") == "" {
 		t.Fatalf("want a private owner verification link, got %+v (%v)", setup, err)
 	}
-	path := managedSetupPath + "/" + setup.ID
+	path := base + "/" + setup.ID
 	f.push(updateID, "message", map[string]any{
 		"from": map[string]any{"id": 42}, "chat": map[string]any{"type": "private"},
 		"text": "/start " + link.Query().Get("start"),
@@ -400,6 +405,73 @@ func TestUserKeepsExistingTelegramWhenManagedSetupDoesNotComplete(t *testing.T) 
 				t.Fatalf("existing channel reply = %+v", reply)
 			}
 		})
+	}
+}
+
+func TestUserCannotConnectPreArchiveManagedTelegramAfterRestore(t *testing.T) {
+	t.Parallel()
+	// Given a managed setup waiting for the new account's token.
+	f := fakeManagedTelegram(t, false)
+	release := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	f.tokenGate = release
+	d := startDex(t, t.TempDir(), f.server.URL)
+	botView := d.createCoder(t)
+	prefix := "/api/bots/" + botView.ID
+	configureManagedTelegram(t, d)
+	path, username := verifyManagedTelegram(t, d, f, prefix+"/channels/telegram/managed", 1)
+	f.managed(2, 42, username)
+	waitManaged(t, func() bool { return f.fetched.Load() == 1 })
+
+	// When archive commits and restore completes before the archive callback runs.
+	if _, err := sessionDB(t, d).ExecContext(t.Context(), "UPDATE bots SET archived_at = 1 WHERE id = ?", botView.ID); err != nil {
+		t.Fatal(err)
+	}
+	d.must(t, http.MethodDelete, prefix+"/archive", nil, nil)
+	unblock()
+	waitManaged(t, func() bool { return f.offset.Load() >= 3 })
+
+	// Then the old setup is canceled and the late token does not connect a channel.
+	var setup bot.TelegramManagedSetup
+	d.must(t, http.MethodGet, path, nil, &setup)
+	var channels api.Channels
+	d.must(t, http.MethodGet, prefix+"/channels", nil, &channels)
+	if setup.State != "canceled" || channels.Telegram.Enabled {
+		t.Fatalf("after restore: setup=%s channel enabled=%t", setup.State, channels.Telegram.Enabled)
+	}
+}
+
+func TestUserCannotVerifyOrClaimManagedTelegramAfterArchive(t *testing.T) {
+	t.Parallel()
+	// Given one setup waiting for its owner and another waiting for the new account.
+	f := fakeManagedTelegram(t, false)
+	d := startDex(t, t.TempDir(), f.server.URL)
+	configureManagedTelegram(t, d)
+	pendingBot, verifiedBot := d.createCoder(t), d.createCoder(t)
+	var pending bot.TelegramManagedSetup
+	d.must(t, http.MethodPost, "/api/bots/"+pendingBot.ID+"/channels/telegram/managed", nil, &pending)
+	_, username := verifyManagedTelegram(t, d, f, "/api/bots/"+verifiedBot.ID+"/channels/telegram/managed", 1)
+
+	// When both bots are archived before Telegram delivers the verification and creation updates.
+	conn := sessionDB(t, d)
+	if _, err := conn.ExecContext(t.Context(), "UPDATE bots SET archived_at = 1 WHERE id IN (?, ?)", pendingBot.ID, verifiedBot.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.push(2, "message", map[string]any{
+		"from": map[string]any{"id": 42}, "chat": map[string]any{"type": "private"},
+		"text": "/start " + pending.ID,
+	})
+	f.managed(3, 42, username)
+	waitManaged(t, func() bool { return f.offset.Load() >= 4 })
+
+	// Then neither update grants authority or fetches a token for an archived bot.
+	var owner int64
+	if err := conn.QueryRowContext(t.Context(), "SELECT owner_id FROM telegram_managed_setups WHERE id = ?", pending.ID).Scan(&owner); err != nil {
+		t.Fatal(err)
+	}
+	if fetches := f.fetched.Load(); owner != 0 || fetches != 0 {
+		t.Fatalf("after archive: verified=%t token requests=%d", owner != 0, fetches)
 	}
 }
 

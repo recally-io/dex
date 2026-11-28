@@ -48,6 +48,7 @@ UPDATE telegram_managed_setups SET telegram_bot_id = ?1
 WHERE telegram_managed_setups.username = ?2 AND telegram_managed_setups.manager_id = ?3
   AND telegram_managed_setups.owner_id = ?4 AND telegram_managed_setups.state = 'pending'
   AND telegram_managed_setups.expires_at > ?5 AND (telegram_managed_setups.telegram_bot_id IS NULL OR telegram_managed_setups.telegram_bot_id = ?1)
+  AND EXISTS (SELECT 1 FROM bots WHERE bots.id = telegram_managed_setups.bot_id AND bots.archived_at IS NULL)
   AND NOT EXISTS (SELECT 1 FROM telegram_managed_setups AS other
                   WHERE other.telegram_bot_id = ?1 AND other.username <> ?2)
 RETURNING id, bot_id, manager_id, username, expires_at, owner_id, telegram_bot_id, state
@@ -129,7 +130,8 @@ func (q *Queries) DeleteTelegramManagerCredential(ctx context.Context) error {
 
 const finishTelegramManagedSetup = `-- name: FinishTelegramManagedSetup :execrows
 UPDATE telegram_managed_setups SET state = ?1
-WHERE id = ?2 AND state = 'pending' AND expires_at > ?3
+WHERE telegram_managed_setups.id = ?2 AND state = 'pending' AND expires_at > ?3
+  AND EXISTS (SELECT 1 FROM bots WHERE bots.id = telegram_managed_setups.bot_id AND bots.archived_at IS NULL)
 `
 
 type FinishTelegramManagedSetupParams struct {
@@ -173,8 +175,9 @@ func (q *Queries) GetTelegramManagedSetup(ctx context.Context, arg GetTelegramMa
 
 const pairTelegramManagedOwner = `-- name: PairTelegramManagedOwner :exec
 UPDATE telegram_managed_setups SET owner_id = ?1
-WHERE id = ?2 AND manager_id = ?3 AND owner_id = 0
+WHERE telegram_managed_setups.id = ?2 AND manager_id = ?3 AND owner_id = 0
   AND state = 'pending' AND expires_at > ?4
+  AND EXISTS (SELECT 1 FROM bots WHERE bots.id = telegram_managed_setups.bot_id AND bots.archived_at IS NULL)
 `
 
 type PairTelegramManagedOwnerParams struct {

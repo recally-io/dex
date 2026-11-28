@@ -449,7 +449,9 @@ func (s *Service) deleteTelegram(ctx context.Context, botID string) error {
 			return err
 		}
 	}
-	if err := s.q.DeleteTelegramSettings(ctx, botID); err != nil {
+	if err := db.WriteActiveChannel(ctx, s.db, botID, func(q *sqlc.Queries) error {
+		return q.DeleteTelegramSettings(ctx, botID)
+	}); err != nil {
 		if saved != nil && db.CanStartChannel(ctx, s.q, botID) {
 			s.onTelegram(botID, saved)
 		}

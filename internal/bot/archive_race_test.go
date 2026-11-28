@@ -3,6 +3,9 @@ package bot_test
 import (
 	"database/sql"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -77,6 +80,59 @@ func TestUserCannotPairTelegramAfterArchiveCommit(t *testing.T) {
 	}
 	if len(users) != 0 || !errors.Is(telegramErr, db.ErrBotArchived) || telegramRow.AllowedUsers != "" {
 		t.Fatalf("after archive: Telegram users=%v saved=%q err=%v", users, telegramRow.AllowedUsers, telegramErr)
+	}
+}
+
+func TestUserCannotDeleteTelegramAfterArchiveCommit(t *testing.T) {
+	t.Parallel()
+	// Given a saved Telegram account, archive its bot when disconnect stops the runtime.
+	q, writer, id := archiveRaceDB(t)
+	ctx := t.Context()
+	if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: id, Token: "123:old", Options: "{}"}); err != nil {
+		t.Fatal(err)
+	}
+	var archiveErr error
+	var started bool
+	s := bot.New(q, writer, new(sync.Mutex), nil, "", func(_ string, cfg *telegram.Config) {
+		if cfg == nil && archiveErr == nil {
+			archiveErr = db.ArchiveBot(ctx, q, id, time.Now())
+		} else if cfg != nil {
+			started = true
+		}
+	})
+
+	// When the disconnect continues, then the archived bot keeps its settings.
+	deleteErr := s.DeleteTelegram(ctx, id)
+	row, err := q.GetTelegramSettings(ctx, id)
+	if !errors.Is(deleteErr, db.ErrBotArchived) || err != nil || row.Token != "123:old" || started {
+		t.Fatalf("after archive: disconnect err=%v read err=%v old credentials kept=%t start requested=%t", deleteErr, err, row.Token == "123:old", started)
+	}
+}
+
+func TestUserCannotCreateTelegramPairingLinkAfterArchiveCommit(t *testing.T) {
+	t.Parallel()
+	// Given an unpaired account, archive its bot while Telegram returns the username.
+	q, writer, id := archiveRaceDB(t)
+	ctx := t.Context()
+	if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: id, Token: "123:secret", Options: "{}"}); err != nil {
+		t.Fatal(err)
+	}
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := db.ArchiveBot(r.Context(), q, id, time.Now()); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = io.WriteString(w, `{"ok":true,"result":{"username":"example_bot"}}`)
+	}))
+	t.Cleanup(api.Close)
+	s := bot.New(q, writer, new(sync.Mutex), nil, api.URL, nil)
+
+	// When link creation continues, then the archived bot does not get a code.
+	link, _, linkErr := s.CreateTelegramPairing(ctx, id)
+	row, err := q.GetTelegramSettings(ctx, id)
+	if !errors.Is(linkErr, db.ErrBotArchived) || err != nil || link != "" || row.PairingCode != "" {
+		t.Fatalf("after archive: link err=%v read err=%v link returned=%t code saved=%t", linkErr, err, link != "", row.PairingCode != "")
 	}
 }
 

@@ -256,7 +256,9 @@ func (s *Service) GetTelegramManagedSetup(ctx context.Context, botID, id string)
 func (s *Service) CancelTelegramManagedSetup(ctx context.Context, botID, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.q.CancelTelegramManagedSetup(ctx, sqlc.CancelTelegramManagedSetupParams{BotID: botID, ID: id})
+	return db.WriteActiveChannel(ctx, s.db, botID, func(q *sqlc.Queries) error {
+		return q.CancelTelegramManagedSetup(ctx, sqlc.CancelTelegramManagedSetupParams{BotID: botID, ID: id})
+	})
 }
 
 // managedSetupView requires mu.
@@ -396,31 +398,23 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 	}
 	// Vault writes are atomic but cannot join SQLite transactions. A crash before commit can
 	// leave an unused vault entry; a committed channel always has its credential.
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
-	changed, err := q.FinishTelegramManagedSetup(ctx, sqlc.FinishTelegramManagedSetupParams{ID: row.ID, State: "connected", Now: time.Now().Unix()})
-	if err != nil || changed == 0 {
-		return err
-	}
-	if err := db.RequireActive(ctx, q, row.BotID); err != nil {
-		if errors.Is(err, db.ErrBotArchived) {
-			_ = tx.Rollback()
-			return s.failManagedSetup(ctx, row.ID)
+	var changed int64
+	err = db.WriteActiveChannel(ctx, s.db, row.BotID, func(q *sqlc.Queries) error {
+		var err error
+		changed, err = q.FinishTelegramManagedSetup(ctx, sqlc.FinishTelegramManagedSetupParams{ID: row.ID, State: "connected", Now: time.Now().Unix()})
+		if err != nil || changed == 0 {
+			return err
 		}
+		cfg.RetryAt, err = q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
+			BotID: row.BotID, Token: ref, AllowedUsers: strconv.FormatInt(row.OwnerID, 10), Options: options,
+			WebhookUrl: cfg.Webhook.URL, WebhookSecret: cfg.Webhook.SecretToken,
+		})
 		return err
-	}
-	cfg.RetryAt, err = q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
-		BotID: row.BotID, Token: ref, AllowedUsers: strconv.FormatInt(row.OwnerID, 10), Options: options,
-		WebhookUrl: cfg.Webhook.URL, WebhookSecret: cfg.Webhook.SecretToken,
 	})
-	if err != nil {
-		return err
+	if errors.Is(err, db.ErrBotArchived) {
+		return nil
 	}
-	if err := tx.Commit(); err != nil {
+	if err != nil || changed == 0 {
 		return err
 	}
 	committed = true

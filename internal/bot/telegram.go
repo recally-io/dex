@@ -37,7 +37,9 @@ func (s *Service) CreateTelegramPairing(ctx context.Context, botID string) (stri
 	_, _ = rand.Read(code)
 	value := hex.EncodeToString(code)
 	expires := time.Now().Add(10 * time.Minute).Unix()
-	if err = s.q.SetTelegramPairing(ctx, sqlc.SetTelegramPairingParams{BotID: botID, PairingCode: value, PairingExpires: expires}); err != nil {
+	if err := db.WriteActiveChannel(ctx, s.db, botID, func(q *sqlc.Queries) error {
+		return q.SetTelegramPairing(ctx, sqlc.SetTelegramPairingParams{BotID: botID, PairingCode: value, PairingExpires: expires})
+	}); err != nil {
 		return "", 0, err
 	}
 	return "https://t.me/" + username + "?start=" + value, expires, nil

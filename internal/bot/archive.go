@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/recally-io/dex/internal/db"
+	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 // ListArchivedBots returns the archived bots, newest archive first.
@@ -48,12 +49,8 @@ func (s *Service) StopChannels(ctx context.Context, id string) error {
 func (s *Service) RestoreBot(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.q.RestoreBot(ctx, id)
-	if err != nil {
+	if err := s.restoreBotLocked(ctx, id); err != nil {
 		return err
-	}
-	if rows == 0 {
-		return ErrNotFound
 	}
 	// Do not let a pre-archive setup become valid again if stop has not run yet.
 	if s.feishu != nil {
@@ -86,4 +83,26 @@ func (s *Service) RestoreBot(ctx context.Context, id string) error {
 		startWechat(ctx)
 	}
 	return nil
+}
+
+func (s *Service) restoreBotLocked(ctx context.Context, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := sqlc.New(tx)
+	rows, err := q.RestoreBot(ctx, id)
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	// Restore and cancellation must commit together. The manager can replay a
+	// pre-archive setup even if this process never received the stop callback.
+	if err := q.CancelBotTelegramManagedSetups(ctx, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
