@@ -17,9 +17,9 @@ import (
 
 	"github.com/recally-io/dex/apps/web"
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/service"
-	"github.com/recally-io/dex/internal/sysops"
-	"github.com/recally-io/dex/internal/update"
+	"github.com/recally-io/dex/internal/host/service"
+	"github.com/recally-io/dex/internal/host/sysops"
+	"github.com/recally-io/dex/internal/host/update"
 	"github.com/recally-io/dex/plugins/builtin"
 	"golang.org/x/mod/module"
 )

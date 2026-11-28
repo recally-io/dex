@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/db"
-	"github.com/recally-io/dex/internal/sysops"
+	"github.com/recally-io/dex/internal/host/sysops"
 )
 
 func TestUserLogBufferKeepsRecentEntriesInOrder(t *testing.T) {

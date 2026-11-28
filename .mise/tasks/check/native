@@ -22,8 +22,17 @@ if rg '^github\.com/recally-io/dex/(apps|internal/app)(/|$)' <<<"$agent_deps"; t
   echo "cmd/dex-agent must not depend on apps/ or internal/app." >&2
   exit 1
 fi
+if rg '^github\.com/recally-io/dex/internal/(settings|session|engine)(/|$)' <<<"$agent_deps"; then
+  echo "cmd/dex-agent must not depend on internal/settings, internal/session, or internal/engine." >&2
+  exit 1
+fi
 if rg 'github.com/(recally-io/dex/internal/worker|MichaelKinsy/PiG/(tui|coding/extension/host)|nsgo-dev/nsgo)' <<<"$server_deps"; then
   echo "The server must not link the worker, terminal extension host, or NSGo." >&2
+  exit 1
+fi
+native_deps=$(CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go list -deps ./apps/native)
+if rg '^github\.com/recally-io/dex/internal/(mcptest|runner/runnertest)(/|$)' <<<"$server_deps"$'\n'"$agent_deps"$'\n'"$native_deps"; then
+  echo "Production entry points must not depend on internal/mcptest or internal/runner/runnertest." >&2
   exit 1
 fi
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./apps/native/...

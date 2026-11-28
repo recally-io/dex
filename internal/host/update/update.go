@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/recally-io/dex/internal/service"
+	"github.com/recally-io/dex/internal/host/service"
 	"golang.org/x/mod/semver"
 )
 

@@ -11,7 +11,7 @@ import (
 
 	json "encoding/json/v2"
 
-	"github.com/recally-io/dex/internal/loginenv"
+	"github.com/recally-io/dex/internal/host/loginenv"
 )
 
 // status reports how this machine runs and whether it holds an enrollment. It prints no secret:

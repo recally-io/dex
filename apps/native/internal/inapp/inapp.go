@@ -9,7 +9,7 @@ import (
 
 	"github.com/recally-io/dex/apps/web"
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/sysops"
+	"github.com/recally-io/dex/internal/host/sysops"
 	"github.com/recally-io/dex/plugins/builtin"
 )
 

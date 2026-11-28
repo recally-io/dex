@@ -14,8 +14,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/recally-io/dex/internal/settings"
 )
 
 // Health identifies the running instance and reports native execution readiness.
@@ -49,7 +47,7 @@ func Request(ctx context.Context, c Config, method, path string) (*http.Request,
 	if err != nil || !c.RequiresToken() {
 		return req, err
 	}
-	token, err := settings.StoredToken(ctx, c.DataDir)
+	token, err := StoredToken(ctx, c.DataDir)
 	if err != nil {
 		return nil, err
 	}

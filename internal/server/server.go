@@ -30,12 +30,12 @@ import (
 	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/host/sysops"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/settings"
-	"github.com/recally-io/dex/internal/sysops"
 	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/internal/upload"
 )

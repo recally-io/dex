@@ -17,9 +17,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/recally-io/dex/internal/service"
+	"github.com/recally-io/dex/internal/host/service"
+	"github.com/recally-io/dex/internal/host/update"
 	"github.com/recally-io/dex/internal/settings"
-	"github.com/recally-io/dex/internal/update"
 )
 
 var errUsage = errors.New("usage error")
@@ -467,7 +467,7 @@ func localCommand(ctx context.Context, name string, args []string) error {
 		}
 		return doctor(ctx, m, c)
 	case "token":
-		token, err := settings.StoredToken(ctx, c.DataDir)
+		token, err := service.StoredToken(ctx, c.DataDir)
 		if err != nil {
 			return err
 		}

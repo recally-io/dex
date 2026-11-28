@@ -25,7 +25,7 @@ import (
 
 	"github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/coder/websocket"
-	"github.com/recally-io/dex/internal/loginenv"
+	"github.com/recally-io/dex/internal/host/loginenv"
 	"github.com/recally-io/dex/internal/runner/outbound"
 )
 

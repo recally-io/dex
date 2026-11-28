@@ -31,9 +31,10 @@ The server and native app share the root `go.mod`. The root
 | `internal/channel/wechat`    | WeChat settings, QR login, polling, protocol, and media adaptation                  |
 | `internal/upload`            | Upload validation, file storage, and bot-scoped paths                               |
 | `internal/artifact`          | Bot artifact store and the `deliver_file` tool                                      |
-| `internal/service`           | Per-user launchd/systemd definitions, commands, and readiness checks                |
-| `internal/sysops`            | In-process server operations: update coordination, restart, SQLite backups, logs    |
-| `internal/update`            | Release verification, maintenance coordination, and executable replacement          |
+| `internal/host/loginenv`     | Login shell environment for host commands                                           |
+| `internal/host/service`      | Per-user launchd/systemd definitions, commands, and readiness checks                |
+| `internal/host/sysops`       | In-process server operations: update coordination, restart, SQLite backups, logs    |
+| `internal/host/update`       | Release verification, maintenance coordination, and executable replacement          |
 | `internal/mcptest`           | Local MCP test servers; no production execution                                     |
 | `internal/settings`          | Global providers, model checks, 1Password credentials, access token                 |
 | `internal/bot`               | Bot settings, activity, paths, and channel approvals                                |

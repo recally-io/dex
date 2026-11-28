@@ -5,7 +5,7 @@ package main
 import (
 	"context"
 
-	"github.com/recally-io/dex/internal/loginenv"
+	"github.com/recally-io/dex/internal/host/loginenv"
 )
 
 func testFakeModel() bool { return false }

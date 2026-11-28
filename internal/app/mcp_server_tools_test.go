@@ -15,7 +15,7 @@ import (
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/sysops"
+	"github.com/recally-io/dex/internal/host/sysops"
 )
 
 func TestUserManagesMCPServersFromRunner(t *testing.T) {

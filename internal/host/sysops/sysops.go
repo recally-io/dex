@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/update"
+	"github.com/recally-io/dex/internal/host/update"
 )
 
 var (

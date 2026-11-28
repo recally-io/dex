@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/sysops"
+	"github.com/recally-io/dex/internal/host/sysops"
 )
 
 func systemStatusView(s sysops.Status) api.SystemStatus {
