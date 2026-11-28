@@ -1,28 +1,21 @@
-// Package bot owns bot settings, activity, and channel configuration.
+// Package bot owns bot settings and activity, and coordinates channel changes.
 package bot
 
 import (
-	"cmp"
 	"context"
 	"database/sql"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
 	"uuid"
 
-	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/channel/telegram"
-	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/vault"
 )
 
 // ErrInvalid means that a requested bot or channel change is invalid.
@@ -39,26 +32,23 @@ var thinkingLevels = []string{"off", "minimal", "low", "medium", "high", "xhigh"
 
 // Service owns bot writes and coordinates channel settings and approvals.
 type Service struct {
-	q               *sqlc.Queries
-	checkModel      func(context.Context, string, string) error
-	db              *sql.DB
-	ChannelStatus   func(string, string) channel.Status
-	OnRunnerChanged func(ctx context.Context, botID, oldEnvID, oldSandboxID string)
-	apiURL          string
-	onTelegram      func(string, *telegram.Config)
-	telegramVault   *vault.Store
-	manager         *telegramManager
-	feishu          feishuSetup
-	wechat          wechatSetup
+	q                   *sqlc.Queries
+	checkModel          func(context.Context, string, string) error
+	db                  *sql.DB
+	RunningChannelCount func(string) int64
+	OnRunnerChanged     func(ctx context.Context, botID, oldEnvID, oldSandboxID string)
+	telegram            telegramSetup
+	feishu              feishuSetup
+	wechat              wechatSetup
 	// One lock orders credential checks, saves, runtime changes, and setup sessions
 	// across bots. Model checks take the settings lock; settings never takes this lock.
 	mu               *sync.Mutex
 	channelApprovals map[string]channelApproval
 }
 
-// New connects storage, the shared channel lock, model validation, and Telegram runtime changes.
-func New(q *sqlc.Queries, conn *sql.DB, mu *sync.Mutex, checkModel func(context.Context, string, string) error, telegramAPIURL string, onTelegram func(string, *telegram.Config)) *Service {
-	return &Service{q: q, db: conn, mu: mu, checkModel: checkModel, apiURL: telegramAPIURL, onTelegram: onTelegram}
+// New connects storage, the shared channel lock, and model validation.
+func New(q *sqlc.Queries, conn *sql.DB, mu *sync.Mutex, checkModel func(context.Context, string, string) error) *Service {
+	return &Service{q: q, db: conn, mu: mu, checkModel: checkModel}
 }
 
 // Activity summarizes one bot for the bot list.
@@ -83,19 +73,6 @@ type Bot struct {
 	RunnerID         string    `json:"runnerId"`
 	// ArchivedAt is the archive time in Unix milliseconds; zero for an active bot.
 	ArchivedAt int64 `json:"archivedAt,omitzero"`
-}
-
-// Telegram describes the bot without its token.
-type Telegram struct {
-	Status                   channel.Status   `json:"status"`
-	Enabled                  bool             `json:"enabled"`
-	BotID                    string           `json:"botId,omitempty"`
-	AllowedUsers             []int64          `json:"allowedUsers"`
-	Options                  telegram.Options `json:"options"`
-	ManagerConfigured        bool             `json:"managerConfigured,omitzero"`
-	ManagedCreationAvailable bool             `json:"managedCreationAvailable,omitzero"`
-	Transport                string           `json:"transport"`
-	WebhookURL               string           `json:"webhookUrl,omitempty"`
 }
 
 // Bot reads one bot.
@@ -125,12 +102,8 @@ func (s *Service) ListBots(ctx context.Context) ([]Bot, error) {
 	for i, row := range rows {
 		bots[i] = botView(row.Bot)
 		current := Activity{AutomationFailed: row.AutomationFailed == 1, ActiveSessions: row.ActiveSessions, EnabledAutomations: row.EnabledAutomations}
-		if s.ChannelStatus != nil {
-			for _, platform := range []string{"telegram", "wechat", "feishu"} {
-				if s.ChannelStatus(row.Bot.ID, platform).State == "running" {
-					current.RunningChannels++
-				}
-			}
+		if s.RunningChannelCount != nil {
+			current.RunningChannels = s.RunningChannelCount(row.Bot.ID)
 		}
 		bots[i].Activity = &current
 	}
@@ -285,196 +258,6 @@ func (s *Service) cleanBot(ctx context.Context, a Bot) (Bot, error) {
 		return a, fmt.Errorf("%w: choose a model before a fallback model", ErrInvalid)
 	}
 	return a, nil
-}
-
-// TelegramConfig returns the saved bot configuration, or nil when Telegram is off.
-func (s *Service) TelegramConfig(ctx context.Context, botID string) (*telegram.Config, error) {
-	row, err := s.q.GetTelegramSettings(ctx, botID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	users, err := parseUsers(row.AllowedUsers)
-	if err != nil {
-		return nil, err
-	}
-	var options telegram.Options
-	if err := json.Unmarshal([]byte(row.Options), &options); err != nil {
-		return nil, err
-	}
-	cfg := &telegram.Config{Options: options, Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(botID, row.Token), RetryAt: row.RetryAt,
-		Webhook: telegram.WebhookConfig{URL: row.WebhookUrl, SecretToken: row.WebhookSecret}}
-	if strings.Contains(row.Token, telegramVaultMarker) {
-		cfg.CredentialRef = row.Token
-		cfg.Token, err = s.telegramVault.Credential(row.Token)
-		if err != nil {
-			return nil, err
-		}
-		if cfg.Token == "" {
-			return nil, errors.New("the saved managed Telegram credential is missing")
-		}
-	}
-	return cfg, nil
-}
-
-// SetTelegram saves the bot configuration and restarts the bot. An empty token keeps the saved
-// token.
-func (s *Service) SetTelegram(ctx context.Context, botID string, token string, allowedUsers []int64, options *telegram.Options, transport string, webhook *telegram.WebhookConfig) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.setTelegram(ctx, botID, token, allowedUsers, options, transport, webhook)
-}
-
-func (s *Service) setTelegram(ctx context.Context, botID, token string, allowedUsers []int64, options *telegram.Options, transport string, webhook *telegram.WebhookConfig) error {
-	if err := db.RequireActive(ctx, s.q, botID); err != nil {
-		return err
-	}
-	// Pairing uses TryLock, so this snapshot cannot change before the old bot joins.
-	saved, err := s.TelegramConfig(ctx, botID)
-	if err != nil {
-		return err
-	}
-	if token == "" {
-		if saved != nil {
-			token = saved.Token
-		}
-	}
-	cfg := telegram.Config{Token: strings.TrimSpace(token), AllowedUsers: allowedUsers, APIURL: s.apiURL}
-	if saved != nil {
-		cfg.Options = saved.Options
-		if cfg.Token == saved.Token {
-			cfg.CredentialRef = saved.CredentialRef
-		}
-	}
-	if options != nil {
-		cfg.Options = *options
-	}
-	if strings.Contains(cfg.Token, telegramVaultMarker) {
-		return fmt.Errorf("%w: enter a bot token from BotFather", ErrInvalid)
-	}
-	if s.manager != nil && strings.HasPrefix(cfg.Token, strconv.FormatInt(s.manager.id, 10)+":") {
-		return fmt.Errorf("%w: the manager bot must be separate from the channel bot", ErrInvalid)
-	}
-	key := cmp.Or(cfg.CredentialRef, cfg.Token)
-	cfg.Pair = s.pairTelegram(botID, key)
-	account, _, _ := strings.Cut(cfg.Token, ":")
-	sameBot := saved != nil && strings.HasPrefix(saved.Token, account+":")
-	if sameBot {
-		cfg.Webhook = saved.Webhook
-	}
-	switch {
-	case transport == "polling" && webhook == nil:
-		cfg.Webhook = telegram.WebhookConfig{}
-	case transport == "webhook":
-		if webhook != nil {
-			cfg.Webhook = *webhook
-		}
-		if cfg.Webhook.URL == "" {
-			return fmt.Errorf("%w: enter the Telegram webhook URL and secret", ErrInvalid)
-		}
-	case transport == "" && webhook == nil:
-	default:
-		return fmt.Errorf("%w: choose webhook transport to set Telegram webhook credentials", ErrInvalid)
-	}
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalid, err)
-	}
-	if err := s.checkTelegramAccount(ctx, botID, account); err != nil {
-		return err
-	}
-	users := make([]string, len(allowedUsers))
-	for i, id := range allowedUsers {
-		users[i] = strconv.FormatInt(id, 10)
-	}
-	encoded, err := json.Marshal(cfg.Options)
-	if err != nil {
-		return err
-	}
-	s.onTelegram(botID, nil)
-	committed := false
-	defer func() {
-		if !committed && saved != nil && db.CanStartChannel(ctx, s.q, botID) {
-			s.onTelegram(botID, saved)
-		}
-	}()
-	if saved != nil && saved.Webhook.URL != "" && (!sameBot || cfg.Webhook.URL == "") {
-		teardown := *saved
-		if sameBot {
-			teardown.Token = cfg.Token
-		}
-		if err := telegram.DeleteWebhook(ctx, teardown); err != nil {
-			return err
-		}
-	}
-	if err := db.WriteActiveChannel(ctx, s.db, botID, func(q *sqlc.Queries) error {
-		var err error
-		cfg.RetryAt, err = q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: botID,
-			Token: key, AllowedUsers: strings.Join(users, ","), Options: string(encoded),
-			WebhookUrl: cfg.Webhook.URL, WebhookSecret: cfg.Webhook.SecretToken,
-		})
-		return err
-	}); err != nil {
-		return err
-	}
-	committed = true
-	if db.CanStartChannel(ctx, s.q, botID) {
-		s.onTelegram(botID, &cfg)
-	}
-	if saved != nil && saved.CredentialRef != cfg.CredentialRef {
-		s.forgetTelegramCredential(saved.CredentialRef)
-	}
-	return nil
-}
-
-// DeleteTelegram turns Telegram off and forgets the token.
-func (s *Service) DeleteTelegram(ctx context.Context, botID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.deleteTelegram(ctx, botID)
-}
-
-func (s *Service) deleteTelegram(ctx context.Context, botID string) error {
-	saved, err := s.TelegramConfig(ctx, botID)
-	if err != nil {
-		return err
-	}
-	s.onTelegram(botID, nil)
-	if saved != nil && saved.Webhook.URL != "" {
-		if err := telegram.DeleteWebhook(ctx, *saved); err != nil {
-			if db.CanStartChannel(ctx, s.q, botID) {
-				s.onTelegram(botID, saved)
-			}
-			return err
-		}
-	}
-	if err := s.q.DeleteTelegramSettings(ctx, botID); err != nil {
-		if saved != nil && db.CanStartChannel(ctx, s.q, botID) {
-			s.onTelegram(botID, saved)
-		}
-		return err
-	}
-	s.onTelegram(botID, nil)
-	if saved != nil {
-		s.forgetTelegramCredential(saved.CredentialRef)
-	}
-	return nil
-}
-
-func parseUsers(s string) ([]int64, error) {
-	users := []int64{}
-	if s == "" {
-		return users, nil
-	}
-	for field := range strings.SplitSeq(s, ",") {
-		id, err := strconv.ParseInt(field, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("telegram_settings.allowed_users: %w", err)
-		}
-		users = append(users, id)
-	}
-	return users, nil
 }
 
 // Home returns the storage root for a bot in the resolved data directory.

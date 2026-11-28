@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/bot"
+	"github.com/recally-io/dex/internal/api"
 )
 
 // fakeTelegram is a Bot API server. Telegram is a system boundary, so the tests use a fake instead
@@ -792,9 +792,7 @@ func TestUserSeesInvalidTelegramTokenStatus(t *testing.T) {
 func waitTelegramState(t *testing.T, d *dex, state string) {
 	t.Helper()
 	eventually(t, "Telegram status "+state, func() (bool, any) {
-		var got struct {
-			Telegram bot.Telegram `json:"telegram"`
-		}
+		var got api.Channels
 		d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &got)
 		if strings.Contains(got.Telegram.Status.Reason, fakeToken) {
 			t.Fatal("status exposed the token")

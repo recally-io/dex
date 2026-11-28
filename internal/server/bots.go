@@ -65,7 +65,7 @@ func (h *handler) UpdateBot(ctx context.Context, req api.UpdateBotRequestObject)
 
 func (h *handler) GetChannels(ctx context.Context, _ api.GetChannelsRequestObject) (api.GetChannelsResponseObject, error) {
 	id := botID(ctx)
-	tg, err := h.Bots.TelegramView(ctx, id)
+	tg, err := h.Telegram.View(ctx, id)
 	if err != nil {
 		return nil, err
 	}

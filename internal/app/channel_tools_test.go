@@ -180,6 +180,16 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 	stale := channelApprovalPath(t, request(bot.ID, "revoke_pairing", "telegram"))
 	setTelegram(44)
 	reviewChannelChange(t, d, owner, http.MethodPost, stale, "", http.StatusConflict)
+
+	// A replacement token for the same account also invalidates the approval.
+	staleToken := channelApprovalPath(t, request(bot.ID, "disconnect", "telegram"))
+	d.must(t, http.MethodPut, base+"/channels/telegram", map[string]any{"token": "123:replacement", "allowedUsers": []int64{44}}, nil)
+	reviewChannelChange(t, d, owner, http.MethodPost, staleToken, "", http.StatusConflict)
+	if got := read("channel_pairing", bot.ID); !strings.Contains(got, `"telegram":true`) {
+		t.Fatalf("a stale approval disconnected the replacement: %q", got)
+	}
+	setTelegram(44)
+
 	// Owner approval changes pairing without resetting the saved webhook.
 	hook := "/hooks/channels/telegram/" + bot.ID
 	const hookSecret = "owner-review-webhook"
@@ -189,6 +199,10 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 	}, nil)
 	f.nextEvent(t, "setWebhook")
 	revoke := channelApprovalPath(t, request(bot.ID, "revoke_pairing", "telegram"))
+	// Delivery backoff changes runtime state without changing pairing authority.
+	if _, err := conn.ExecContext(t.Context(), `UPDATE telegram_settings SET retry_at = retry_at + 1 WHERE bot_id = ?`, bot.ID); err != nil {
+		t.Fatal(err)
+	}
 	reviewChannelChange(t, d, owner, http.MethodPost, revoke, "", http.StatusOK)
 	if got := read("channel_pairing", bot.ID); !strings.Contains(got, `"telegram":false`) {
 		t.Fatalf("pairing survived revocation: %q", got)

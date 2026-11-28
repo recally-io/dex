@@ -14,7 +14,7 @@ import (
 	"testing/fstest"
 
 	"github.com/pressly/goose/v3"
-	"github.com/recally-io/dex/internal/bot"
+	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
@@ -113,8 +113,8 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 				_, _ = w.Write([]byte(`{"ok":true,"result":{"id":7,"is_bot":true,"username":"upgrade_bot"}}`))
 			}))
 			t.Cleanup(api.Close)
-			prefs := bot.New(sqlc.New(conn), conn, new(sync.Mutex), nil, api.URL, nil)
-			link, _, err := prefs.CreateTelegramPairing(t.Context(), "default")
+			setup := telegram.NewSetup(sqlc.New(conn), conn, new(sync.Mutex), api.URL, nil, nil, nil)
+			link, _, err := setup.CreatePairing(t.Context(), "default")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -122,7 +122,7 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			config, err := prefs.TelegramConfig(t.Context(), "default")
+			config, err := setup.Config(t.Context(), "default")
 			if err != nil || config == nil {
 				t.Fatalf("Telegram config: %v, %v", config, err)
 			}
@@ -135,7 +135,7 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 			if err != nil || len(users) != 0 {
 				t.Fatalf("reused link: %v, %v", users, err)
 			}
-			config, err = prefs.TelegramConfig(t.Context(), "default")
+			config, err = setup.Config(t.Context(), "default")
 			if err != nil || config == nil || !slices.Equal(config.AllowedUsers, []int64{42}) {
 				t.Fatalf("saved owner: %v, %v", config, err)
 			}

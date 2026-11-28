@@ -26,6 +26,7 @@ import (
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
@@ -47,6 +48,7 @@ type Config struct {
 	TaskEvents  *tasksvc.Broker
 	Settings    *settings.Service
 	Bots        *bot.Service
+	Telegram    *telegram.SetupService
 	Feishu      *feishu.SetupService
 	Wechat      *wechat.SetupService
 	Artifacts   *artifact.Service
@@ -124,7 +126,7 @@ func New(cfg Config) http.Handler {
 			}
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, settings.ErrInvalid), errors.Is(err, bot.ErrInvalid), errors.Is(err, feishu.ErrInvalid), errors.Is(err, wechat.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
+			case errors.Is(err, settings.ErrInvalid), errors.Is(err, bot.ErrInvalid), errors.Is(err, telegram.ErrInvalid), errors.Is(err, feishu.ErrInvalid), errors.Is(err, wechat.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
 				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, session.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, session.ErrRejected), errors.Is(err, session.ErrProjectInvalid), errors.Is(err, session.ErrRunnerInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, tasksvc.ErrTaskToken):
@@ -141,7 +143,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, bot.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, session.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrBotArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, bot.ErrCredentialInUse), errors.Is(err, feishu.ErrCredentialInUse), errors.Is(err, wechat.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, bot.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget), errors.Is(err, engine.ErrMCPServerExists):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, telegram.ErrCredentialInUse), errors.Is(err, feishu.ErrCredentialInUse), errors.Is(err, wechat.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, bot.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget), errors.Is(err, engine.ErrMCPServerExists):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -976,21 +978,21 @@ func (h *handler) SetTelegram(ctx context.Context, req api.SetTelegramRequestObj
 	if req.Body.Transport != nil {
 		transport = string(*req.Body.Transport)
 	}
-	if err := h.Bots.SetTelegram(ctx, botID(ctx), req.Body.Token, req.Body.AllowedUsers, req.Body.Options, transport, req.Body.Webhook); err != nil {
+	if err := h.Telegram.Set(ctx, botID(ctx), req.Body.Token, req.Body.AllowedUsers, req.Body.Options, transport, req.Body.Webhook); err != nil {
 		return nil, err
 	}
 	return api.SetTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) DeleteTelegram(ctx context.Context, _ api.DeleteTelegramRequestObject) (api.DeleteTelegramResponseObject, error) {
-	if err := h.Bots.DeleteTelegram(ctx, botID(ctx)); err != nil {
+	if err := h.Telegram.Delete(ctx, botID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegramPairingRequestObject) (api.CreateTelegramPairingResponseObject, error) {
-	link, expires, err := h.Bots.CreateTelegramPairing(ctx, botID(ctx))
+	link, expires, err := h.Telegram.CreatePairing(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}

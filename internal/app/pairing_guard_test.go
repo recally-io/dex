@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
@@ -34,9 +34,9 @@ func TestUserPairingRetriesWhileChannelSettingsChange(t *testing.T) {
 		}
 	}
 	mu := new(sync.Mutex)
-	s := bot.New(q, conn, mu, nil, "", nil)
+	s := telegram.NewSetup(q, conn, mu, "", nil, nil, nil)
 	fs := feishu.NewSetup(q, conn, mu, "", "", nil, nil)
-	tg, err := s.TelegramConfig(ctx, "a")
+	tg, err := s.Config(ctx, "a")
 	if err != nil || tg == nil {
 		t.Fatalf("cannot load Telegram configuration: configured=%t err=%v", tg != nil, err)
 	}

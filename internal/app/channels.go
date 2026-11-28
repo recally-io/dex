@@ -81,6 +81,16 @@ func (r *channelRegistry) Status(botID, platform string) channel.Status {
 	return m.Status(platform)
 }
 
+func (r *channelRegistry) RunningCount(botID string) int64 {
+	var count int64
+	for _, platform := range []string{"telegram", "wechat", "feishu"} {
+		if r.Status(botID, platform).State == "running" {
+			count++
+		}
+	}
+	return count
+}
+
 func (r *channelRegistry) reactionIntake(botID, peer, id string, source session.ChannelContext) {
 	r.mu.Lock()
 	m := r.managers[botID]

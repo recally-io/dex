@@ -2707,7 +2707,7 @@ type TaskWakeItemKind string
 type TaskWakeItemTitle string
 
 // Telegram defines model for Telegram.
-type Telegram = bot.Telegram
+type Telegram = telegram.Telegram
 
 // TelegramInput defines model for TelegramInput.
 type TelegramInput struct {
@@ -2726,7 +2726,7 @@ type TelegramInput struct {
 type TelegramInputTransport string
 
 // TelegramManagedSetup defines model for TelegramManagedSetup.
-type TelegramManagedSetup = bot.TelegramManagedSetup
+type TelegramManagedSetup = telegram.ManagedSetup
 
 // TelegramOptions defines model for TelegramOptions.
 type TelegramOptions = telegram.Options

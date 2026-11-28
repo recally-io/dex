@@ -3,10 +3,7 @@ package bot
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"uuid"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -62,23 +59,16 @@ func (s *Service) notificationTargets(ctx context.Context, botID string) (Notifi
 		out.Targets = append(out.Targets, NotificationTarget{ID: id, Platform: platform, Peer: peer})
 		return nil
 	}
-	tg, err := s.q.GetTelegramSettings(ctx, botID)
-	if err == nil {
-		account, _, ok := strings.Cut(tg.Token, ":")
-		if _, e := strconv.ParseUint(account, 10, 64); !ok || e != nil {
-			return NotificationTargets{}, fmt.Errorf("%w: invalid Telegram bot identity", ErrInvalid)
+	if s.telegram != nil {
+		account, peers, err := s.telegram.NotificationPeers(ctx, botID)
+		if err != nil {
+			return NotificationTargets{}, err
 		}
-		users, e := parseUsers(tg.AllowedUsers)
-		if e != nil {
-			return NotificationTargets{}, e
-		}
-		for _, user := range users {
-			if err = add("telegram", account, "telegram:"+strconv.FormatInt(user, 10)); err != nil {
+		for _, peer := range peers {
+			if err := add("telegram", account, peer); err != nil {
 				return NotificationTargets{}, err
 			}
 		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return NotificationTargets{}, err
 	}
 	if s.feishu != nil {
 		account, owner, err := s.feishu.Owner(ctx, botID)

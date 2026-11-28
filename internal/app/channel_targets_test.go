@@ -29,7 +29,7 @@ func TestUserCanSelectOnlyTheirAuthorizedChannelTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	mu := new(sync.Mutex)
-	s := bot.New(q, conn, mu, nil, "", nil)
+	s := bot.New(q, conn, mu, nil)
 	s.BindFeishu(feishu.NewSetup(q, conn, mu, "", "", nil, nil))
 	// When the user lists eligible targets and selects one as primary.
 	list, err := s.NotificationTargets(t.Context(), "a")

@@ -360,10 +360,15 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	channelMu := new(sync.Mutex)
-	botsService = bot.New(q, conn, channelMu, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
-	if err := botsService.ConfigureTelegramVault(ctx, vault.New(cfg.DataDir)); err != nil {
+	telegramSetup := telegram.NewSetup(q, conn, channelMu, cfg.TelegramAPIURL, vault.New(cfg.DataDir), setTelegram, func(id string) channel.Status {
+		return bots.Status(id, "telegram")
+	})
+	if err := telegramSetup.LoadManager(ctx); err != nil {
 		slog.Warn("telegram: could not open the manager credential")
 	}
+	botsService = bot.New(q, conn, channelMu, prefs.CheckModel)
+	botsService.BindTelegram(telegramSetup)
+	botsService.RunningChannelCount = bots.RunningCount
 	botsService.OnRunnerChanged = func(changeCtx context.Context, botID, oldEnvID, oldSandboxID string) {
 		_ = native.CloseBot(changeCtx, botID)
 		if err := envs.ReleaseBot(changeCtx, botID, oldEnvID, oldSandboxID); err != nil {
@@ -404,7 +409,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return bots.Status(id, "feishu")
 	})
 	botsService.BindFeishu(feishuSetup)
-	botsService.ChannelStatus = bots.Status
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
 	setWechat := func(botID string, config *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
 		manager := bots.Bot(botID).Manager
@@ -474,6 +478,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	a.handler = server.New(server.Config{
 		WebHandler:      cfg.WebHandler,
 		ChannelWebhooks: http.HandlerFunc(bots.webhook),
+		Telegram:        telegramSetup,
 		Feishu:          feishuSetup,
 		Wechat:          wechatSetup,
 		SkillCatalogURL: cfg.SkillCatalogURL,
@@ -534,11 +539,11 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			}
 		}
 	}
-	if err := jobs.Every("telegram-manager", time.Second, botsService.TelegramManagerPoll()); err != nil {
+	if err := jobs.Every("telegram-manager", time.Second, telegramSetup.ManagerPoll()); err != nil {
 		return nil, err
 	}
 	for _, bot := range activeBots {
-		tg, err := botsService.TelegramConfig(ctx, bot.ID)
+		tg, err := telegramSetup.Config(ctx, bot.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -550,7 +555,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		if err != nil {
 			return nil, err
 		}
-		setTelegram(bot.ID, tg)
+		if tg == nil || db.CanStartChannel(ctx, q, bot.ID) {
+			setTelegram(bot.ID, tg)
+		}
 		setFeishu(bot.ID, fs)
 		if wx == nil || db.CanStartChannel(ctx, q, bot.ID) {
 			setWechat(bot.ID, wx)

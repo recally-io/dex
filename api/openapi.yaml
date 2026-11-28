@@ -5122,9 +5122,9 @@ components:
         reason: { type: string }
 
     TelegramManagedSetup:
-      x-go-type: bot.TelegramManagedSetup
+      x-go-type: telegram.ManagedSetup
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/bot
+        path: github.com/recally-io/dex/internal/channel/telegram
       type: object
       required: [id, state, expiresAt]
       properties:
@@ -5145,9 +5145,9 @@ components:
         username: { type: string }
 
     Telegram:
-      x-go-type: bot.Telegram
+      x-go-type: telegram.Telegram
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/bot
+        path: github.com/recally-io/dex/internal/channel/telegram
       type: object
       required: [enabled, allowedUsers, status]
       properties:
