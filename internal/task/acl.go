@@ -62,8 +62,8 @@ const (
 	OriginSessionResult Origin = "session_result"
 	OriginWake          Origin = "wake"
 	OriginOther         Origin = "other"
-	// OriginNativeResult is the native result of a child turn. Only Dex writes it, with the child in
-	// result_child_id. It authorizes what OriginSessionResult does and the Assignee Main's closeout.
+	// OriginNativeResult is the result of a child turn with a native answer. Only Dex writes it, with
+	// the child in result_child_id. It authorizes what OriginSessionResult does and the Assignee Main's closeout.
 	OriginNativeResult Origin = "native_result"
 )
 

@@ -28,7 +28,8 @@ func TestUserMainClosesTaskOnNativeChildResult(t *testing.T) {
 	if _, err := conn.ExecContext(ctx, `INSERT INTO submissions (id, session_id, content, status, created_at, kind, origin, producer, parent_request_id) VALUES
 		('worker-turn', 7, 'x', 'done', 1, 'message', 'task', 'sub_session', 'user'),
 		('reviewer-turn', 8, 'x', 'done', 1, 'message', 'task', 'sub_session', 'reviewer-user'),
-		('session-turn', 9, 'x', 'done', 1, 'message', 'task', 'sub_session', 'session-user')`); err != nil {
+		('session-turn', 9, 'x', 'done', 1, 'message', 'task', 'sub_session', 'session-user'),
+		('rejected-turn', 7, 'x', 'unanswered', 1, 'message', 'task', 'sub_session', 'user')`); err != nil {
 		t.Fatal(err)
 	}
 	for i, turn := range []string{"worker-turn", "reviewer-turn", "session-turn"} {
@@ -38,6 +39,13 @@ func TestUserMainClosesTaskOnNativeChildResult(t *testing.T) {
 		}); err != nil || n != 1 {
 			t.Fatalf("native result of %s: %d, %v", turn, n, err)
 		}
+	}
+	// And a child turn that ended without a native answer, such as a permanent admission rejection.
+	// Its result has the child in result_child_id but no native answer.
+	if n, err := q.CreateTurnResult(ctx, sqlc.CreateTurnResultParams{
+		ID: "result:rejected-turn", TurnID: "rejected-turn", Content: `{"session-result":{"outcome":"failed"}}`, CreatedAt: 2,
+	}); err != nil || n != 1 {
+		t.Fatalf("answerless result: %d, %v", n, err)
 	}
 	// And other Main inputs that are not native results: a session_report, a child failure notice,
 	// a child message, and a plugin input that copies the native result field.
@@ -83,6 +91,12 @@ func TestUserMainClosesTaskOnNativeChildResult(t *testing.T) {
 		want error
 		call func() error
 	}{
+		{"done from answerless child result", tasksvc.ErrForbidden, func() error {
+			return update(main("result:rejected-turn", "rejected-done"), TaskUpdateArgs{ID: solo, Status: "done"})
+		}},
+		{"in_review from answerless child result", tasksvc.ErrForbidden, func() error {
+			return update(main("result:rejected-turn", "rejected-review"), TaskUpdateArgs{ID: reviewed, Status: "in_review"})
+		}},
 		{"done from session_report", tasksvc.ErrForbidden, func() error {
 			return update(main("report:worker", "report-done"), TaskUpdateArgs{ID: solo, Status: "done"})
 		}},
@@ -139,6 +153,16 @@ func TestUserMainClosesTaskOnNativeChildResult(t *testing.T) {
 	}
 	if task, err := tasksvc.Lookup(ctx, q, solo); err != nil || task.AssigneeBotID != "assignee" || task.Title != "Ship the fix" {
 		t.Fatalf("refused calls changed the Task: %+v, %v", task, err)
+	}
+	// And an answerless child result can still post a note and link an object, as before.
+	rejected := main("result:rejected-turn", "rejected-post")
+	if _, err := s.Post(ctx, rejected, TaskPostArgs{ID: solo, Content: "Child was rejected"}); err != nil {
+		t.Errorf("post from answerless child result: %v", err)
+	}
+	rejected.Key += "/link"
+	pull := tasksvc.Link{Namespace: "fixture", Name: "PR", Object: tasksvc.Object{Type: "pull", Key: "9"}}
+	if _, err := s.Link(ctx, rejected, "link-fixture", solo, pull); err != nil {
+		t.Errorf("link from answerless child result: %v", err)
 	}
 
 	// When the assignee Main closes out on the native result turn,

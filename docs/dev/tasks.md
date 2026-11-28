@@ -111,11 +111,12 @@ and one external run. A child link does not give its Bot's Main access.
 
 For Bot tools, **interactive** means a user turn or a `task_wake`. A child
 result (`session_result`) can authorize a note or artifact. A **native child
-result** is the `session_result` that Dex writes when a child turn settles. It
-has the child in `result_child_id`. A `session_report`, a child message, and
-the failure notice of a child input without a parent turn are not native
-child results. A Monitor or Process `wake` cannot authorize Task writes. Reads
-do not require an interactive turn.
+result** is the `session_result` that Dex writes when a child turn settles
+with a native answer. It has the child in `result_child_id` and the answer in
+`native_answer_id`. A rejected, failed, or interrupted child turn, a
+`session_report`, a child message, and the failure notice of a child input
+without a parent turn give an ordinary child result. A Monitor or Process
+`wake` cannot authorize Task writes. Reads do not require an interactive turn.
 
 | Action                                                      | Bot access                                                                                                                            | Other access and limits                                          |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |

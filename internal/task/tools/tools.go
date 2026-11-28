@@ -84,8 +84,9 @@ func taskOrigin(source sqlc.Submission) tasksvc.Origin {
 		return tasksvc.OriginUser
 	case source.Kind == "task_wake":
 		return tasksvc.OriginTaskWake
-	// Only CreateTurnResult sets result_child_id. A session_report and a failure notice leave it empty.
-	case source.Producer == session.ProducerSubSession && source.Kind == "session_result" && source.ResultChildID.Valid:
+	// Only CreateTurnResult sets result_child_id, and it sets native_answer_id only for a native answer.
+	// A rejected, failed, or interrupted child turn and a session_report stay ordinary results.
+	case source.Producer == session.ProducerSubSession && source.Kind == "session_result" && source.ResultChildID.Valid && source.NativeAnswerID.Valid:
 		return tasksvc.OriginNativeResult
 	case source.Producer == session.ProducerSubSession && (source.Kind == "session_result" || source.Kind == "message" && source.ParentRequestID.Valid):
 		return tasksvc.OriginSessionResult
