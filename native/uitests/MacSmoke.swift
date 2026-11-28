@@ -29,9 +29,12 @@ final class MacSmoke: XCTestCase {
         XCTAssertTrue(composer.waitForExistence(timeout: 15))
         XCTAssertFalse(app.webViews.staticTexts["Sign in to dex"].exists)
         composer.click()
-        let message = "retry"
+        // Digits do not start a phonetic composition when a Chinese input method is active.
+        let message = "42"
         composer.typeText(message)
         XCTAssertEqual(composer.value as? String, message)
+        let send = app.webViews.buttons["Send message"].firstMatch
+        XCTAssertTrue(send.wait(for: \.isEnabled, toEqual: true, timeout: 5))
         composer.typeKey(.return, modifierFlags: [])
         let echo = "echo: " + message
         let answer = app.webViews.staticTexts.matching(NSPredicate(format: "label == %@ OR value == %@", echo, echo)).firstMatch
