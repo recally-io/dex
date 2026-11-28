@@ -332,9 +332,6 @@ func (s *Service) submitMessage(ctx context.Context, botID, peer, sourceKey stri
 	if NonPrivateTelegramPeer(peer) {
 		return ErrTelegramUnauthorized
 	}
-	if _, err := s.Main(ctx, botID); err != nil {
-		return err
-	}
 	m.ID = uuid.NewV7().String()
 	m.Settings = Settings{}
 	if m.ReplyTo != "" {
@@ -380,15 +377,22 @@ func (s *Service) enqueue(ctx context.Context, botID, channelKey, sourceKey, ori
 		}
 		// SQLite row order defines input order, including callers waiting for delivery.
 		createdAt, submittedAt := s.now().UnixMilli(), s.now().UnixMilli()
-		tx, err := s.db.BeginTx(ctx, nil)
+		tx, q, err := s.writeTransaction(ctx)
 		if err != nil {
 			return 0, err
 		}
 		defer func() { _ = tx.Rollback() }()
-		q := s.q.WithTx(tx)
 		sessionTitle := cmp.Or(m.Title, title(m.Content))
 		if sessionTitle == "" && len(m.Attachments) > 0 {
 			sessionTitle = title(m.Attachments[0].Name)
+		}
+		if channelKey == MainKey && origin != "web" {
+			// Keep Main creation in the receipt transaction so a rejected input leaves no session.
+			bot, err := q.GetBot(ctx, botID)
+			if err != nil {
+				return 0, err
+			}
+			sessionTitle = bot.Name
 		}
 		conv, err := q.EnsureSession(ctx, sqlc.EnsureSessionParams{
 			BotID: botID, ChannelKey: channelKey, Title: sessionTitle,
