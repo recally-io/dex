@@ -106,6 +106,10 @@ case ${QA_IOS_ONLY:-all} in
     xcrun simctl keychain "$device" add-root-cert "$fixture/ca.pem"
     run_focus
     ;;
+  switch)
+    xcrun simctl keychain "$device" add-root-cert "$fixture/ca.pem"
+    run_test switch testUserSwitchesAndForgetsTheServer
+    ;;
   attachment)
     xcrun simctl keychain "$device" add-root-cert "$fixture/ca.pem"
     run_attachment
@@ -127,7 +131,7 @@ case ${QA_IOS_ONLY:-all} in
     (( ${untrusted:-0} == 0 && ${trusted:-0} == 0 && ${switched:-0} == 0 && ${attached:-0} == 0 && ${navigated:-0} == 0 && ${focused:-0} == 0 ))
     ;;
   *)
-    printf 'QA_IOS_ONLY must be all, attachment or focus.\n' >&2
+    printf 'QA_IOS_ONLY must be all, attachment, focus or switch.\n' >&2
     exit 2
     ;;
 esac

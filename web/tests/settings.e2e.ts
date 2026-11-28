@@ -81,6 +81,7 @@ test("navigates Global Settings and saves an SSH Runner", async ({ app, browser,
   await expect(screen.getByRole("heading", "Sources", { exact: true })).toBeVisible();
   await pages.getByRole("link", "General", { exact: true }).tap();
   await expect(screen.getByRole("heading", "Bot defaults", { exact: true })).toBeVisible();
+  await expect(screen.getByRole("link", "Switch workspace", { exact: true })).toHaveCount(0);
   await expect(screen.getByRole("heading", "Sources", { exact: true })).toHaveCount(0);
 });
 

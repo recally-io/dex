@@ -27,6 +27,8 @@ mise exec -- bash native/uitests/run-ios.sh \
 
 The runner makes and deletes its own simulator. It tests TLS before it adds the QA root to that simulator. It does not change host trust. Use `QA_SIM_RUNTIME` and `QA_SIM_DEVICE_TYPE` if the default iOS 26.5 runtime or iPhone 17 type is not available. Set `QA_IOS_ONLY=attachment` before the command to run only the Photos picker and attachment test.
 
+Set `QA_IOS_ONLY=switch` to check the workspace switch in Settings and on the sign-in page. The test also checks that switching and forgetting a server clear its login.
+
 Set `QA_IOS_ONLY=focus` to check chat input in the app and in Safari. Both clients sign in to the primary HTTPS fixture and open a chat with an existing reply. The tests check the input and Send button while typing and after the reply. The app also dismisses the keyboard before sending; Safari sends with the keyboard open.
 
 The runner keeps test summaries and selected screenshots. It keeps the token, raw result bundles and temporary signing files out of the output directory. Use a new output directory for each run.

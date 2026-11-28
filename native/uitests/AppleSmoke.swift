@@ -207,11 +207,28 @@ final class AppleSmoke: XCTestCase {
         capture("06-background-catch-up")
     }
 
+    private func switchWorkspaceFromSettings() {
+        XCTAssertFalse(control("Change address").exists, "Chat must not have a connection toolbar.")
+        XCTAssertFalse(control("Switch workspace").exists)
+        app.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open navigation")).firstMatch.tap()
+        app.webViews.links["Settings"].tap()
+        let change = control("Switch workspace")
+        wait(change)
+        capture("16-workspace-settings")
+        change.tap()
+        wait(address)
+    }
+
     func testUserSwitchesAndForgetsTheServer() throws {
         let primary = try XCTUnwrap(fixture["primary"])
         let alternate = try XCTUnwrap(fixture["alternate"])
         let token = try XCTUnwrap(fixture["token"])
         connect(primary)
+        wait(signInTitle)
+        app.webViews.links["Switch workspace"].tap()
+        wait(address)
+        XCTAssertFalse(control("Retry").exists)
+        control("Back to workspace").tap()
         signIn(token)
         wait(composer)
         app.terminate()
@@ -219,13 +236,13 @@ final class AppleSmoke: XCTestCase {
         wait(composer)
         XCTAssertFalse(signInTitle.exists)
 
-        control("Change address").tap()
+        switchWorkspaceFromSettings()
         connect(alternate)
         wait(signInTitle)
         capture("07-switched-sign-in")
         signIn(token)
         wait(composer)
-        control("Change address").tap()
+        switchWorkspaceFromSettings()
         control("Forget server").tap()
         XCTAssertTrue(control("Forget server").waitForNonExistence(timeout: 15))
         wait(address)
@@ -237,6 +254,12 @@ final class AppleSmoke: XCTestCase {
         connect(alternate)
         wait(signInTitle)
         capture("09-forgotten-sign-in")
+
+        // An older server has no settings link. The system link must still work.
+        app.terminate()
+        app.open(try XCTUnwrap(URL(string: "dex-workspace://settings")))
+        wait(address)
+        XCTAssertEqual(address.value as? String, alternate)
     }
 
     @MainActor

@@ -31,7 +31,7 @@ func dexWebViewOptions() []nsgo.Option {
 	})}
 }
 
-func dexWebView(cx *core.Scope, origin string, onFailure func()) core.Node {
+func dexWebView(cx *core.Scope, origin string, leave func(connectionPhase)) core.Node {
 	active, alert := true, false
 	cx.Cleanup(func() { active = false })
 	return core.Native{
@@ -43,8 +43,12 @@ func dexWebView(cx *core.Scope, origin string, onFailure func()) core.Node {
 			if !active {
 				return
 			}
-			if event == "failure" {
-				onFailure()
+			switch event {
+			case "failure":
+				leave(offline)
+				return
+			case "settings":
+				leave(switchWorkspace)
 				return
 			}
 			if alert {
@@ -330,6 +334,7 @@ func newDexAppleWebView(origin dexOrigin, id uuid.UUID, emit func(string, any)) 
 	config := dexClass("WKWebViewConfiguration").Send(dexSel("new"))
 	defer config.Send(dexSel("release"))
 	config.Send(dexSel("setWebsiteDataStore:"), store)
+	config.Send(dexSel("setApplicationNameForUserAgent:"), dexNSString("DexWorkspace/1"))
 	config.Send(dexSel("preferences")).Send(dexSel("setJavaScriptCanOpenWindowsAutomatically:"), false)
 	// Use a fresh configuration without user scripts or message handlers.
 	view := dexClass("WKWebView").Send(dexSel("alloc")).Send(dexSel("initWithFrame:configuration:"), dexRect{}, config)
@@ -400,19 +405,23 @@ func dexNavigationAction(self objc.ID, _ objc.SEL, view, action, decision objc.I
 		dexDecide(decision, true)
 		return
 	}
-	external := main && origin != w.origin && u != nil && origin.scheme == "https" && !strings.ContainsAny(raw, "?#") &&
+	settings := target != 0 && main && raw == workspaceSettingsURL
+	external := main && origin != w.origin && u != nil && origin.scheme == "https" && !strings.ContainsAny(raw, "?#")
+	activated := (settings || external) &&
 		dexGoString(request.Send(dexSel("HTTPMethod"))) == "GET" &&
 		objc.Send[int](action, dexSel("navigationType")) == 0 && // WKNavigationTypeLinkActivated
 		!objc.Send[bool](view, dexSel("isLoading")) &&
 		!objc.Send[bool](action, dexSel("shouldPerformDownload"))
-	if external {
+	if activated {
 		source := action.Send(dexSel("sourceFrame"))
 		from, _ := dexParseOrigin(dexGoString(source.Send(dexSel("request")).Send(dexSel("URL")).Send(dexSel("absoluteString"))))
-		external = objc.Send[bool](source, dexSel("isMainFrame")) && from == w.origin
+		activated = objc.Send[bool](source, dexSel("isMainFrame")) && from == w.origin
 	}
 	// Never let WebKit create a popup. Do not replay the original request.
 	dexDecide(decision, false)
-	if external {
+	if activated && settings {
+		w.emit("settings", nil)
+	} else if activated && external {
 		w.emit("external", raw)
 	} else if main && origin != w.origin {
 		w.emit("blocked", nil)
