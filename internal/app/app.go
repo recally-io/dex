@@ -359,7 +359,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err != nil {
 		return nil, err
 	}
-	botsService = bot.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
+	botsService = bot.New(q, conn, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
 	if err := botsService.ConfigureTelegramVault(ctx, vault.New(cfg.DataDir)); err != nil {
 		slog.Warn("telegram: could not open the manager credential")
 	}
@@ -410,7 +410,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 		manager.Set("wechat", wechat.New(*config, wxOptions, q, manager, uploads))
 	}
-	botsService.ConfigureWechat(wxOptions, conn, setWechat)
+	botsService.ConfigureWechat(wxOptions, setWechat)
 	activeBots, err := q.ListBots(ctx)
 	if err != nil {
 		return nil, err

@@ -52,7 +52,12 @@ func (s *Service) pairTelegram(botID, token string) func(context.Context, string
 		if user <= 0 {
 			return nil, nil
 		}
-		users, err := s.q.PairTelegramOwner(ctx, sqlc.PairTelegramOwnerParams{BotID: botID, Token: token, Code: code, UserID: strconv.FormatInt(user, 10), Now: time.Now().Unix()})
+		var users string
+		err := s.writeActiveChannel(ctx, botID, func(q *sqlc.Queries) error {
+			var err error
+			users, err = q.PairTelegramOwner(ctx, sqlc.PairTelegramOwnerParams{BotID: botID, Token: token, Code: code, UserID: strconv.FormatInt(user, 10), Now: time.Now().Unix()})
+			return err
+		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}

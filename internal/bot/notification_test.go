@@ -25,7 +25,7 @@ func TestUserCanSelectOnlyTheirAuthorizedChannelTarget(t *testing.T) {
 	if _, err = conn.ExecContext(t.Context(), `INSERT INTO feishu_settings (bot_id, app_id, app_secret, brand, owner_id) VALUES ('a','app','test-secret','feishu','owner')`); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, nil, "", nil)
+	s := bot.New(q, conn, nil, "", nil)
 	// When the user lists eligible targets and selects one as primary.
 	list, err := s.NotificationTargets(t.Context(), "a")
 	if err != nil || len(list.Targets) != 1 {

@@ -27,7 +27,7 @@ func TestUserPairingRetriesWhileChannelSettingsChange(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s := New(q, nil, "", nil)
+	s := New(q, conn, nil, "", nil)
 	s.mu.Lock()
 	// When a platform delivers a pairing request during the change.
 	_, tgErr := s.pairTelegram("a", "123:secret")(t.Context(), "code", 42)

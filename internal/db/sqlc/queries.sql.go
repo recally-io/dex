@@ -1843,6 +1843,16 @@ func (q *Queries) ListSessionSummaries(ctx context.Context, botID string) ([]Lis
 	return items, nil
 }
 
+const lockChannelWriter = `-- name: LockChannelWriter :exec
+UPDATE bots SET archived_at = archived_at WHERE 0
+`
+
+// Take the SQLite writer before reading archive state. This changes no rows.
+func (q *Queries) LockChannelWriter(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, lockChannelWriter)
+	return err
+}
+
 const pairTelegramOwner = `-- name: PairTelegramOwner :one
 UPDATE telegram_settings
 SET allowed_users = CAST(?1 AS TEXT),

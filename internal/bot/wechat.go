@@ -10,7 +10,6 @@ import (
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/wechat"
-	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
@@ -25,9 +24,8 @@ type Wechat struct {
 var verifyDigits = regexp.MustCompile(`^[0-9]{1,16}$`)
 
 // ConfigureWechat connects the runtime before the HTTP server starts.
-func (s *Service) ConfigureWechat(options wechat.Options, conn *sql.DB, onChange func(string, *wechat.Config)) {
+func (s *Service) ConfigureWechat(options wechat.Options, onChange func(string, *wechat.Config)) {
 	s.wechatOptions = options
-	s.db = conn
 	s.onWechat = onChange
 }
 
@@ -111,10 +109,6 @@ func (s *Service) PollWechatLogin(ctx context.Context, botID string, id, code st
 }
 
 func (s *Service) activateWechat(ctx context.Context, botID string, cfg *wechat.Config) error {
-	// The login poll started before an archive can reach here; an archived bot starts no channel.
-	if err := db.RequireActive(ctx, s.q, botID); err != nil {
-		return err
-	}
 	if err := s.checkCredential(ctx, botID, "wechat", cfg.BotID); err != nil {
 		return err
 	}
@@ -124,32 +118,23 @@ func (s *Service) activateWechat(ctx context.Context, botID string, cfg *wechat.
 	}
 	// Join all old requests before resetting runtime state shared with the replacement.
 	s.onWechat(botID, nil)
-	activated := false
-	defer func() {
-		if !activated {
+	if err := s.writeActiveChannel(ctx, botID, func(q *sqlc.Queries) error {
+		if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{BotID: botID, Token: cfg.Token, BaseUrl: cfg.BaseURL, WechatBotID: cfg.BotID, Owner: cfg.Owner}); err != nil {
+			return err
+		}
+		if _, err := q.EnsureWechatRuntime(ctx, sqlc.EnsureWechatRuntimeParams{BotID: cfg.BotID, Owner: cfg.Owner}); err != nil {
+			return err
+		}
+		return q.SetWechatPause(ctx, sqlc.SetWechatPauseParams{BotID: cfg.BotID, Owner: cfg.Owner, PauseUntil: 0})
+	}); err != nil {
+		if previous != nil && s.canStartChannel(ctx, botID) {
 			s.onWechat(botID, previous)
 		}
-	}()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
-	if err = q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{BotID: botID, Token: cfg.Token, BaseUrl: cfg.BaseURL, WechatBotID: cfg.BotID, Owner: cfg.Owner}); err != nil {
-		return err
+	if s.canStartChannel(ctx, botID) {
+		s.onWechat(botID, cfg)
 	}
-	if _, err = q.EnsureWechatRuntime(ctx, sqlc.EnsureWechatRuntimeParams{BotID: cfg.BotID, Owner: cfg.Owner}); err != nil {
-		return err
-	}
-	if err = q.SetWechatPause(ctx, sqlc.SetWechatPauseParams{BotID: cfg.BotID, Owner: cfg.Owner, PauseUntil: 0}); err != nil {
-		return err
-	}
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-	s.onWechat(botID, cfg)
-	activated = true
 	return nil
 }
 
@@ -169,7 +154,9 @@ func (s *Service) deleteWechat(ctx context.Context, botID string) error {
 	}
 	s.onWechat(botID, nil)
 	if err := s.q.DeleteWechatSettings(ctx, botID); err != nil {
-		s.onWechat(botID, previous)
+		if previous != nil && s.canStartChannel(ctx, botID) {
+			s.onWechat(botID, previous)
+		}
 		return err
 	}
 	return nil

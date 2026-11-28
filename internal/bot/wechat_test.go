@@ -20,7 +20,8 @@ import (
 )
 
 func TestUserWechatCanceledActivationRetainsCandidate(t *testing.T) {
-	// Given a real QR response canceled just before local activation.
+	t.Parallel()
+	// Given a connected account and a QR response canceled just before local activation.
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var polls atomic.Int64
@@ -43,13 +44,15 @@ func TestUserWechatCanceledActivationRetainsCandidate(t *testing.T) {
 	if err := q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "default", Name: "Dex"}); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, nil, "", nil)
-	activated := false
-	s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, conn, func(_ string, cfg *wechat.Config) {
+	if err := q.SetWechatSettings(t.Context(), sqlc.SetWechatSettingsParams{BotID: "default", Token: "old", BaseUrl: srv.URL, WechatBotID: "previous", Owner: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	s := bot.New(q, conn, nil, "", nil)
+	var running *wechat.Config
+	s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, func(_ string, cfg *wechat.Config) {
+		running = cfg
 		if cfg == nil {
 			cancel()
-		} else {
-			activated = true
 		}
 	})
 	login, err := s.BeginWechatLogin(t.Context(), "default")
@@ -61,14 +64,13 @@ func TestUserWechatCanceledActivationRetainsCandidate(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || view.Status == "confirmed" {
 		t.Fatalf("canceled activation: %+v %v", view, err)
 	}
-	if _, err := q.GetWechatSettings(t.Context(), "default"); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("partial settings after cancellation: %v", err)
-	}
-	if activated {
-		t.Fatal("canceled activation started a bot")
+	saved, err := q.GetWechatSettings(t.Context(), "default")
+	if err != nil || saved.WechatBotID != "previous" || running == nil || running.BotID != "previous" {
+		t.Fatal("canceled activation did not restore the previous account")
 	}
 	// Then a new request can activate the retained candidate without polling WeChat again.
 	view, err = s.PollWechatLogin(t.Context(), "default", login.ID, "")
+	activated := running != nil && running.BotID == "bot"
 	if err != nil || view.Status != "confirmed" || view.Active || !activated || polls.Load() != 1 {
 		t.Fatalf("retry: %+v err=%v activated=%v remote polls=%d", view, err, activated, polls.Load())
 	}
@@ -103,8 +105,8 @@ func TestUserWechatNewLoginAndDeleteInvalidateWaitingStart(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = conn.Close() }()
-			s := bot.New(sqlc.New(conn), nil, "", nil)
-			s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, conn, func(string, *wechat.Config) {})
+			s := bot.New(sqlc.New(conn), conn, nil, "", nil)
+			s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, func(string, *wechat.Config) {})
 			done := make(chan error, 1)
 			go func() { _, err := s.BeginWechatLogin(t.Context(), "default"); done <- err }()
 			select {
@@ -156,9 +158,9 @@ func TestUserWechatDeletionStopsBeforeForgettingCredentials(t *testing.T) {
 	if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{BotID: "default", Token: "old", BaseUrl: "https://example.com", WechatBotID: "bot", Owner: "owner"}); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, nil, "", nil)
+	s := bot.New(q, conn, nil, "", nil)
 	var stoppedWithOwner string
-	s.ConfigureWechat(wechat.Options{}, conn, func(_ string, cfg *wechat.Config) {
+	s.ConfigureWechat(wechat.Options{}, func(_ string, cfg *wechat.Config) {
 		if cfg == nil {
 			row, err := q.GetWechatSettings(ctx, "default")
 			if err == nil {
@@ -196,9 +198,9 @@ func TestUserWechatDeleteFailureRestartsAccount(t *testing.T) {
 	if _, err := conn.ExecContext(ctx, `CREATE TRIGGER fail_wechat_delete BEFORE DELETE ON wechat_settings BEGIN SELECT RAISE(ABORT, 'test failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	s := bot.New(q, nil, "", nil)
+	s := bot.New(q, conn, nil, "", nil)
 	var running *wechat.Config
-	s.ConfigureWechat(wechat.Options{}, conn, func(_ string, cfg *wechat.Config) { running = cfg })
+	s.ConfigureWechat(wechat.Options{}, func(_ string, cfg *wechat.Config) { running = cfg })
 	// When deletion fails, the previous account remains usable.
 	if err := s.DeleteWechat(ctx, "default"); err == nil {
 		t.Fatal("delete unexpectedly succeeded")
