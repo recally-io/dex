@@ -22,6 +22,7 @@ import (
 	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/pairing"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/engine"
@@ -1490,11 +1491,7 @@ type BoundaryItemStatus string
 type ChannelStatus = channel.Status
 
 // Channels defines model for Channels.
-type Channels struct {
-	Feishu   Feishu   `json:"feishu"`
-	Telegram Telegram `json:"telegram"`
-	Wechat   Wechat   `json:"wechat"`
-}
+type Channels = pairing.Channels
 
 // ChildEvent Current state of this session or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
 type ChildEvent struct {
@@ -1820,7 +1817,7 @@ type NewSession struct {
 }
 
 // NotificationTargets defines model for NotificationTargets.
-type NotificationTargets = bot.NotificationTargets
+type NotificationTargets = pairing.NotificationTargets
 
 // NotificationsEvent defines model for NotificationsEvent.
 type NotificationsEvent struct {

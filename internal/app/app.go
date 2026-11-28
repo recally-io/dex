@@ -22,6 +22,7 @@ import (
 	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/pairing"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
@@ -184,7 +185,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	// These tools bind to services that exist only after the engine.
 	botTools := &bot.Tools{}
-	var channelTools bot.ChannelTools
+	var channelTools pairing.ChannelTools
 	taskToolService := tasktools.New(conn)
 	taskToolService.ConfigureTasks(tasks)
 	taskTools := taskToolService.Handlers(pluginTools(plugins))
@@ -246,7 +247,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 				session.FrontDeskExtension(), session.OutboxExtension(id, outbox), session.ChildOutboxExtension(id, outbox),
 				session.AskUserExtension(id, sessions.ToolAskUser), bot.ReadExtension(id, botHandlers), bot.ManageExtension(id, botHandlers),
 			}
-			optional = append(optional, bot.ChannelExtensions(id, bot.ChannelTools{
+			optional = append(optional, pairing.ChannelExtensions(id, pairing.ChannelTools{
 				Read: func(ctx context.Context, c engine.TaskContext, view, bot string) (any, error) {
 					return channelTools.Read(ctx, c, view, bot)
 				},
@@ -280,7 +281,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			}
 		},
 		InputExtensions:   inputExtensions,
-		HideToolArguments: bot.IsChannelTool,
+		HideToolArguments: pairing.IsChannelTool,
 		FallbackModel: func(ctx context.Context, botID string) engine.ModelRef {
 			row, err := q.GetBot(ctx, botID)
 			if err != nil {
@@ -327,6 +328,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	hub = live.New(sessions, native)
 	bots = &channelRegistry{ctx: runCtx, db: conn, sessions: sessions, managers: make(map[string]*botChannels)}
 	sessions.ConfigureChannelReceipts(bots.reactionIntake, bots.reactionAdmission)
+	sessions.ConfigureChannelPairing(pairing.RequirePairedChannel)
 
 	a := &App{db: conn, engine: native, envs: envs, bots: bots, jobs: jobs, background: bg, cancel: cancel}
 	defer func() { //nolint:contextcheck // Shutdown joins the app lifetime.
@@ -367,7 +369,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		slog.Warn("telegram: could not open the manager credential")
 	}
 	botsService = bot.New(q, conn, channelMu, prefs.CheckModel)
-	botsService.BindTelegram(telegramSetup)
 	botsService.RunningChannelCount = bots.RunningCount
 	botsService.OnRunnerChanged = func(changeCtx context.Context, botID, oldEnvID, oldSandboxID string) {
 		_ = native.CloseBot(changeCtx, botID)
@@ -376,22 +377,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 	}
 	*botTools = bot.Tools{Bots: botsService, Sessions: sessions, Extensions: native.Extensions}
-	channelTools = botsService.ChannelToolHandlers(sessions)
-	// An approved archive commits in a session receipt; the channels stop right after it.
-	sessions.OnBotArchived = func(id string) {
-		if err := bg.StopBot(runCtx, id); err != nil {
-			slog.Error("stop background commands of an archived bot", "agent", id, "err", err)
-		}
-		if err := native.CloseBot(runCtx, id); err != nil && !errors.Is(err, engine.ErrBusy) {
-			slog.Warn("close runtime resources of an archived bot", "agent", id, "err", err)
-		}
-		if err := envs.ResetBot(runCtx, id); err != nil {
-			slog.Warn("cleanup sandbox of an archived bot", "agent", id, "err", err)
-		}
-		if err := botsService.StopChannels(runCtx, id); err != nil {
-			slog.Error("stop channels of an archived bot", "agent", id, "err", err)
-		}
-	}
 	sessions.ConfigureSessions(prefs.CheckSession)
 	var feishuSetup *feishu.SetupService
 	setFeishu := func(botID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
@@ -408,7 +393,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	feishuSetup = feishu.NewSetup(q, conn, channelMu, cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu, func(id string) channel.Status {
 		return bots.Status(id, "feishu")
 	})
-	botsService.BindFeishu(feishuSetup)
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
 	setWechat := func(botID string, config *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
 		manager := bots.Bot(botID).Manager
@@ -422,7 +406,23 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	wechatSetup := wechat.NewSetup(q, conn, channelMu, wxOptions, setWechat, func(id string) channel.Status {
 		return bots.Status(id, "wechat")
 	})
-	botsService.BindWechat(wechatSetup)
+	pairings := pairing.New(q, channelMu, telegramSetup, feishuSetup, wechatSetup)
+	channelTools = pairings.ChannelToolHandlers(sessions)
+	// An approved archive commits in a session receipt; the channels stop after it.
+	sessions.OnBotArchived = func(id string) {
+		if err := bg.StopBot(runCtx, id); err != nil {
+			slog.Error("stop background commands of an archived bot", "agent", id, "err", err)
+		}
+		if err := native.CloseBot(runCtx, id); err != nil && !errors.Is(err, engine.ErrBusy) {
+			slog.Warn("close runtime resources of an archived bot", "agent", id, "err", err)
+		}
+		if err := envs.ResetBot(runCtx, id); err != nil {
+			slog.Warn("cleanup sandbox of an archived bot", "agent", id, "err", err)
+		}
+		if err := pairings.StopChannels(runCtx, id); err != nil {
+			slog.Error("stop channels of an archived bot", "agent", id, "err", err)
+		}
+	}
 	activeBots, err := q.ListBots(ctx)
 	if err != nil {
 		return nil, err
@@ -478,6 +478,18 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	a.handler = server.New(server.Config{
 		WebHandler:      cfg.WebHandler,
 		ChannelWebhooks: http.HandlerFunc(bots.webhook),
+		Pairing:         pairings,
+		RestoreBot: func(ctx context.Context, id string) error {
+			channelMu.Lock()
+			defer channelMu.Unlock()
+			if err := botsService.RestoreBotLocked(ctx, id, func(ctx context.Context, tx *sqlc.Queries) error {
+				// The manager can replay a pre-archive setup if cancellation commits later.
+				return telegramSetup.CancelManagedSetupsInLocked(ctx, tx, id)
+			}); err != nil {
+				return err
+			}
+			return pairings.RestoreChannelsLocked(ctx, id)
+		},
 		Telegram:        telegramSetup,
 		Feishu:          feishuSetup,
 		Wechat:          wechatSetup,

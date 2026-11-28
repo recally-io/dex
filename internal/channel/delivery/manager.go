@@ -30,6 +30,9 @@ type runtime struct {
 	reactionWorkers sync.WaitGroup
 }
 
+// PairingCheck checks an account binding before a shared channel command.
+type PairingCheck func(ctx context.Context, q *sqlc.Queries, botID, peer, accountID string) error
+
 // Manager runs bots and sends replies from durable storage.
 type Manager struct {
 	ctx      context.Context
@@ -43,17 +46,18 @@ type Manager struct {
 	commands map[string]chan struct{} // source key to active command owner
 	bots     map[string]*runtime
 	// These bindings do not change after New.
+	pairingCheck    PairingCheck
 	policies        map[string]Policy
 	reactionAllowed map[string]ReactionAuthorizer
 }
 
 // New creates a manager with optional policies and reaction authorizers keyed by platform.
 // Close it before closing the database.
-func New(ctx context.Context, db *sql.DB, sessions *session.Service, botID string, policies map[string]Policy, reactionAllowed map[string]ReactionAuthorizer) *Manager {
+func New(ctx context.Context, db *sql.DB, sessions *session.Service, botID string, pairingCheck PairingCheck, policies map[string]Policy, reactionAllowed map[string]ReactionAuthorizer) *Manager {
 	return &Manager{
 		ctx: ctx, db: db, q: sqlc.New(db), sessions: sessions, botID: botID,
 		commands: make(map[string]chan struct{}), bots: make(map[string]*runtime),
-		policies: maps.Clone(policies), reactionAllowed: maps.Clone(reactionAllowed),
+		pairingCheck: pairingCheck, policies: maps.Clone(policies), reactionAllowed: maps.Clone(reactionAllowed),
 	}
 }
 

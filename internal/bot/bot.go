@@ -1,4 +1,4 @@
-// Package bot owns bot settings and activity, and coordinates channel changes.
+// Package bot owns bot settings and activity.
 package bot
 
 import (
@@ -18,7 +18,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// ErrInvalid means that a requested bot or channel change is invalid.
+// ErrInvalid means that a requested bot change is invalid.
 var ErrInvalid = errors.New("invalid settings")
 
 // ErrRunnerBusy is a change of the bot's environment while sessions that follow it have
@@ -30,20 +30,14 @@ var ErrNotFound = errors.New("bot not found")
 
 var thinkingLevels = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 
-// Service owns bot writes and coordinates channel settings and approvals.
+// Service owns bot settings and activity.
 type Service struct {
 	q                   *sqlc.Queries
 	checkModel          func(context.Context, string, string) error
 	db                  *sql.DB
 	RunningChannelCount func(string) int64
 	OnRunnerChanged     func(ctx context.Context, botID, oldEnvID, oldSandboxID string)
-	telegram            telegramSetup
-	feishu              feishuSetup
-	wechat              wechatSetup
-	// One lock orders credential checks, saves, runtime changes, and setup sessions
-	// across bots. Model checks take the settings lock; settings never takes this lock.
-	mu               *sync.Mutex
-	channelApprovals map[string]channelApproval
+	mu                  *sync.Mutex // shared with channel settings by app
 }
 
 // New connects storage, the shared channel lock, and model validation.

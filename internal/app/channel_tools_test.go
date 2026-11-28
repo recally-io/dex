@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/app"
-	botpkg "github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/pairing"
 	"github.com/recally-io/dex/internal/host/service"
 	"github.com/recally-io/dex/internal/host/sysops"
 )
@@ -99,7 +99,7 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 		t.Fatalf("default bot status: %q", got)
 	}
 	got := read("channel_notification_targets", bot.ID)
-	var targets botpkg.NotificationTargets
+	var targets pairing.NotificationTargets
 	if err := json.Unmarshal([]byte(strings.TrimPrefix(got, "tool: ")), &targets); err != nil || len(targets.Targets) != 2 {
 		t.Fatalf("notification destinations: %q (%v)", got, err)
 	}
@@ -140,7 +140,7 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 		t.Fatal("the review page does not show the exact redacted operation")
 	}
 	primary := func() string {
-		var result botpkg.NotificationTargets
+		var result pairing.NotificationTargets
 		d.must(t, http.MethodGet, base+"/notification-targets", nil, &result)
 		return result.PrimaryID
 	}

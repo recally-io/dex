@@ -143,6 +143,13 @@ func TestUserWebSteerDuringTelegramRunKeepsAnswerInWebAndPreservesOrderAcrossRes
 	t.Parallel()
 	dataDir := t.TempDir()
 	r := openNativeTest(t, dataDir, "bash")
+	r.service.ConfigureChannelPairing(func(ctx context.Context, q *sqlc.Queries, botID, peer, accountID string) error {
+		paired, err := q.ChannelPaired(ctx, sqlc.ChannelPairedParams{BotID: botID, Peer: peer, AccountID: accountID})
+		if err == nil && !paired {
+			return errors.New("the test channel is not paired")
+		}
+		return err
+	})
 	ctx := t.Context()
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
 		BotID:        "bot",

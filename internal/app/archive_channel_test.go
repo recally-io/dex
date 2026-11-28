@@ -159,6 +159,41 @@ func TestUserKeepsRestoredFeishuChannelWhenArchiveCleanupFinishesLate(t *testing
 	postChannelHook(t, d, hook, []byte(`{"type":"url_verification","token":"test-token","challenge":"restored"}`), nil, http.StatusOK)
 }
 
+func TestUserKeepsChannelsStoppedWhenRestoreCannotCancelManagedSetup(t *testing.T) {
+	t.Parallel()
+	// Given an archived bot with a saved Feishu webhook and a pending managed setup.
+	d := startDex(t, t.TempDir(), "")
+	bot := d.createCoder(t)
+	conn := sessionDB(t, d)
+	for _, stmt := range []string{
+		`INSERT INTO feishu_settings (bot_id, app_id, app_secret, brand, verification_token) VALUES (?, 'app', 'secret', 'feishu', 'verify')`,
+		`INSERT INTO telegram_managed_setups (bot_id, id, manager_id, username, expires_at) VALUES (?, 'pending-setup', 123, 'test_bot', 9999999999999)`,
+		`UPDATE bots SET archived_at = 1 WHERE id = ?`,
+	} {
+		if _, err := conn.ExecContext(t.Context(), stmt, bot.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := conn.ExecContext(t.Context(), `CREATE TRIGGER reject_managed_cancel BEFORE UPDATE OF state ON telegram_managed_setups
+		WHEN NEW.state = 'canceled' BEGIN SELECT RAISE(ABORT, 'cannot cancel setup'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	// When SQLite rejects the setup cancellation during restore.
+	restore := "/api/bots/" + bot.ID + "/archive"
+	d.must(t, http.MethodDelete, restore, nil, nil, http.StatusInternalServerError)
+
+	// Then the webhook stays off, and the bot can still be restored after the error clears.
+	hook := "/hooks/channels/feishu/" + bot.ID
+	challenge := []byte(`{"type":"url_verification","token":"verify","challenge":"proof"}`)
+	postChannelHook(t, d, hook, challenge, nil, http.StatusNotFound)
+	if _, err := conn.ExecContext(t.Context(), `DROP TRIGGER reject_managed_cancel`); err != nil {
+		t.Fatal(err)
+	}
+	d.must(t, http.MethodDelete, restore, nil, nil)
+	postChannelHook(t, d, hook, challenge, nil, http.StatusOK)
+}
+
 func TestArchiveInvalidatesInflightFeishuRegistration(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []string{"archive", "restore", "db_archive"} {

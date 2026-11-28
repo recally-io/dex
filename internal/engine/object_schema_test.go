@@ -9,6 +9,7 @@ import (
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/bot"
+	"github.com/recally-io/dex/internal/channel/pairing"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/session"
 	tasktools "github.com/recally-io/dex/internal/task/tools"
@@ -41,7 +42,7 @@ func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
 		tasktools.TaskExtension(id, tasktools.TaskTools{Links: []tasktools.TaskLinkTool{link}}),
 		session.ChildExtension(), session.DreamMessageExtension(id, nil), session.RoutineCheckInstructions(),
 	)
-	extensions = append(extensions, bot.ChannelExtensions(id, bot.ChannelTools{})...)
+	extensions = append(extensions, pairing.ChannelExtensions(id, pairing.ChannelTools{})...)
 	count := 0
 	for _, extension := range extensions {
 		for _, tool := range extension.Tools {

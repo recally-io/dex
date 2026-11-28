@@ -16,6 +16,8 @@ type Policy interface {
 	// for a duplicate source before it looks up a stored command. The adapter
 	// checks the actor before it downloads data.
 	AdmitInput(peer string) error
+	// RequirePairedChannel checks the actor before the manager stores a command.
+	RequirePairedChannel(ctx context.Context, q *sqlc.Queries, peer string, actor session.ChannelContext) error
 	// IsCommand recognizes additional commands for a source with no receipt.
 	IsCommand(text string) bool
 	// RunCommand checks the target and actor after the manager takes ownership

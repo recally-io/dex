@@ -1,13 +1,16 @@
-package bot
+package pairing
 
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
+	"slices"
 	"uuid"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
+
+var ErrNotificationTargetUnavailable = errors.New("invalid settings: notification target unavailable")
 
 // NotificationTarget describes a channel recipient authorized by the owner.
 type NotificationTarget struct {
@@ -26,10 +29,10 @@ type NotificationTargets struct {
 func (s *Service) NotificationTargets(ctx context.Context, botID string) (NotificationTargets, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.notificationTargets(ctx, botID)
+	return s.notificationTargetsLocked(ctx, botID)
 }
 
-func (s *Service) notificationTargets(ctx context.Context, botID string) (NotificationTargets, error) {
+func (s *Service) notificationTargetsLocked(ctx context.Context, botID string) (NotificationTargets, error) {
 	bot, err := s.q.GetBot(ctx, botID)
 	if err != nil {
 		return NotificationTargets{}, err
@@ -59,35 +62,28 @@ func (s *Service) notificationTargets(ctx context.Context, botID string) (Notifi
 		out.Targets = append(out.Targets, NotificationTarget{ID: id, Platform: platform, Peer: peer})
 		return nil
 	}
-	if s.telegram != nil {
-		account, peers, err := s.telegram.NotificationPeers(ctx, botID)
-		if err != nil {
+	account, peers, err := s.telegram.NotificationPeers(ctx, botID)
+	if err != nil {
+		return NotificationTargets{}, err
+	}
+	for _, peer := range peers {
+		if err := add("telegram", account, peer); err != nil {
 			return NotificationTargets{}, err
 		}
-		for _, peer := range peers {
-			if err := add("telegram", account, peer); err != nil {
-				return NotificationTargets{}, err
-			}
-		}
 	}
-	if s.feishu != nil {
-		account, owner, err := s.feishu.Owner(ctx, botID)
+	for _, setup := range []struct {
+		platform string
+		owner    func(context.Context, string) (string, string, error)
+	}{
+		{"feishu", s.feishu.Owner},
+		{"wechat", s.wechat.Owner},
+	} {
+		account, owner, err := setup.owner(ctx, botID)
 		if err != nil {
 			return NotificationTargets{}, err
 		}
 		if owner != "" {
-			if err := add("feishu", account, "feishu:"+owner); err != nil {
-				return NotificationTargets{}, err
-			}
-		}
-	}
-	if s.wechat != nil {
-		account, owner, err := s.wechat.Owner(ctx, botID)
-		if err != nil {
-			return NotificationTargets{}, err
-		}
-		if owner != "" {
-			if err := add("wechat", account, "wechat:"+owner); err != nil {
+			if err := add(setup.platform, account, setup.platform+":"+owner); err != nil {
 				return NotificationTargets{}, err
 			}
 		}
@@ -99,26 +95,19 @@ func (s *Service) notificationTargets(ctx context.Context, botID string) (Notifi
 func (s *Service) SetPrimaryNotificationTarget(ctx context.Context, botID, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.setPrimaryNotificationTarget(ctx, botID, id, "")
+	return s.setPrimaryNotificationTargetLocked(ctx, botID, id, "")
 }
 
 // An approval must match both the current target ID and the peer on the review page.
-func (s *Service) setPrimaryNotificationTarget(ctx context.Context, botID, id, expectedPeer string) error {
-	list, err := s.notificationTargets(ctx, botID)
+func (s *Service) setPrimaryNotificationTargetLocked(ctx context.Context, botID, id, expectedPeer string) error {
+	list, err := s.notificationTargetsLocked(ctx, botID)
 	if err != nil {
 		return err
 	}
-	if id != "" {
-		found := false
-		for _, target := range list.Targets {
-			if target.ID == id && (expectedPeer == "" || target.Peer == expectedPeer) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("%w: notification target unavailable", ErrInvalid)
-		}
+	if id != "" && !slices.ContainsFunc(list.Targets, func(target NotificationTarget) bool {
+		return target.ID == id && (expectedPeer == "" || target.Peer == expectedPeer)
+	}) {
+		return ErrNotificationTargetUnavailable
 	}
 	_, err = s.q.SetPrimaryNotificationTarget(ctx, sqlc.SetPrimaryNotificationTargetParams{ID: botID, PrimaryNotificationTargetID: sql.NullString{String: id, Valid: id != ""}})
 	return err

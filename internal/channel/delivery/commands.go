@@ -57,7 +57,11 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg session.
 	if !isCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
 		return m.sessions.AcceptMessage(ctx, m.botID, peer, source, msg)
 	}
-	if err := session.RequirePairedChannel(ctx, m.q, m.botID, peer, msg.ChannelContext); err != nil {
+	if policy != nil {
+		if err := policy.RequirePairedChannel(ctx, m.q, peer, msg.ChannelContext); err != nil {
+			return err
+		}
+	} else if err := m.pairingCheck(ctx, m.q, m.botID, peer, msg.ChannelContext.AccountID); err != nil {
 		return err
 	}
 	identity, err := json.Marshal(msg.ChannelContext)

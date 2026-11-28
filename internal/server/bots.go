@@ -64,20 +64,11 @@ func (h *handler) UpdateBot(ctx context.Context, req api.UpdateBotRequestObject)
 }
 
 func (h *handler) GetChannels(ctx context.Context, _ api.GetChannelsRequestObject) (api.GetChannelsResponseObject, error) {
-	id := botID(ctx)
-	tg, err := h.Telegram.View(ctx, id)
+	channels, err := h.Pairing.Channels(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}
-	wx, err := h.Wechat.View(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	fs, err := h.Feishu.View(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return api.GetChannels200JSONResponse{Telegram: tg, Wechat: wx, Feishu: fs}, nil
+	return api.GetChannels200JSONResponse(channels), nil
 }
 
 func (h *handler) ListArchivedBots(ctx context.Context, _ api.ListArchivedBotsRequestObject) (api.ListArchivedBotsResponseObject, error) {
@@ -89,7 +80,7 @@ func (h *handler) ListArchivedBots(ctx context.Context, _ api.ListArchivedBotsRe
 }
 
 func (h *handler) RestoreBot(ctx context.Context, req api.RestoreBotRequestObject) (api.RestoreBotResponseObject, error) {
-	if err := h.Bots.RestoreBot(ctx, req.BotId); err != nil {
+	if err := h.Config.RestoreBot(ctx, req.BotId); err != nil {
 		return nil, err
 	}
 	bot, err := h.Bots.Bot(ctx, req.BotId)
@@ -100,7 +91,7 @@ func (h *handler) RestoreBot(ctx context.Context, req api.RestoreBotRequestObjec
 }
 
 func (h *handler) GetNotificationTargets(ctx context.Context, _ api.GetNotificationTargetsRequestObject) (api.GetNotificationTargetsResponseObject, error) {
-	targets, err := h.Bots.NotificationTargets(ctx, botID(ctx))
+	targets, err := h.Pairing.NotificationTargets(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +102,7 @@ func (h *handler) SetPrimaryNotificationTarget(ctx context.Context, req api.SetP
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Bots.SetPrimaryNotificationTarget(ctx, botID(ctx), req.Body.TargetId); err != nil {
+	if err := h.Pairing.SetPrimaryNotificationTarget(ctx, botID(ctx), req.Body.TargetId); err != nil {
 		return nil, err
 	}
 	return api.SetPrimaryNotificationTarget200JSONResponse(ok), nil

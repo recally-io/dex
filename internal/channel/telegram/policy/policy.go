@@ -32,6 +32,18 @@ func (*Policy) AdmitInput(peer string) error {
 	return nil
 }
 
+// RequirePairedChannel checks the private peer and the allowed sender.
+func (p *Policy) RequirePairedChannel(ctx context.Context, q *sqlc.Queries, peer string, actor session.ChannelContext) error {
+	allowed, err := session.TelegramInputAllowed(ctx, q, p.botID, peer, actor)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return session.ErrTelegramUnauthorized
+	}
+	return nil
+}
+
 // IsCommand reports whether Telegram text is a command rather than model input.
 func (*Policy) IsCommand(text string) bool {
 	switch text {

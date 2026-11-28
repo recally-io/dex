@@ -26,6 +26,7 @@ import (
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/pairing"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
@@ -48,6 +49,8 @@ type Config struct {
 	TaskEvents  *tasksvc.Broker
 	Settings    *settings.Service
 	Bots        *bot.Service
+	RestoreBot  func(context.Context, string) error
+	Pairing     *pairing.Service
 	Telegram    *telegram.SetupService
 	Feishu      *feishu.SetupService
 	Wechat      *wechat.SetupService
@@ -126,7 +129,7 @@ func New(cfg Config) http.Handler {
 			}
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, settings.ErrInvalid), errors.Is(err, bot.ErrInvalid), errors.Is(err, telegram.ErrInvalid), errors.Is(err, feishu.ErrInvalid), errors.Is(err, wechat.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
+			case errors.Is(err, settings.ErrInvalid), errors.Is(err, bot.ErrInvalid), errors.Is(err, pairing.ErrNotificationTargetUnavailable), errors.Is(err, telegram.ErrInvalid), errors.Is(err, feishu.ErrInvalid), errors.Is(err, wechat.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
 				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, session.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, session.ErrRejected), errors.Is(err, session.ErrProjectInvalid), errors.Is(err, session.ErrRunnerInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, tasksvc.ErrTaskToken):
@@ -163,8 +166,8 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("POST /machine/{id}/pair", h.machinePair)
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
 	mux.HandleFunc("GET /machine/{id}/release/{file}", h.machineRunnerRelease)
-	mux.HandleFunc("GET "+bot.ChannelApprovalPath+"{id}", h.channelApproval)
-	mux.HandleFunc("POST "+bot.ChannelApprovalPath+"{id}", h.channelApproval)
+	mux.HandleFunc("GET "+pairing.ChannelApprovalPath+"{id}", h.channelApproval)
+	mux.HandleFunc("POST "+pairing.ChannelApprovalPath+"{id}", h.channelApproval)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
 	mux.HandleFunc("GET "+mcpCallbackPath, h.finishMcpOAuth)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
@@ -201,7 +204,7 @@ func New(cfg Config) http.Handler {
 	})
 	origins := http.NewCrossOriginProtection()
 	origins.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, bot.ChannelApprovalPath) {
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, pairing.ChannelApprovalPath) {
 			auditDeniedChannelApproval()
 		}
 		http.Error(w, origins.Check(r).Error(), http.StatusForbidden)

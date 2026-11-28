@@ -1,4 +1,4 @@
-package bot
+package pairing
 
 import (
 	"cmp"
@@ -64,33 +64,23 @@ func (s *Service) channelToolRead(ctx context.Context, id, view string) (any, er
 		return nil, errors.New("bot is not available")
 	}
 	if view == "channel_notification_targets" {
-		targets, err := s.notificationTargets(ctx, id)
+		targets, err := s.notificationTargetsLocked(ctx, id)
 		if err != nil {
 			return nil, errors.New("cannot read notification destinations")
 		}
 		return targets, nil
 	}
-	var err error
-	tgState, tgPaired := "off", false
-	if s.telegram != nil {
-		tgState, tgPaired, err = s.telegram.State(ctx, id)
-		if err != nil {
-			return nil, errors.New("cannot read channel settings")
-		}
+	tgState, tgPaired, err := s.telegram.State(ctx, id)
+	if err != nil {
+		return nil, errors.New("cannot read channel settings")
 	}
-	fsState, fsPaired := "off", false
-	if s.feishu != nil {
-		fsState, fsPaired, err = s.feishu.State(ctx, id)
-		if err != nil {
-			return nil, errors.New("cannot read channel settings")
-		}
+	fsState, fsPaired, err := s.feishu.State(ctx, id)
+	if err != nil {
+		return nil, errors.New("cannot read channel settings")
 	}
-	wxState, wxPaired := "off", false
-	if s.wechat != nil {
-		wxState, wxPaired, err = s.wechat.State(ctx, id)
-		if err != nil {
-			return nil, errors.New("cannot read channel settings")
-		}
+	wxState, wxPaired, err := s.wechat.State(ctx, id)
+	if err != nil {
+		return nil, errors.New("cannot read channel settings")
 	}
 	if view == "channel_pairing" {
 		return map[string]bool{"telegram": tgPaired, "feishu": fsPaired, "wechat": wxPaired}, nil
@@ -125,7 +115,7 @@ func (s *Service) requestChannelChange(ctx context.Context, caller string, sessi
 		if op == "revoke_pairing" && target != "telegram" && target != "feishu" {
 			return nil, errors.New("only Telegram and Feishu support revoking pairing; disconnect WeChat instead")
 		}
-		p.fingerprint, err = s.channelFingerprint(ctx, id, target)
+		p.fingerprint, err = s.channelFingerprintLocked(ctx, id, target)
 		if err != nil {
 			return nil, ErrChannelApproval
 		}
@@ -135,7 +125,7 @@ func (s *Service) requestChannelChange(ctx context.Context, caller string, sessi
 			p.Description = "Revoke the current pairing and invalidate any pairing code"
 		}
 	case "set_notification_target":
-		list, err := s.notificationTargets(ctx, id)
+		list, err := s.notificationTargetsLocked(ctx, id)
 		if err != nil {
 			return nil, ErrChannelApproval
 		}
@@ -155,9 +145,6 @@ func (s *Service) requestChannelChange(ctx context.Context, caller string, sessi
 		}
 		p.Description = "Clear the primary notification destination"
 	}
-	if s.channelApprovals == nil {
-		s.channelApprovals = make(map[string]channelApproval)
-	}
 	maps.DeleteFunc(s.channelApprovals, func(_ string, p channelApproval) bool { return !time.Now().Before(p.expires) })
 	if len(s.channelApprovals) >= maxChannelApprovals {
 		return nil, errors.New("too many pending channel changes; retry after they expire")
@@ -167,24 +154,15 @@ func (s *Service) requestChannelChange(ctx context.Context, caller string, sessi
 	return map[string]string{"status": "pending_owner_confirmation", "approvalPath": ChannelApprovalPath + key}, nil
 }
 
-// channelFingerprint detects replacement of the account or pairing before approval.
+// channelFingerprintLocked detects replacement of the account or pairing before approval.
 // Only the hash stays in the pending request, and it never leaves control.
-func (s *Service) channelFingerprint(ctx context.Context, bot, platform string) ([sha256.Size]byte, error) {
+func (s *Service) channelFingerprintLocked(ctx context.Context, bot, platform string) ([sha256.Size]byte, error) {
 	switch platform {
 	case "telegram":
-		if s.telegram == nil {
-			return [sha256.Size]byte{}, ErrChannelApproval
-		}
 		return s.telegram.FingerprintLocked(ctx, bot)
 	case "feishu":
-		if s.feishu == nil {
-			return [sha256.Size]byte{}, ErrChannelApproval
-		}
 		return s.feishu.FingerprintLocked(ctx, bot)
 	case "wechat":
-		if s.wechat == nil {
-			return [sha256.Size]byte{}, ErrChannelApproval
-		}
 		return s.wechat.FingerprintLocked(ctx, bot)
 	default:
 		return [sha256.Size]byte{}, ErrChannelApproval
@@ -226,21 +204,21 @@ func (s *Service) ConfirmChannelChange(ctx context.Context, id string) (err erro
 		return ErrChannelApproval
 	}
 	if p.operation == "disconnect" || p.operation == "revoke_pairing" {
-		fingerprint, err := s.channelFingerprint(ctx, p.BotID, p.target)
+		fingerprint, err := s.channelFingerprintLocked(ctx, p.BotID, p.target)
 		if err != nil || fingerprint != p.fingerprint {
 			return ErrChannelApproval
 		}
 	}
-	if s.applyChannelChange(ctx, p) != nil {
+	if s.applyChannelChangeLocked(ctx, p) != nil {
 		return ErrChannelApproval
 	}
 	return nil
 }
 
-func (s *Service) applyChannelChange(ctx context.Context, p channelApproval) error {
+func (s *Service) applyChannelChangeLocked(ctx context.Context, p channelApproval) error {
 	switch p.operation {
 	case "set_notification_target", "clear_notification_target":
-		return s.setPrimaryNotificationTarget(ctx, p.BotID, p.target, p.Destination)
+		return s.setPrimaryNotificationTargetLocked(ctx, p.BotID, p.target, p.Destination)
 	case "disconnect":
 		switch p.target {
 		case "telegram":

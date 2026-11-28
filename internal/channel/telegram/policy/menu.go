@@ -271,9 +271,6 @@ func (p *Policy) ClaimTelegramCallback(ctx context.Context, id, peer, remote str
 		return false, err
 	}
 	source := "telegram-callback:" + id
-	if err := session.RequirePairedChannel(ctx, q, p.botID, peer, identity); err != nil {
-		return false, err
-	}
 	if err := q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{BotID: p.botID, SourceKey: source, Peer: peer, ChannelKey: conv.ChannelKey, Command: row.Action, ChannelContext: string(encoded)}); err != nil {
 		return false, err
 	}
